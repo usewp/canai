@@ -42,7 +42,7 @@ export function onlyToSlug(only) {
 // has (a capture worklist entry has a url + optional type name; a verify
 // output entry has only a filename-derived slug + optionally a type name
 // recovered from that filename's `-single`/`-archive` convention; see
-// verify.mjs's `templateTypeNameCandidate`).
+// outputFiles.mjs's `classifyTemplateFilename`).
 //
 //   - page-type name: compared literally against `typeName` — never
 //     slug-normalized, so a type named e.g. "about" can't be accidentally

@@ -614,7 +614,7 @@ test("buildReportLines labels templates as structural review, never puts them in
   const joined = lines.join("\n");
   assert.ok(!joined.includes("case-study-single |"), "a template must never appear as a scored-table row");
   const templateLine = lines.find((l) => l.startsWith("- case-study-single"));
-  assert.match(templateLine, /template — Twig placeholders render literally; check structure, not pixels/);
+  assert.match(templateLine, /verify after deploy against the live site/);
 });
 
 test("buildReportLines lists a page with no original capture under Not scored, distinct wording from templates", () => {
@@ -1006,3 +1006,71 @@ test(
     }
   }),
 );
+
+// ---------------------------------------------------------------------------
+// hasTwig — verify has no Twig engine; a page/template still containing
+// unresolved Twig delimiters is screenshotted raw, never pixel-scored, and
+// pointed at post-deploy verification instead.
+// ---------------------------------------------------------------------------
+
+test("scorePageAgainstOriginal refuses to score a PAGE whose HTML still contains Twig (nothing resolved it locally)", async () => {
+  const { root, cleanup } = await mkTree({
+    "captures/about/screenshot.png": encodePng(8, 8, red),
+    "verify/about-generated.png": encodePng(8, 8, red),
+  });
+  try {
+    const res = await scorePageAgainstOriginal({
+      kind: "page",
+      hasTwig: true,
+      originalPng: path.join(root, "captures/about/screenshot.png"),
+      generatedPng: path.join(root, "verify/about-generated.png"),
+    });
+    assert.equal(res.hasOriginal, false, "a Twig-containing page must not be scored");
+    assert.equal(res.score, null);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("scorePageAgainstOriginal still scores a plain static page when hasTwig is false", async () => {
+  const { root, cleanup } = await mkTree({
+    "captures/about/screenshot.png": encodePng(8, 8, red),
+    "verify/about-generated.png": encodePng(8, 8, red),
+  });
+  try {
+    const res = await scorePageAgainstOriginal({
+      kind: "page",
+      hasTwig: false,
+      originalPng: path.join(root, "captures/about/screenshot.png"),
+      generatedPng: path.join(root, "verify/about-generated.png"),
+    });
+    assert.equal(res.hasOriginal, true);
+    assert.ok(res.score, "a static page with an original must still score");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("buildReportLines points a Twig-containing PAGE at post-deploy verification, not at 'no original capture'", () => {
+  const results = [
+    {
+      slug: "contact",
+      kind: "page",
+      ok: true,
+      scored: false,
+      hasTwig: true,
+      mismatchPct: null,
+      heightDeltaPct: null,
+      original: null,
+      generated: "verify/contact-generated.png",
+    },
+  ];
+  const line = buildReportLines({ site: "example.com", results }).find((l) => l.startsWith("- contact"));
+  assert.match(line, /verify after deploy against the live site/);
+  assert.ok(!line.includes("no original capture"));
+});
+
+test("buildReportLines explains in the Not-scored section why Twig outputs can't be scored locally", () => {
+  const joined = buildReportLines({ site: "example.com", results: [] }).join("\n");
+  assert.match(joined, /canai-replicate has no Twig engine/);
+});

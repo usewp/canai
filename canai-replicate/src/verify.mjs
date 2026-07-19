@@ -2,30 +2,22 @@
 // against the original capture via pngdiff (Task 9), and write a worst-first
 // verify/report.md so a human only has to eyeball the failures.
 //
-// Fix A (Important, review round 2): a raw output/templates/*.html file still
-// never gets a pixel score directly (see scorePageAgainstOriginal — its own
-// literal `{{ post.title }}` placeholders would render as noise in a
-// browser) but it is no longer left unscored on principle. Before opening a
-// template, verify now tries to render it with real, sample-harvested data
-// through the plugin's own vendored Twig (twigRender.mjs -> php/
-// render-harness.php) — the same technique Task 8 proved out by hand. A
-// successful render gets screenshotted and diffed exactly like a page,
-// against that SAME sample's original screenshot; a render that can't
-// succeed (no matching pagetypes.json entry, no CONTENT-MODEL.md section, a
-// genuine Twig error, ...) degrades to the original "not scored" bucket
-// with the concrete reason surfaced, never a crash and never a silent 0. The
-// two shared-chrome partials (output/templates/header.html/footer.html —
-// see prompts/transform-chrome.md) are excluded from this entirely: they're
-// fragments meant to be spliced into another template via
-// {{ wpcanai_template(...) }}, not independently scorable pages.
+// A raw output/templates/*.html file is never pixel-scored: its literal
+// {{ post.title }} placeholders render as text in a browser, so a diff
+// against the original screenshot would be noise, not signal. The same now
+// applies to any one-off page that includes the shared chrome via
+// {{ wpcanai_template('header') }}. canai-replicate has no Twig engine — it
+// has no PHP dependency at all, by design — and Twig genuinely executes in
+// exactly one place: the live WordPress site. So both cases are
+// screenshotted raw (still useful for a structural eyeball) and listed
+// under "Not scored" pointing at post-deploy verification: canai-prepare
+// shapes the pages/layouts, canai-mcp deploys them, and the real render is
+// what gets checked.
 //
-// kind:"page" outputs get the same treatment IF (and only if) they contain
-// Twig syntax at all (containsTwigSyntax) — a one-off page generated before
-// Fix B (pure static HTML, e.g. wpdev.xcloudzen.com's existing output) has
-// none and takes the exact same raw-file-open path it always has; only a
-// page that opted into shared chrome via {{ wpcanai_template('header') }}
-// needs a (much lighter — no CONTENT-MODEL.md, no harvesting) render pass
-// first.
+// The two shared-chrome partials (output/templates/header.html/footer.html —
+// see prompts/transform-chrome.md) are excluded entirely: they're fragments
+// meant to be spliced into another template, not independently scorable
+// pages.
 
 import { readFile, writeFile, mkdir, readdir, access } from "node:fs/promises";
 import path from "node:path";
@@ -33,7 +25,6 @@ import { spawnAgentBrowser, resolveSessionCdpEndpoint } from "./agentBrowser.mjs
 import { matchesOnly } from "./slug.mjs";
 import { decodePng, diffScore } from "./pngdiff.mjs";
 import { isChromePartial, containsTwigSyntax, classifyTemplateFilename } from "./outputFiles.mjs";
-import { renderTemplateForScoring, renderPageChromeForScoring } from "./twigRender.mjs";
 import { captureFullPageScreenshot } from "./cdp.mjs";
 import { isBrowserDeathError, PAGE_SIZE_JS, parseEvalJson } from "./capture.mjs";
 
@@ -109,7 +100,8 @@ export async function collectOutputs(outputDir) {
 // (they're real .html files under output/templates/), so verify() calls
 // this BEFORE applyOnlyFilter, so `--only header` (which would otherwise
 // match the existing template-type-name convention — see
-// templateTypeNameCandidate above) can't resurrect an attempt to score one.
+// classifyTemplateFilename in outputFiles.mjs) can't resurrect an attempt to
+// score one.
 export function excludeChromePartials(entries) {
   return entries.filter((e) => !(e.kind === "template" && isChromePartial(e.file)));
 }
@@ -126,14 +118,18 @@ export function applyOnlyFilter(entries, only) {
 }
 
 // Score a rendered entry against its original capture screenshot, if one
-// applies. Templates (kind !== "page") are never scored — they contain Twig
-// placeholders ({{ post.title }}) that render as literal text in a browser,
-// so a pixel diff against the original page would be noise, not signal. A
+// applies. Two things are never scored, for the same underlying reason —
+// unresolved Twig renders as literal text in a browser, so a pixel diff
+// against the original would be noise, not signal: templates
+// (kind !== "page"), and any page whose HTML still contains Twig
+// delimiters (hasTwig — a page that includes the shared header/footer
+// chrome). canai-replicate has no Twig engine to resolve either one; that
+// happens on the live site after deploy. A
 // missing original (page never captured), or a decodePng/diffScore failure
 // (unsupported PNG format, truncated file, ...), both degrade to "no score"
 // rather than throwing — one bad pair must never abort the whole verify run.
-export async function scorePageAgainstOriginal({ kind, originalPng, generatedPng }) {
-  const hasOriginal = kind === "page" && (await exists(originalPng));
+export async function scorePageAgainstOriginal({ kind, originalPng, generatedPng, hasTwig = false }) {
+  const hasOriginal = kind === "page" && !hasTwig && (await exists(originalPng));
   let score = null;
   let error = null;
   if (hasOriginal) {
@@ -255,23 +251,21 @@ export function buildReportLines({ site, results }) {
     "",
     "## Not scored (eyeball these)",
     "",
+    "Outputs containing unresolved Twig (`{{` / `{%`) can't be scored here — " +
+      "canai-replicate has no Twig engine, by design. Twig executes on the live " +
+      "WordPress site, so verify these after canai-mcp deploys them; what you " +
+      "can usefully check locally is structure, not pixels.",
+    "",
     ...unscored.map((r) => {
       if (!r.ok) return `- ${r.slug}: render FAILED — ${r.error}`;
-      // Fix A: a template/page render was actually ATTEMPTED (twigRender.mjs)
-      // and failed — surface the real reason rather than the generic
-      // "Twig placeholders render literally" blurb below, which is no
-      // longer true once rendering is attempted (kept only as the fallback
-      // for whatever legitimately never attempts a render — see the two
-      // branches after this one).
-      if (r.renderError) return `- ${r.slug} (render failed — not scored: ${r.renderError}): ${r.generated}`;
-      // A template DID render successfully with real data but still has
-      // nothing to diff against (e.g. its resolved sample has no
-      // screenshot.png on disk) — distinct from "Twig placeholders render
-      // literally", since this one really did render real content.
-      if (r.kind === "template" && r.wasRendered) {
-        return `- ${r.slug} (template rendered with real data, but has no original capture to diff against): ${r.generated}`;
+      // A template, or a page that includes the shared {{ wpcanai_template }}
+      // chrome, still carries unresolved Twig at this point — nothing local
+      // resolves it. Say where it DOES get verified rather than implying the
+      // gap is permanent.
+      if (r.kind === "template" || r.hasTwig) {
+        return `- ${r.slug} (contains unresolved Twig — verify after deploy against the live site): ${r.generated}`;
       }
-      return `- ${r.slug} (${r.kind === "template" ? "template — Twig placeholders render literally; check structure, not pixels" : "no original capture"}): ${r.generated}`;
+      return `- ${r.slug} (no original capture): ${r.generated}`;
     }),
     "",
   ];
@@ -386,7 +380,6 @@ export async function verify({
   const verifyDir = path.join(runDir, "verify");
   await mkdir(verifyDir, { recursive: true });
   const flags = ["--cdp", String(cdp), "--session", session];
-  const siteUrl = /^https?:\/\//i.test(site) ? site : `https://${site}`;
 
   const rawEntries = await collectOutputs(outputDir);
   for (const e of rawEntries) {
@@ -405,57 +398,20 @@ export async function verify({
 
     process.stderr.write(`[${i + 1}/${entries.length}] ${slug}\n`);
 
-    // Fix A: render before opening, when there's real data to render with.
-    // `openPath`/`originalPng`/`scoreKind` all default to the pre-Fix-A
-    // behavior (open the raw file, score kind:"page" outputs only) and are
-    // only overridden on a SUCCESSFUL render — a template that can't be
-    // rendered still opens (raw, Twig placeholders visible, as before) so
-    // there's still something to eyeball, just tagged with the real reason
-    // instead of a generic "template" blurb.
-    let openPath = htmlPath;
-    let originalPng = path.resolve(runDir, "captures", slug, "screenshot.png");
-    let scoreKind = kind;
-    let renderError = null;
-    let wasRendered = false;
-    try {
-      if (kind === "template") {
-        const rendered = await renderTemplateForScoring({ runDir, file, siteUrl });
-        if (rendered.rendered) {
-          const renderedPath = path.resolve(verifyDir, `${slug}-rendered.html`);
-          await writeFile(renderedPath, rendered.html);
-          openPath = renderedPath;
-          originalPng = rendered.originalPng;
-          scoreKind = "page"; // now a real, screenshot-able, diff-able artifact
-          wasRendered = true;
-          process.stderr.write(`  rendered via Twig (real sample data): ${renderedPath}\n`);
-        } else {
-          renderError = rendered.reason;
-          process.stderr.write(`  ! not rendered — ${rendered.reason}\n`);
-        }
-      } else if (kind === "page") {
-        const rawHtml = await readFile(htmlPath, "utf8").catch(() => null);
-        if (rawHtml !== null && containsTwigSyntax(rawHtml)) {
-          const rendered = await renderPageChromeForScoring({ runDir, mainTemplateSource: rawHtml, siteUrl });
-          if (rendered.rendered) {
-            const renderedPath = path.resolve(verifyDir, `${slug}-rendered.html`);
-            await writeFile(renderedPath, rendered.html);
-            openPath = renderedPath;
-            process.stderr.write(`  rendered shared-chrome includes via Twig: ${renderedPath}\n`);
-          } else {
-            renderError = rendered.reason;
-            process.stderr.write(`  ! not rendered — ${rendered.reason}\n`);
-          }
-        }
-      }
-    } catch (e) {
-      // Belt-and-suspenders: renderTemplateForScoring/renderPageChromeForScoring
-      // are themselves designed to never throw, but a render failure must
-      // never take down the whole verify run either way.
-      renderError = e.message;
-      process.stderr.write(`  ! not rendered — ${e.message}\n`);
+    // canai-replicate has no Twig engine (no PHP, by design — see SKILL.md).
+    // An output that still contains Twig delimiters therefore cannot be
+    // resolved locally: it's screenshotted raw, which is still worth
+    // eyeballing for structure, but never pixel-scored, and the report tells
+    // the human it gets verified after deploy instead. Twig executes on the
+    // live WordPress site; that is the only place it ever really runs.
+    const rawHtml = await readFile(htmlPath, "utf8").catch(() => null);
+    const hasTwig = containsTwigSyntax(rawHtml);
+    if (hasTwig) {
+      process.stderr.write(`  contains unresolved Twig — not scored locally; verify after deploy\n`);
     }
 
-    const fileUrl = `file://${openPath}`;
+    const originalPng = path.resolve(runDir, "captures", slug, "screenshot.png");
+    const fileUrl = `file://${htmlPath}`;
     // Fix 2: bounded to ONE recovery attempt per entry, exactly like
     // capture()'s per-entry recoveryAttempted bound (capture.mjs) — a
     // browser-death error here retries the SAME entry once after a fresh
@@ -477,7 +433,7 @@ export async function verify({
           );
         }
 
-        const { hasOriginal, score, error } = await scorePageAgainstOriginal({ kind: scoreKind, originalPng, generatedPng });
+        const { hasOriginal, score, error } = await scorePageAgainstOriginal({ kind, originalPng, generatedPng, hasTwig });
         if (error) process.stderr.write(`  ! diff skipped: ${error}\n`);
         results.push({
           slug,
@@ -488,8 +444,7 @@ export async function verify({
           heightDeltaPct: score ? Number(score.heightDeltaPct.toFixed(1)) : null,
           generated: generatedPng,
           original: hasOriginal ? originalPng : null,
-          ...(renderError ? { renderError } : {}),
-          ...(wasRendered ? { wasRendered } : {}),
+          ...(hasTwig ? { hasTwig } : {}),
         });
         if (hasOriginal) {
           process.stderr.write(`  original:  ${originalPng}\n`);
@@ -514,7 +469,7 @@ export async function verify({
           }
           process.stderr.write(`  ✗ ${slug}: browser recovery failed\n`);
         }
-        results.push({ slug, kind, ok: false, error: e.message, ...(renderError ? { renderError } : {}) });
+        results.push({ slug, kind, ok: false, error: e.message, ...(hasTwig ? { hasTwig } : {}) });
         break;
       }
     }
