@@ -1,0 +1,253 @@
+#!/usr/bin/env node
+import { argv, exit, stderr } from "node:process";
+import { pathToFileURL } from "node:url";
+import { discover } from "../src/discover.mjs";
+import { classify } from "../src/classify.mjs";
+import { capture } from "../src/capture.mjs";
+import { prepareDesignBundle } from "../src/designmd.mjs";
+import { prepareContentModelBundle } from "../src/contentmodel.mjs";
+import { prepareTransformBundles } from "../src/transform.mjs";
+import { preparePushArtifacts } from "../src/pushprep.mjs";
+import { verify } from "../src/verify.mjs";
+import { resolveAgentBrowser } from "../src/agentBrowser.mjs";
+
+function parseArgs(rest) {
+  const out = { _: [] };
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i];
+    if (a.startsWith("--")) {
+      const k = a.slice(2);
+      const next = rest[i + 1];
+      if (next != null && !next.startsWith("--")) {
+        out[k] = next;
+        i++;
+      } else {
+        out[k] = true;
+      }
+    } else {
+      out._.push(a);
+    }
+  }
+  return out;
+}
+
+// Fix 1b: a stage that produced NOTHING must never report success. Before
+// this, `capture` printing "✓ 0/10 pages captured" with exit code 0 on a
+// total failure was proven live (see .superpowers/sdd/dogfood-a1-report.md
+// — a Chrome crash cascaded through the whole worklist, and the CLI still
+// exited clean) — no calling script or CI could ever detect it. Pure:
+// decides the ✓/✗ marker and whether `succeeded` out of `total` counts as a
+// total failure, for any stage shaped like "N attempted, M succeeded"
+// (capture, verify). Partial success (0 < succeeded < total) stays a
+// success but the summary must plainly show the failure count, not just an
+// implicit ratio a human has to subtract themselves.
+export function summarizeCountOutcome(succeeded, total) {
+  const failed = total - succeeded;
+  const mark = succeeded > 0 ? "✓" : "✗";
+  const failedSuffix = succeeded > 0 && failed > 0 ? ` (${failed} failed)` : "";
+  return { mark, failed, failedSuffix, isTotalFailure: succeeded === 0 };
+}
+
+// classify's typeCount/pageCount don't fit the succeeded/total shape above:
+// 0 types with N one-off pages is a perfectly normal, expected result (a
+// site with no repeating content type at all — proven live in the same
+// dogfood run), not a failure. Only "found NEITHER a type NOR a single
+// page" means classify genuinely had nothing to work with (e.g. an empty
+// pages.json).
+export function classifyProducedNothing(typeCount, pageCount) {
+  return typeCount === 0 && pageCount === 0;
+}
+
+// transform.mjs already throws when `--only` matches nothing, but a full
+// (no --only) run that simply has zero one-off pages and zero types to
+// bundle — e.g. everything got dropped by resolveSlugClaims, or the site is
+// otherwise empty — currently returns success with count: 0. `chrome` is
+// tracked separately from `count`/`bundles` (see transform.mjs's own doc
+// comment on why), so it must be checked too: a chrome-only run (`--only
+// chrome`) that DOES produce header/footer must not be flagged as having
+// produced nothing.
+export function transformProducedNothing(count, hasChrome) {
+  return count === 0 && !hasChrome;
+}
+
+const HELP = `replica — migrate any website to semantic single-HTML files
+
+USAGE
+  replica <command> <args> [flags]
+
+COMMANDS
+  discover  <url>            Find pages (sitemap or crawl). Writes runs/<site>/pages.json
+  classify  <site>           Cluster pages into page types. Writes runs/<site>/pagetypes.json + .classify/PROMPT.md
+  capture   <site>           Drive agent-browser per page. Writes runs/<site>/captures/<slug>/
+  designmd  <site>           Prepare bundle + prompt for design-md skill
+  contentmodel <site>        Prepare CPT/custom-field handoff bundle → agent writes runs/<site>/CONTENT-MODEL.md
+  transform <site>           Prepare per-page/per-type bundles + prompts; agent writes runs/<site>/output/pages/<slug>.html or output/templates/<type>-single.html
+  pushprep  <site>           Convert output/pages + output/templates into push-ready runs/<site>/output/push/<slug>.json (strips the doctype/head/body shell + preview-libs). NEVER push a raw output/pages|templates/*.html file into _canai_html — push the output/push/ artifact instead.
+  verify    <site>           Render generated HTMLs, score against originals, write report.md
+
+FLAGS
+  --runs <dir>               Output root (default: runs)
+  --cdp <port>               Chrome DevTools port (default: 9223)
+  --session <name>           agent-browser session name (default: personal)
+  --only <path|slug|type>    Restrict to one page (URL pathname or slug) or one page type (type name)
+
+EXAMPLES
+  replica discover  https://g100.my/
+  replica capture   g100.my
+  replica designmd  g100.my
+  replica contentmodel g100.my
+  replica transform g100.my --only /
+  replica pushprep  g100.my
+  replica verify    g100.my
+`;
+
+async function main() {
+  const [, , cmd, ...rest] = argv;
+  if (!cmd || cmd === "-h" || cmd === "--help") {
+    stderr.write(HELP);
+    exit(cmd ? 0 : 1);
+  }
+  const args = parseArgs(rest);
+  const runsDir = args.runs || "runs";
+  const cdp = Number(args.cdp || 9223);
+  const session = args.session || "personal";
+  const only = args.only || null;
+
+  switch (cmd) {
+    case "discover": {
+      const url = args._[0];
+      if (!url) throw new Error("usage: discover <url>");
+      const r = await discover(url, runsDir);
+      const mark = r.count > 0 ? "✓" : "✗";
+      stderr.write(`${mark} ${r.site}: ${r.count} pages (${r.source}) → ${r.outPath}\n`);
+      if (r.count === 0) {
+        throw new Error(`discover found 0 pages for ${r.site} (source: ${r.source}) — nothing for the rest of the pipeline to work with`);
+      }
+      break;
+    }
+    case "classify": {
+      const site = args._[0];
+      if (!site) throw new Error("usage: classify <site>");
+      const r = await classify({ site, runsDir });
+      const mark = classifyProducedNothing(r.typeCount, r.pageCount) ? "✗" : "✓";
+      stderr.write(
+        `${mark} ${r.typeCount} type(s), ${r.pageCount} one-off page(s) → ${r.outPath}\n` +
+          `\nNext: have a coding agent review the classification:\n\n  ${r.promptPath}\n`,
+      );
+      if (classifyProducedNothing(r.typeCount, r.pageCount)) {
+        throw new Error(`classify produced 0 types and 0 pages for ${site} — nothing to classify (is pages.json empty?)`);
+      }
+      break;
+    }
+    case "capture": {
+      const site = args._[0];
+      if (!site) throw new Error("usage: capture <site>");
+      const ab = resolveAgentBrowser();
+      if (ab.via === "npx") stderr.write(`ℹ using \`npx -y agent-browser\` (no global install found)\n`);
+      const r = await capture({ site, runsDir, cdp, session, only });
+      const { mark, failedSuffix, isTotalFailure } = summarizeCountOutcome(r.ok, r.count);
+      stderr.write(`${mark} ${r.ok}/${r.count} pages captured${failedSuffix}\n`);
+      if (isTotalFailure) {
+        throw new Error(`capture produced 0/${r.count} successfully captured pages — see the per-page errors above`);
+      }
+      break;
+    }
+    case "designmd": {
+      const site = args._[0];
+      if (!site) throw new Error("usage: designmd <site>");
+      const r = await prepareDesignBundle({ site, runsDir });
+      stderr.write(
+        `✓ design bundle ready (${r.picked.length} pages: ${r.picked.join(", ")})\n` +
+          `\nNext: have a coding agent run the prompt:\n\n  ${r.promptPath}\n\n` +
+          `It should produce: ${r.designMdPath}\n`,
+      );
+      break;
+    }
+    case "contentmodel": {
+      const site = args._[0];
+      if (!site) throw new Error("usage: contentmodel <site>");
+      const r = await prepareContentModelBundle({ site, runsDir });
+      stderr.write(
+        `✓ content-model bundle ready (${r.typeCount} type(s))\n` +
+          `\nNext: have a coding agent run the prompt:\n\n  ${r.promptPath}\n\n` +
+          `It should produce: ${r.contentModelPath}\n`,
+      );
+      break;
+    }
+    case "transform": {
+      const site = args._[0];
+      if (!site) throw new Error("usage: transform <site>");
+      const r = await prepareTransformBundles({ site, runsDir, only });
+      if (r.chrome) {
+        stderr.write(
+          `  chrome (site-wide header/footer, from ${r.chrome.sourceCapture})\n` +
+            `    prompt: ${r.chrome.promptPath}\n    header output: ${r.chrome.outputPath}\n` +
+            `    footer output: ${r.chrome.footerOutputPath}\n`,
+        );
+      }
+      const transformNothing = transformProducedNothing(r.count, !!r.chrome);
+      stderr.write(`${transformNothing ? "✗" : "✓"} ${r.count} transform bundle(s) ready:\n`);
+      for (const b of r.bundles) {
+        stderr.write(`  ${b.slug}\n    prompt: ${b.promptPath}\n    output: ${b.outputPath}\n`);
+        if (b.archiveOutputPath) {
+          stderr.write(`    archive output: ${b.archiveOutputPath}\n`);
+        }
+      }
+      stderr.write(`\nHand each PROMPT.md to a coding agent (claudecode/cursor/gemini) to produce the output HTML — chrome first, so header.html/footer.html exist before the others are authored against them.\n`);
+      if (transformNothing) {
+        throw new Error(`transform produced 0 bundles for ${site} — nothing to hand to a coding agent`);
+      }
+      break;
+    }
+    case "pushprep": {
+      const site = args._[0];
+      if (!site) throw new Error("usage: pushprep <site>");
+      const r = await preparePushArtifacts({ site, runsDir, only });
+      const { mark, failedSuffix, isTotalFailure } = summarizeCountOutcome(r.ok, r.count);
+      stderr.write(`${mark} ${r.ok}/${r.count} file(s) converted${failedSuffix} → ${r.outDir}\n`);
+      if (r.failures.length > 0) {
+        stderr.write(`\nFailed conversions (never silently skipped):\n`);
+        for (const f of r.failures) {
+          stderr.write(`  ✗ ${f.file}\n    ${f.errors.join("\n    ")}\n`);
+        }
+      }
+      stderr.write(`\nPush the output/push/*.json artifacts to WordPress — NEVER write a raw output/pages|templates/*.html file into _canai_html (doubles WPCanAI's own document shell around it; see dogfood A2 Defect #1).\n`);
+      if (isTotalFailure) {
+        throw new Error(`pushprep converted 0/${r.count} files for ${site} — see the per-file errors above`);
+      }
+      break;
+    }
+    case "verify": {
+      const site = args._[0];
+      if (!site) throw new Error("usage: verify <site>");
+      const ab = resolveAgentBrowser();
+      if (ab.via === "npx") stderr.write(`ℹ using \`npx -y agent-browser\` (no global install found)\n`);
+      const r = await verify({ site, runsDir, cdp, session, only });
+      const { mark, failedSuffix, isTotalFailure } = summarizeCountOutcome(r.ok, r.count);
+      stderr.write(`${mark} ${r.ok}/${r.count} pages rendered${failedSuffix} → ${r.manifestPath}\n  report: ${r.reportPath}\n`);
+      if (isTotalFailure) {
+        throw new Error(`verify produced 0/${r.count} successfully rendered pages — see ${r.reportPath} for detail`);
+      }
+      break;
+    }
+    default:
+      stderr.write(`unknown command: ${cmd}\n${HELP}`);
+      exit(1);
+  }
+}
+
+// Only auto-run when this file is executed directly (`node bin/replica ...`
+// / the shebang), never when imported — e.g. by bin/replica.test.mjs, which
+// imports the pure helpers above (summarizeCountOutcome/
+// classifyProducedNothing/transformProducedNothing) for direct unit
+// testing. Without this guard, importing this file would call main()
+// against whatever process.argv the IMPORTING process happens to have
+// (a test runner's own argv, not a replica command) and process.exit()
+// before the import even resolves — taking the whole test run down with it.
+const isMainModule = argv[1] != null && import.meta.url === pathToFileURL(argv[1]).href;
+if (isMainModule) {
+  main().catch((e) => {
+    stderr.write(`✗ ${e.message}\n`);
+    exit(1);
+  });
+}
