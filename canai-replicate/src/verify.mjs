@@ -32,12 +32,8 @@ import path from "node:path";
 import { spawnAgentBrowser, resolveSessionCdpEndpoint } from "./agentBrowser.mjs";
 import { matchesOnly } from "./slug.mjs";
 import { decodePng, diffScore } from "./pngdiff.mjs";
-import {
-  isChromePartial,
-  containsTwigSyntax,
-  renderTemplateForScoring,
-  renderPageChromeForScoring,
-} from "./twigRender.mjs";
+import { isChromePartial, containsTwigSyntax, classifyTemplateFilename } from "./outputFiles.mjs";
+import { renderTemplateForScoring, renderPageChromeForScoring } from "./twigRender.mjs";
 import { captureFullPageScreenshot } from "./cdp.mjs";
 import { isBrowserDeathError, PAGE_SIZE_JS, parseEvalJson } from "./capture.mjs";
 
@@ -96,19 +92,6 @@ export async function collectOutputs(outputDir) {
   ];
 }
 
-// A template output file's slug follows transform.mjs's own naming
-// convention: `${type.name}-single.html` / `${type.name}-archive.html` for a
-// repeating type, or bare `${type.name}.html` (no suffix) for a Woo
-// structural page (see transform.mjs's isWooStructural). Recovering the type
-// name from that convention is what lets --only accept a page-type name
-// here too (Fix 2) — a page bundle's filename has no such convention (it IS
-// the slug), so this is only ever consulted for kind === "template".
-function templateTypeNameCandidate(slug) {
-  if (slug.endsWith("-single")) return slug.slice(0, -"-single".length);
-  if (slug.endsWith("-archive")) return slug.slice(0, -"-archive".length);
-  return slug;
-}
-
 // Narrow `entries` to one page/type via --only (URL pathname, slug, or type
 // name — matchesOnly, src/slug.mjs, is the ONE shared matcher capture and
 // transform also use). Throws when nothing matches, matching every other
@@ -135,7 +118,7 @@ export function applyOnlyFilter(entries, only) {
   if (!only) return entries;
   const filtered = entries.filter((e) => {
     const slug = e.file.replace(/\.html$/, "");
-    const typeName = e.kind === "template" ? templateTypeNameCandidate(slug) : null;
+    const typeName = e.kind === "template" ? classifyTemplateFilename(e.file).typeName : null;
     return matchesOnly(only, { slug, typeName });
   });
   if (filtered.length === 0) throw new Error(`no output matches --only ${only}`);
