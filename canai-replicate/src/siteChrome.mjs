@@ -1,18 +1,19 @@
 // Site-wide chrome (header/footer) is generated ONCE per site from one
 // "representative" capture and shared via {{ wpcanai_template('header') }} /
 // {{ wpcanai_template('footer') }} — see prompts/transform-chrome.md — rather
-// than re-authored (and drifting) per page/type. Two different stages need
-// the exact same answer to "which capture represents the site chrome":
+// than re-authored (and drifting) per page/type. transform.mjs is the sole
+// consumer of pickRepresentativeCaptureUrl/pickRepresentativeCaptureSlug: it
+// picks the capture to hand the authoring agent when it builds the chrome
+// bundle, and that choice is exactly what header.html/footer.html — the
+// generated chrome partials — end up authored from (their real nav links,
+// their real header/footer markup). verify.mjs used to be a second consumer,
+// needing the same answer to stub get_menu() inside a local Twig-render
+// harness for scoring; that harness is gone — verify no longer renders Twig
+// at all, so it no longer imports this module.
 //
-//   - transform.mjs (Fix B) picks the capture to hand the authoring agent
-//     when it builds the chrome bundle.
-//   - verify.mjs's Twig-render harness (Fix A) needs the SAME capture's real
-//     header/footer nav links to stub get_menu() when it renders any page
-//     or template for scoring — using a different capture than the one
-//     header.html/footer.html were actually authored from would score
-//     against nav data the templates don't agree with.
-//
-// Kept here once so the two stages can never independently disagree.
+// Kept in its own module (rather than inlined into transform.mjs) so a
+// future second consumer can't independently pick a different capture and
+// silently disagree with what the chrome was actually authored from.
 
 import { urlToSlug } from "./slug.mjs";
 

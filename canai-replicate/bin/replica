@@ -224,7 +224,16 @@ async function main() {
       if (ab.via === "npx") stderr.write(`ℹ using \`npx -y agent-browser\` (no global install found)\n`);
       const r = await verify({ site, runsDir, cdp, session, only });
       const { mark, failedSuffix, isTotalFailure } = summarizeCountOutcome(r.ok, r.count);
-      stderr.write(`${mark} ${r.ok}/${r.count} pages rendered${failedSuffix} → ${r.manifestPath}\n  report: ${r.reportPath}\n`);
+      // Fix (final review): current-generation output almost always includes
+      // the shared {{ wpcanai_template('header') }}/footer chrome (see
+      // prompts/transform.md), so "N/N pages rendered" alone reads as
+      // success even when the pixel-scored table is empty. Report the
+      // screenshot count and the scored count separately, and say WHY when
+      // nothing was scored, instead of implying a clean pass.
+      const twigNote = r.twig > 0 ? ` (${r.twig} contain Twig — verify after deploy)` : "";
+      stderr.write(
+        `${mark} ${r.ok}/${r.count} screenshotted${failedSuffix}, ${r.scored} pixel-scored${twigNote} → ${r.manifestPath}\n  report: ${r.reportPath}\n`,
+      );
       if (isTotalFailure) {
         throw new Error(`verify produced 0/${r.count} successfully rendered pages — see ${r.reportPath} for detail`);
       }

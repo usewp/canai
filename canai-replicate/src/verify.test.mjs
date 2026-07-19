@@ -596,7 +596,7 @@ test("buildReportLines: both broken cases (truncated, wrong-content) rank above 
   assert.ok(rank("4-wrong-content") < rank("3-faithful-taller"), "wrong-content page must outrank the faithful-but-taller page");
 });
 
-test("buildReportLines labels templates as structural review, never puts them in the scored table", () => {
+test("buildReportLines labels a Twig-free template as never-scored (not a Twig gap), never puts it in the scored table", () => {
   const results = [
     scoredResult("about", 12),
     {
@@ -608,13 +608,38 @@ test("buildReportLines labels templates as structural review, never puts them in
       heightDeltaPct: null,
       original: null,
       generated: "verify/case-study-single-generated.png",
+      // no hasTwig: this template happens to contain no Twig delimiters —
+      // it must still never be pixel-scored, but not because of Twig.
     },
   ];
   const lines = buildReportLines({ site: "example.com", results });
   const joined = lines.join("\n");
   assert.ok(!joined.includes("case-study-single |"), "a template must never appear as a scored-table row");
   const templateLine = lines.find((l) => l.startsWith("- case-study-single"));
-  assert.match(templateLine, /verify after deploy against the live site/);
+  assert.match(templateLine, /templates are never scored/);
+  assert.ok(
+    !/verify after deploy/.test(templateLine),
+    "a Twig-free template must not falsely claim it contains unresolved Twig",
+  );
+});
+
+test("buildReportLines labels a Twig-bearing template with the post-deploy Twig wording (verify after deploy against the live site)", () => {
+  const results = [
+    {
+      slug: "recipe-single",
+      kind: "template",
+      ok: true,
+      scored: false,
+      mismatchPct: null,
+      heightDeltaPct: null,
+      original: null,
+      generated: "verify/recipe-single-generated.png",
+      hasTwig: true,
+    },
+  ];
+  const lines = buildReportLines({ site: "example.com", results });
+  const line = lines.find((l) => l.startsWith("- recipe-single"));
+  assert.match(line, /verify after deploy against the live site/);
 });
 
 test("buildReportLines lists a page with no original capture under Not scored, distinct wording from templates", () => {
@@ -1007,6 +1032,55 @@ test(
   }),
 );
 
+// verify()-level (not just the pure scorePageAgainstOriginal/buildReportLines
+// helpers) proof that hasTwig actually gets threaded through the real code
+// path: read file -> containsTwigSyntax -> scorePageAgainstOriginal ->
+// result object -> report.md. A page whose output HTML includes the shared
+// {{ wpcanai_template('header') }} chrome must never be pixel-scored, even
+// when a same-slug original capture genuinely exists on disk — deleting the
+// `hasTwig` argument from verify.mjs's own scorePageAgainstOriginal call
+// would silently start scoring it again, and nothing except this test would
+// notice (scorePageAgainstOriginal's own unit tests pass `hasTwig` by hand,
+// so they can't catch a call-site regression). Pre-seeding BOTH the
+// original AND the generated PNG (identical pixels) makes the mutation
+// maximally visible: if hasTwig stops reaching scorePageAgainstOriginal,
+// this entry would actually score as a 0%-mismatch match and move into the
+// scored table instead of staying in Not scored.
+test(
+  "verify(): a page whose HTML still contains the shared-chrome Twig include is never pixel-scored, even though its original capture exists — MUTATION-SENSITIVE on the hasTwig wiring into scorePageAgainstOriginal",
+  withSilencedStderr(async () => {
+    const { root, cleanup } = await mkTree({
+      "mysite/output/pages/about.html": "<html><body>{{ wpcanai_template('header') }}</body></html>",
+      "mysite/captures/about/screenshot.png": encodePng(4, 4, red),
+      "mysite/verify/about-generated.png": encodePng(4, 4, red),
+    });
+    try {
+      const verifyOneImpl = async () => ({ width: 100, height: 100, requestedHeight: 100, capped: false });
+      const r = await verify({ site: "mysite", runsDir: root, verifyOneImpl });
+
+      assert.equal(r.count, 1);
+      assert.equal(r.ok, 1);
+      assert.equal(r.scored, 0, "a Twig-bearing page must contribute 0 to verify()'s scored count");
+
+      const manifest = JSON.parse(await readFile(path.join(root, "mysite", "verify", "index.json"), "utf8"));
+      const pair = manifest.pairs.find((p) => p.slug === "about");
+      assert.equal(pair.hasTwig, true);
+      assert.equal(pair.scored, false);
+      assert.equal(
+        pair.original,
+        null,
+        "must not report an original to compare against once Twig makes the page unscoreable",
+      );
+
+      const report = await readFile(path.join(root, "mysite", "verify", "report.md"), "utf8");
+      assert.match(report, /verify after deploy against the live site/);
+      assert.ok(!report.includes("about |"), "must never appear as a scored-table row");
+    } finally {
+      await cleanup();
+    }
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // hasTwig — verify has no Twig engine; a page/template still containing
 // unresolved Twig delimiters is screenshotted raw, never pixel-scored, and
@@ -1070,7 +1144,28 @@ test("buildReportLines points a Twig-containing PAGE at post-deploy verification
   assert.ok(!line.includes("no original capture"));
 });
 
-test("buildReportLines explains in the Not-scored section why Twig outputs can't be scored locally", () => {
+test("buildReportLines omits the Twig-explanation paragraph entirely when nothing in the run is a template or has Twig", () => {
   const joined = buildReportLines({ site: "example.com", results: [] }).join("\n");
+  assert.ok(
+    !joined.includes("canai-replicate has no Twig engine"),
+    "an empty (or all-scored) run has nothing for the Twig explanation to explain",
+  );
+});
+
+test("buildReportLines explains in the Not-scored section why Twig outputs can't be scored locally, when a hasTwig entry is present", () => {
+  const results = [
+    {
+      slug: "contact",
+      kind: "page",
+      ok: true,
+      scored: false,
+      hasTwig: true,
+      mismatchPct: null,
+      heightDeltaPct: null,
+      original: null,
+      generated: "verify/contact-generated.png",
+    },
+  ];
+  const joined = buildReportLines({ site: "example.com", results }).join("\n");
   assert.match(joined, /canai-replicate has no Twig engine/);
 });

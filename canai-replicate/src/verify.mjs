@@ -146,10 +146,14 @@ export async function scorePageAgainstOriginal({ kind, originalPng, generatedPng
 }
 
 // report.md: scored pages sorted worst-first, then everything that couldn't
-// be scored — templates (labelled as such, structural review not pixel
-// review), pages with no original to compare against, and outright render
-// failures. Pure/sync: takes the same `results` shape verify() accumulates,
-// returns the file's lines.
+// be scored — a page whose HTML still contains unresolved Twig (labelled
+// "verify after deploy against the live site", since Twig only ever
+// executes on the live WordPress site), a template (labelled as
+// never-scored/structural-review-only, whether or not it happens to contain
+// Twig delimiters — templates are never pixel-scored regardless), pages
+// with no original to compare against, and outright render failures.
+// Pure/sync: takes the same `results` shape verify() accumulates, returns
+// the file's lines.
 //
 // --- severity: why not raw mismatchPct, and why not max() either ---
 //
@@ -228,6 +232,11 @@ export function severityScore(r) {
 export function buildReportLines({ site, results }) {
   const scored = results.filter((r) => r.scored).sort((a, b) => severityScore(b) - severityScore(a));
   const unscored = results.filter((r) => !r.scored);
+  // Only print the Twig-explanation paragraph when something in the Not
+  // scored list is actually there because of Twig (a hasTwig page) or is a
+  // template (which is never scored regardless of Twig content) — an empty
+  // or all-scored run has nothing for that paragraph to explain.
+  const needsTwigExplanation = unscored.some((r) => r.kind === "template" || r.hasTwig);
   return [
     `# Verify report — ${site}`,
     "",
@@ -251,19 +260,33 @@ export function buildReportLines({ site, results }) {
     "",
     "## Not scored (eyeball these)",
     "",
-    "Outputs containing unresolved Twig (`{{` / `{%`) can't be scored here — " +
-      "canai-replicate has no Twig engine, by design. Twig executes on the live " +
-      "WordPress site, so verify these after canai-mcp deploys them; what you " +
-      "can usefully check locally is structure, not pixels.",
-    "",
+    ...(needsTwigExplanation
+      ? [
+          "Outputs containing unresolved Twig (`{{` / `{%`) can't be scored here — " +
+            "canai-replicate has no Twig engine, by design. Twig executes on the live " +
+            "WordPress site, so verify these after canai-mcp deploys them; what you " +
+            "can usefully check locally is structure, not pixels. A template is never " +
+            "pixel-scored either way, even on the rare one with no Twig in it — its job " +
+            "is per-item substitution, not standing alone as a static page.",
+          "",
+        ]
+      : []),
     ...unscored.map((r) => {
       if (!r.ok) return `- ${r.slug}: render FAILED — ${r.error}`;
-      // A template, or a page that includes the shared {{ wpcanai_template }}
-      // chrome, still carries unresolved Twig at this point — nothing local
-      // resolves it. Say where it DOES get verified rather than implying the
-      // gap is permanent.
-      if (r.kind === "template" || r.hasTwig) {
+      // A page that includes the shared {{ wpcanai_template }} chrome (or
+      // otherwise still carries Twig) can't be resolved locally — nothing
+      // here has a Twig engine. Say where it DOES get verified rather than
+      // implying the gap is permanent.
+      if (r.hasTwig) {
         return `- ${r.slug} (contains unresolved Twig — verify after deploy against the live site): ${r.generated}`;
+      }
+      // A template is never pixel-scored, independent of whether it happens
+      // to contain Twig delimiters — it renders one item's worth of
+      // `{{ post.title }}`-style substitution, not a standalone static page.
+      // Saying "contains unresolved Twig" here would be false for the rare
+      // template with none.
+      if (r.kind === "template") {
+        return `- ${r.slug} (template — templates are never scored here; review structurally): ${r.generated}`;
       }
       return `- ${r.slug} (no original capture): ${r.generated}`;
     }),
@@ -484,5 +507,19 @@ export async function verify({
   const manifestPath = path.join(verifyDir, "index.json");
   await writeFile(manifestPath, JSON.stringify({ site, pairs: results }, null, 2));
 
-  return { count: results.length, ok: results.filter((r) => r.ok).length, manifestPath, reportPath };
+  return {
+    count: results.length,
+    ok: results.filter((r) => r.ok).length,
+    // Fix (final review): a run can render/screenshot every page and still
+    // pixel-score NONE of them — current-generation output always includes
+    // the shared {{ wpcanai_template('header') }}/footer chrome (see
+    // prompts/transform.md), so hasTwig is true for practically everything.
+    // `scored`/`twig` let bin/replica report that honestly instead of
+    // printing an unqualified "N/N rendered" success line over a run that
+    // scored nothing.
+    scored: results.filter((r) => r.scored).length,
+    twig: results.filter((r) => r.hasTwig).length,
+    manifestPath,
+    reportPath,
+  };
 }

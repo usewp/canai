@@ -18,9 +18,12 @@ test("no production module shells out to php or references the deleted render ha
     const source = await readFile(path.join(SRC_DIR, file), "utf8");
     // Matches the shapes a PHP shell-out realistically takes: the old
     // harness's own identifiers, and any child_process entry point invoked
-    // with a literal "php" command. Deliberately broader than the code this
-    // replaced, so the guard matches what its name promises.
-    if (/\bphpBin\b|render-harness|(spawn|spawnSync|exec|execSync|execFile|execFileSync)\s*\(\s*["'`]php\b/.test(source)) {
+    // with a command literal that names a php binary — bare `"php"`,
+    // version-suffixed (`"php8.1"`), an alternate binary on the same
+    // interpreter (`"phpunit"`), or a full path (`"/usr/bin/php"`).
+    // Deliberately broader than the code this replaced, so the guard
+    // matches what its name promises.
+    if (/\bphpBin\b|render-harness|(spawn|spawnSync|exec|execSync|execFile|execFileSync)\s*\(\s*["'`][^"'`]*php/.test(source)) {
       offenders.push(file);
     }
   }

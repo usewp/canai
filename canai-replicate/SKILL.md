@@ -14,9 +14,10 @@ description: >
   site-wide header/footer partial driven by real WordPress menus instead of
   N independently-drifting inlined copies → convert every generated file
   into push-ready JSON artifacts (pushprep, avoiding WPCanAI's
-  double-document-shell footgun) → verify static pages with automated diff
-  scoring (Twig-bearing outputs are flagged for post-deploy verification —
-  this skill has no PHP dependency). --only (URL pathname, output slug,
+  double-document-shell footgun) → verify by screenshotting every output
+  (pixel scoring applies only to Twig-free files, so real verification
+  happens after deploy — this skill has no PHP dependency). --only (URL
+  pathname, output slug,
   or page-type name) resumes any stage uniformly. Output is ready for
   canai-mcp / canai-localwp to push into WordPress. Use when the user wants
   to rebuild, migrate, port, or clone a whole site (not just one URL) from a
@@ -347,8 +348,9 @@ Three different bundle shapes, from three different prompts:
   only it). Points at ONE representative capture — the homepage if
   captured, else the first one-off page, else the first page-shaped type,
   else the first sample of the first repeating type
-  (`siteChrome.mjs`'s `pickRepresentativeCaptureUrl`, shared with `verify`
-  so both stages agree on which capture the chrome came from) — plus
+  (`siteChrome.mjs`'s `pickRepresentativeCaptureUrl` — transform's alone;
+  verify no longer renders Twig, so there's no second stage left to keep in
+  agreement) — plus
   `DESIGN.md` and `alpine-recipes.md`. Follow it to write **two** small Twig
   partials, `output/templates/header.html` and `footer.html`: no
   `<!DOCTYPE>`, no preview-libs markers, just the bare `<header>…</header>` /
@@ -482,9 +484,16 @@ post-deploy verification instead.
 "$HOME/.claude/skills/canai-replicate/bin/replica" verify example.com
 ```
 
-A plain file with no Twig syntax (`{{`/`{%`) opens raw via `file://` and is
-screenshotted, and is pixel-scored against its original capture. That covers
-every one-off static page.
+A file with no Twig syntax at all (`{{`/`{%`) opens raw via `file://` and is
+screenshotted, and is pixel-scored against its original capture.
+
+**In practice that is rarely any of them.** `prompts/transform.md` requires
+every generated one-off page to include the shared chrome via
+`{{ wpcanai_template('header') }}` / `{{ wpcanai_template('footer') }}`, so a
+current-generation page contains Twig and is **not** pixel-scored — only a
+legacy page authored before that rule (pure static HTML) still scores. Expect
+the "Scored pages" table to be empty on a fresh run. **An empty table means
+"nothing could be checked locally", not "everything passed."**
 
 **Anything containing Twig is not scored here.** canai-replicate has **no
 PHP dependency and no Twig engine** — deliberately. Twig genuinely executes
