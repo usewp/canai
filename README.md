@@ -13,7 +13,14 @@ each skill is a folder with a `SKILL.md` at its root.
 npx skills add usewp/canai
 ```
 
-That installs all four skills. To install just one:
+That lists the four skills and prompts you to pick which ones to install. To take
+all four without the prompt:
+
+```bash
+npx skills add usewp/canai --skill '*'
+```
+
+To install just one:
 
 ```bash
 npx skills add usewp/canai --skill canai-localwp
@@ -60,8 +67,8 @@ site → "Open Site Shell").
 
 **Remote site (MCP):** in WP Admin go to **WPCanAI → AI Agent → Connections**,
 generate an API key, and copy the ready-made MCP client JSON shown there (the
-key rides in the endpoint URL). Then run `init canai-mcp` in your agent to
-verify the connection.
+key rides in the endpoint URL). Then ask your agent to list your WPCanAI templates (`wpcanai-list-templates`) to
+confirm the connection works.
 
 ## License
 
