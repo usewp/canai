@@ -474,8 +474,9 @@ slug, not title or `template_type` term, and a "prefix everything" instinct
 silently breaks every include site-wide with no error anywhere (dogfood A2
 Defect #7).
 
-**8. verify** — render every generated HTML — templates included, with real
-sample data — screenshot it, and score it against its original capture.
+**8. verify** — screenshot every generated HTML and score the static pages
+against their original capture; Twig-bearing outputs are flagged for
+post-deploy verification instead.
 
 ```bash
 "$HOME/.claude/skills/canai-replicate/bin/replica" verify example.com
