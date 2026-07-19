@@ -14,9 +14,9 @@ description: >
   site-wide header/footer partial driven by real WordPress menus instead of
   N independently-drifting inlined copies → convert every generated file
   into push-ready JSON artifacts (pushprep, avoiding WPCanAI's
-  double-document-shell footgun) → verify with automated diff scoring —
-  templates included, rendered through the real Twig engine with real
-  sample data, not just raw pages. --only (URL pathname, output slug,
+  double-document-shell footgun) → verify static pages with automated diff
+  scoring (Twig-bearing outputs are flagged for post-deploy verification —
+  this skill has no PHP dependency). --only (URL pathname, output slug,
   or page-type name) resumes any stage uniformly. Output is ready for
   canai-mcp / canai-localwp to push into WordPress. Use when the user wants
   to rebuild, migrate, port, or clone a whole site (not just one URL) from a
@@ -149,10 +149,10 @@ COMMANDS
                           template_type, html, css, js, warnings }) — **this is what
                           gets pushed to WordPress**, never a raw output/pages/ or
                           output/templates/ file (see Handoff below)
-  verify       <site>  Render outputs — templates too, via the real Twig engine +
-                       real sample data — score pages AND templates vs originals
-                       → runs/<site>/verify/report.md (worst-first; only Woo structural
-                          pages and the shared header/footer partials aren't scored)
+  verify       <site>  Screenshot every output, score the static pages against their
+                       originals → runs/<site>/verify/report.md (worst-first). Outputs
+                          containing Twig are listed for post-deploy verification —
+                          nothing here renders Twig; the live site does.
 
 FLAGS
   --cdp <port>            Chrome DevTools port (default: 9223)
@@ -482,50 +482,38 @@ sample data — screenshot it, and score it against its original capture.
 ```
 
 A plain file with no Twig syntax (`{{`/`{%`) opens raw via `file://` and is
-screenshotted directly, same as v2. A file that DOES contain Twig — every
-page-type template, plus any one-off page that includes the shared
-`{{ wpcanai_template('header'|'footer') }}` chrome — is rendered first
-through the plugin's own vendored `twig/twig` (`src/php/render-harness.php`;
-no WordPress dependency, stubs every Twig function `TwigFactory.php`
-registers) with the sample capture's real content mapped onto
-`CONTENT-MODEL.md`'s declared field names (`src/contentModelFields.mjs`
-parses the field/taxonomy tables; `src/sampleHarvest.mjs` pulls real
-headings/paragraphs/images/links/tables out of that sample's `content.json`
-to fill them, plus `get_menu()`'s stub nav harvested from the same
-representative capture `transform`'s chrome bundle used). The rendered HTML
-is saved to `verify/<slug>-rendered.html`, then screenshotted and diffed
-like any other page. **A template that fails to render degrades to "not
-scored" with the concrete error surfaced** (e.g. a missing
-`CONTENT-MODEL.md`) — never a crash, never a silent 0.
+screenshotted, and is pixel-scored against its original capture. That covers
+every one-off static page.
 
-Two things are deliberately excluded from scoring, for different reasons:
+**Anything containing Twig is not scored here.** canai-replicate has **no
+PHP dependency and no Twig engine** — deliberately. Twig genuinely executes
+in exactly one place, the live WordPress site, so a page-type template (or a
+one-off page that pulls in the shared `{{ wpcanai_template('header') }}`
+chrome) is screenshotted raw — placeholders visible, still worth an eyeball
+for structure — and listed under **Not scored** with the reason *"contains
+unresolved Twig — verify after deploy against the live site."*
 
-- **The shared `header.html`/`footer.html` chrome partials** are dropped
-  entirely — not even listed under "Not scored" — because they're partials,
-  not independently-renderable pages (stderr notes each one skipped:
-  `(skipping shared-chrome partial, not an independently scorable page:
-  header.html)`).
-- **WooCommerce structural pages** (shop/cart/checkout/my-account/
-  order-received/product-category) are listed under "Not scored" with the
-  reason given — WooCommerce itself owns their session/cart/catalog state,
-  which a static capture can't stand in for, so rendering isn't attempted.
+Those outputs get verified downstream: **canai-prepare** analyzes the
+pages/layouts, **canai-mcp** deploys them, and the real WordPress render is
+what you check. That tests the actual render path rather than a local
+imitation of it.
 
-Writes `runs/example.com/verify/<slug>-generated.png` for every rendered
-file under `output/pages/` and `output/templates/` (minus the excluded
-chrome partials), `verify/<slug>-rendered.html` for anything that went
-through the Twig harness, plus `runs/example.com/verify/report.md` — scored
-entries (pages **and** templates alike now) sorted worst-first by a
-content-weighted severity (`mismatchPct + 0.3 × heightDeltaPct`: mismatch
-counts in full since it's the direct signal that pixels are wrong; height
-delta contributes only a fraction because it alone can't tell "faithful but
-taller from a font fallback" apart from "missing a section" — see the
-comment above `buildReportLines` in `src/verify.mjs` for the full derivation
-and the calibration cases that pin the 0.3 weight). A rendered archive
-template's height delta is structurally inflated by design — it can only
-loop over however many samples were captured (2–3), never the live site's
-full catalog, so read that number as a layout/structure check, not a
-literal defect count. Fix the worst page, re-run `transform --only <path>`,
-re-verify.
+The shared `header.html`/`footer.html` chrome partials are dropped from the
+report entirely — not even listed under Not scored — because they're
+fragments spliced into another template, not independently openable pages
+(stderr notes each skip: `(skipping shared-chrome partial, not an
+independently scorable page: header.html)`).
+
+Writes `runs/example.com/verify/<slug>-generated.png` for every output under
+`output/pages/` and `output/templates/` (minus the chrome partials), plus
+`runs/example.com/verify/report.md` — scored static pages sorted worst-first
+by a content-weighted severity (`mismatchPct + 0.3 × heightDeltaPct`:
+mismatch counts in full since it's the direct signal that pixels are wrong;
+height delta contributes only a fraction because it alone can't tell
+"faithful but taller from a font fallback" apart from "missing a section" —
+see the comment above `buildReportLines` in `src/verify.mjs` for the full
+derivation and the calibration cases that pin the 0.3 weight). Fix the worst
+page, re-run `transform --only <path>`, re-verify.
 
 ## Output layout
 
@@ -564,12 +552,10 @@ runs/<site>/
 │                                      #   WordPress (see Handoff below), never a raw
 │                                      #   output/pages/ or output/templates/ file
 └── verify/
-    ├── <slug>-generated.png          # rendered output for review (page OR template)
-    ├── <slug>-rendered.html          # Twig-rendered HTML w/ real sample data (only for
-    │                                 #   outputs containing Twig syntax — templates, or
-    │                                 #   pages that include the shared header/footer)
-    ├── report.md                     # worst-first diff-score table (pages + templates)
-    │                                 #   + Not-scored list (Woo structural, render failures)
+    ├── <slug>-generated.png          # screenshot of the output, for review
+    ├── report.md                     # worst-first diff-score table (static pages)
+    │                                 #   + Not-scored list (Twig outputs → verify after
+    │                                 #   deploy; pages with no original capture)
     └── index.json                    # every rendered pair, machine-readable
 ```
 
@@ -707,10 +693,9 @@ runs/<site>/
   documentation" the way a browser does. A comment in `header.html` that
   spelled out its own `{{ wpcanai_template('header') }}` invocation
   literally made the file call itself while rendering itself: real infinite
-  recursion (a PHP memory-exhaustion fatal), reproduced once in practice,
-  not hypothetical. `render-harness.php`'s `wpcanai_template()` now also
-  carries a 10-level recursion guard that throws a clean, fast error
-  instead of exhausting memory. If you're hand-editing a chrome partial,
+  recursion, reproduced once in practice, not hypothetical. It surfaces on
+  the live site after deploy, so it costs a deploy cycle to find — worth
+  avoiding up front. If you're hand-editing a chrome partial,
   describe the include mechanism in prose, never its literal invocation
   syntax, in that file's own comments.
 - **Verify scores look terrible everywhere** — check `heightDeltaPct` first: a

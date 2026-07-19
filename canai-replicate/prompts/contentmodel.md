@@ -95,15 +95,16 @@ For **each type** in the input:
      tables entirely for these — an empty table only invites the
      speculative-field problem the rules below warn about.
 
-## Machine-readable table format (STRICT — a script parses these tables)
+## Table format (STRICT — keep it consistent and unambiguous)
 
-The pipeline's verify stage mechanically harvests every type's fields and
-taxonomies straight out of this document's tables (the harvester is
-`src/contentModelFields.mjs`). A row that doesn't match the format below is
-skipped — loudly, at verify time, but the type's template still renders
-WITHOUT that field, so the render check silently loses meaning. Get the
-format right here, at authoring time. Write the two tables EXACTLY like
-this:
+CONTENT-MODEL.md is the handoff document a human (or agent) works from to
+create the custom post types and fields on the destination WordPress site,
+so every row has to be unambiguous. Nothing in the pipeline parses these
+tables automatically any more: canai-replicate no longer renders templates
+locally, so a malformed row will NOT be reported back to you. That makes
+getting the format right at authoring time more important, not less — a
+sloppy row becomes a wrong field on the real site, with nothing in between
+to catch it. Write the two tables EXACTLY like this:
 
 **Custom fields** (item 2, and a `woo:product` type's "Product meta
 (leftovers)" table) — the header row must contain a "Field name" (or

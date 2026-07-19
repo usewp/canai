@@ -83,7 +83,7 @@ COMMANDS
   contentmodel <site>        Prepare CPT/custom-field handoff bundle → agent writes runs/<site>/CONTENT-MODEL.md
   transform <site>           Prepare per-page/per-type bundles + prompts; agent writes runs/<site>/output/pages/<slug>.html or output/templates/<type>-single.html
   pushprep  <site>           Convert output/pages + output/templates into push-ready runs/<site>/output/push/<slug>.json (strips the doctype/head/body shell + preview-libs). NEVER push a raw output/pages|templates/*.html file into _canai_html — push the output/push/ artifact instead.
-  verify    <site>           Render generated HTMLs, score against originals, write report.md
+  verify    <site>           Screenshot outputs, score static pages vs originals, write report.md
 
 FLAGS
   --runs <dir>               Output root (default: runs)
