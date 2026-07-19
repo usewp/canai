@@ -235,7 +235,7 @@ async function main() {
         `${mark} ${r.ok}/${r.count} screenshotted${failedSuffix}, ${r.scored} pixel-scored${twigNote} → ${r.manifestPath}\n  report: ${r.reportPath}\n`,
       );
       if (isTotalFailure) {
-        throw new Error(`verify produced 0/${r.count} successfully rendered pages — see ${r.reportPath} for detail`);
+        throw new Error(`verify produced 0/${r.count} successfully screenshotted pages — see ${r.reportPath} for detail`);
       }
       break;
     }

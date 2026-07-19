@@ -150,10 +150,10 @@ COMMANDS
                           template_type, html, css, js, warnings }) — **this is what
                           gets pushed to WordPress**, never a raw output/pages/ or
                           output/templates/ file (see Handoff below)
-  verify       <site>  Screenshot every output, score the static pages against their
-                       originals → runs/<site>/verify/report.md (worst-first). Outputs
-                          containing Twig are listed for post-deploy verification —
-                          nothing here renders Twig; the live site does.
+  verify       <site>  Screenshot every output; pixel-score only the Twig-free ones
+                       (rarely any — generated pages include the shared chrome)
+                          → runs/<site>/verify/report.md. Everything else is listed
+                          for post-deploy verification; the live site renders Twig.
 
 FLAGS
   --cdp <port>            Chrome DevTools port (default: 9223)
@@ -476,9 +476,9 @@ slug, not title or `template_type` term, and a "prefix everything" instinct
 silently breaks every include site-wide with no error anywhere (dogfood A2
 Defect #7).
 
-**8. verify** — screenshot every generated HTML and score the static pages
-against their original capture; Twig-bearing outputs are flagged for
-post-deploy verification instead.
+**8. verify** — screenshot every generated HTML; pixel-score the Twig-free
+ones against their original capture (in practice rarely any), and flag
+everything else for post-deploy verification.
 
 ```bash
 "$HOME/.claude/skills/canai-replicate/bin/replica" verify example.com
@@ -708,7 +708,8 @@ runs/<site>/
   avoiding up front. If you're hand-editing a chrome partial,
   describe the include mechanism in prose, never its literal invocation
   syntax, in that file's own comments.
-- **Verify scores look terrible everywhere** — check `heightDeltaPct` first: a
+- **Verify scores look terrible** (applies only to the rare Twig-free page
+  that still pixel-scores) — check `heightDeltaPct` first: a
   large height delta usually means a missing section, not bad styling. Diff
   is top-left-anchored, so one early missing block cascades. Fix the worst
   page, re-run `transform --only`, re-verify.

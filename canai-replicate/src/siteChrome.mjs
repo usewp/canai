@@ -2,7 +2,8 @@
 // "representative" capture and shared via {{ wpcanai_template('header') }} /
 // {{ wpcanai_template('footer') }} — see prompts/transform-chrome.md — rather
 // than re-authored (and drifting) per page/type. transform.mjs is the sole
-// consumer of pickRepresentativeCaptureUrl/pickRepresentativeCaptureSlug: it
+// consumer of pickRepresentativeCaptureUrl (pickRepresentativeCaptureSlug is
+// currently used only by tests): it
 // picks the capture to hand the authoring agent when it builds the chrome
 // bundle, and that choice is exactly what header.html/footer.html — the
 // generated chrome partials — end up authored from (their real nav links,
