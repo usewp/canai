@@ -255,7 +255,7 @@ If neither is active and the user wants multilingual, prefer **native string tra
 
 **Applies only when Polylang is active** (see the model router above). For the native model, use content overrides, not per-language post copies.
 
-WPCanAI integrates with **Polylang** automatically (no-op when Polylang is inactive — see [src/I18n/PolylangIntegration.php](../../src/I18n/PolylangIntegration.php)). When Polylang is active, every storage rule above gains a **per-language axis**: editing the wrong-language post is a new silent-bug class.
+WPCanAI integrates with **Polylang** automatically (no-op when Polylang is inactive — see the plugin's `src/I18n/PolylangIntegration.php`). When Polylang is active, every storage rule above gains a **per-language axis**: editing the wrong-language post is a new silent-bug class.
 
 ### Translation model
 
