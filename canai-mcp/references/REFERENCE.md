@@ -284,6 +284,10 @@ post.wc.variations.default_attributes
 
 **`post.wc.price_html` is pre-formatted WooCommerce HTML and is a plain string, not auto-safe Twig Markup — always print it with `|raw`: `{{ post.wc.price_html|raw }}`.** This applies to `product.wc.price_html` too.
 
+**Single-product gotchas:**
+- **`post.featured_image.*` does not exist on single-product pages.** That surface is only populated by `wpcanai_get_posts_enriched(..., wpcanai_include: 'featured_image')` — the loop path. `wpcanai_render_full_page_frontend()` enriches the single `post` with `wc_context: 'single'` only, so `post.featured_image` is undefined there; use `post.wc.featured_image` instead (see field list above).
+- **`wc_add_to_cart_form()` expects a real `WC_Product`, not `post.wc`.** `post.wc` is a plain enriched data array/object built for Twig display, not the `WC_Product` instance WooCommerce's native add-to-cart template expects — passing it in (`wc_add_to_cart_form(post.wc)`) is wrong even where it doesn't error outright. On a single-product template, prefer calling **`wc_add_to_cart_form()` with no arguments**: when `is_product()` is true it auto-resolves the current product from `get_the_ID()`. Only pass an explicit argument (the result of `wc_get_product(id)`) when rendering add-to-cart for a *different* product than the one being viewed (e.g. inside a cross-sell loop).
+
 **Native-i18n render behavior (v1.27+).** On a non-default-language URL: enriched `featured_image` resolves through the Translations-page MediaMap automatically (the per-language attachment, no `tmedia()` needed); and enriched loop posts have their `post_title`/`post_content`/`post_excerpt` swapped in-place from the current language's override blob, so `{{ p.post_title }}` / `{{ p.post_content }}` render translated inside loops. No-op when i18n is dormant or no override/mapping exists.
 
 ### Checkout
