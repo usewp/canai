@@ -1,8 +1,9 @@
 ---
 name: canai-mcp
 description: >
-  Strictly use the WPCanAI MCP server as the only way to interact with the user’s WordPress site for WPCanAI work (templates, pages, settings, setup, diagnostics).
+  Strictly use the WPCanAI MCP server as the only way to interact with the user’s WordPress site for WPCanAI content work (templates, pages, settings, setup, diagnostics, i18n, media).
   Do not use WP-CLI, REST/curl, or workspace edits under wp-content for live site data — only MCP tools (e.g. wpcanai-read-meta, wpcanai-write-meta) via the configured server (often canai-mcp).
+  Does NOT cover FluentSnippets or wpcanai-eval — those are in the separate opt-in canai-yolo skill.
   Triggers on: "/canai-mcp", "wpcanai mcp", "canai-mcp", "wpcanai remote", "remote wpcanai", "staging", "production", "remote site",
   "mcp", "api key", "deploy template",
   "translate", "translation", "translate the site", "i18n", "multilingual", "string translation", "native translation", "/canai-mcp translate",
@@ -11,7 +12,7 @@ description: >
   "sideload", "upload", "upload image", "upload media", "media library", "attach image", "attachment", "image to media".
 metadata:
   author: canai
-  version: "1.14.0"
+  version: "1.15.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -25,11 +26,13 @@ See [references/REFERENCE.md](references/REFERENCE.md) for WPCanAI-registered Tw
 
 `**canai-mcp`** and `**canai-localwp`** cover the same WPCanAI concepts (Twig, meta fields, content resolution). `**canai-localwp**` is the **WP‑CLI / local workspace** skill; `**canai-mcp`** is this one: **only** the **WPCanAI MCP server** and its tools. When this skill applies, **never** substitute terminal `wp`, `curl`, raw REST, or repo edits for interacting with the user’s WordPress.
 
+**Code / eval / FluentSnippets** live in the separate opt-in skill **`canai-yolo`**. This skill stays content-focused (templates, pages, settings, i18n, media, Tailwind). If the user needs snippet authoring or `wpcanai-eval`, install/use `canai-yolo` — do not improvise those workflows from this skill.
+
 ---
 
 ## CRITICAL — WPCanAI MCP server only (strict)
 
-**Every interaction with the user’s WordPress** for WPCanAI work (list/read/write templates and pages, settings, bootstrap setup, scan, PHP eval sandbox, WooCommerce page IDs, etc.) **MUST** go through the **WPCanAI MCP server** using the tools your host exposes (hyphenated names like `wpcanai-read-meta`, `wpcanai-write-meta`, `wpcanai-setup`, … — see the tool list for the configured server, often `canai-mcp` or `user-canai-mcp`). Do not use WP-CLI, `wp eval`, direct SQL, browser automation against wp-admin, or editing files under `wp-content/` in the workspace to change live site data.
+**Every interaction with the user’s WordPress** for WPCanAI content work (list/read/write templates and pages, settings, bootstrap setup, scan, WooCommerce page IDs, i18n, media, etc.) **MUST** go through the **WPCanAI MCP server** using the tools your host exposes (hyphenated names like `wpcanai-read-meta`, `wpcanai-write-meta`, `wpcanai-setup`, … — see the tool list for the configured server, often `canai-mcp` or `user-canai-mcp`). Do not use WP-CLI, `wp eval`, direct SQL, browser automation against wp-admin, or editing files under `wp-content/` in the workspace to change live site data.
 
 **One documented exception — binary uploads.** MCP isn't a good carrier for files (size + base64 overhead), so media goes via the **WPCanAI sideload REST route** `POST {site}/wp-json/wpcanai/v1/sideload` using the **same** API key the MCP transport uses. See **"Uploading media (binary files)"** below for the exact recipe. This is the **only** sanctioned use of `curl` against the site; everything else still goes through MCP.
 
@@ -202,7 +205,7 @@ Triggered when the user runs `/canai-mcp implement <folder>`, asks you to import
 
 5. **Report the manifest** to the user when done: a short table of `original path → media id → final Twig form` — where *final Twig form* is the `{{ image_attrs(...) }}` / `{{ media_url(...) }}` it was rewritten to, or the absolute `source_url` for the OG/manifest exception — plus a count of skipped references (with reasons: external, data URI, missing file). The user uses this to spot-check the conversion.
 
-**Idempotence.** If the user re-runs the import, you'll re-upload (the endpoint doesn't dedupe by content hash). That's acceptable for a one-shot import; warn the user if you detect an obvious re-run (e.g. they're pointing at the same folder a template was already built from) and offer to reuse existing media via `wpcanai-eval` lookup instead.
+**Idempotence.** If the user re-runs the import, you'll re-upload (the endpoint doesn't dedupe by content hash). That's acceptable for a one-shot import; warn the user if you detect an obvious re-run (e.g. they're pointing at the same folder a template was already built from) and offer to reuse existing attachments via `wpcanai-list-media` / `wpcanai-get-media` instead of re-uploading.
 
 **What this does not cover.** Fonts loaded via `@font-face { src: url(...) }` work the same way and should be included. CSS-in-JS, webpack-style hashed bundles, or assets referenced only at runtime via fetch can't be statically detected — call those out in the manifest's "skipped" section so the user knows to handle them manually.
 
@@ -226,30 +229,11 @@ This is read-only static analysis: nothing is rendered, and no order, cart, or c
 
 ---
 
-## FluentSnippets (PHP/CSS/JS snippets)
-
-Site-specific PHP, CSS and JS often lives in **FluentSnippets** (`easy-code-manager`) rather than plugin code. Manage those snippets through the dedicated MCP tools — **never** through `wpcanai-eval` (eval rolls back DB writes but not filesystem writes, so an eval-created snippet leaves a `.php` file on disk with no matching index entry). The tools are `wpcanai-list-snippets`, `wpcanai-get-snippet`, `wpcanai-create-snippet`, `wpcanai-update-snippet`, `wpcanai-set-snippet-status`.
-
-Key rules the schemas alone don't make obvious:
-
-1. **Tools only appear when FluentSnippets is active.** If `easy-code-manager` is inactive the five snippet tools are not registered at all — you won't see them in the tool list.
-2. **No leading `<?php` in PHP `code`.** FluentSnippets rejects a PHP snippet whose body starts with `<?php` (`invalid_code`, "Please remove <?php from the beginning of the code"). Write the function/hook body directly, no opening tag. This is passed through, not auto-corrected.
-3. **Create always yields a draft.** `wpcanai-create-snippet` never publishes (unless the site's own FluentSnippets `auto_publish` is on). Publish as a **separate** step: `wpcanai-set-snippet-status { "file_name": "…", "status": "published" }`.
-4. **Writes only succeed for allowlisted groups.** An administrator lists agent-writable snippet groups at **WPCanAI → AI Agent → Guardrails → FluentSnippets group allowlist**. An empty allowlist (the default) means **all** snippet writes are refused (`snippet_writes_disabled`). A write to a non-allowlisted group returns `snippet_group_not_allowed`. Prefer the group `AI` unless the user specifies otherwise. Reads (`list`/`get`) are always allowed regardless of the allowlist.
-5. **Updates are sparse.** Send only the fields you want to change to `wpcanai-update-snippet`; the server reads the current snippet, merges your changes over its full metadata, and writes it back. Omitting a field keeps its current value — you cannot wipe `group`/`priority`/`run_at`/`created_at` by sending only `code`.
-6. **`run_at` is type-specific.** PHP → `all`|`backend`|`frontend`; `php_content` → `shortcode`|`wp_head`|`wp_body_open`|`wp_footer`|`before_content`|`after_content`; css → `wp_head`|`admin_head`|`everywhere`; js → `wp_head`|`wp_footer`|`admin_head`|`admin_footer`. An invalid pairing is rejected before FluentSnippets is called (`invalid_snippet_type` / `invalid_run_at`).
-7. **Upstream quirks (not fixed here).** CSS `everywhere` does not actually load in admin (a plugin typo, `everywehere`), and PHP `frontend` is not enforced (it runs everywhere) — both values are still accepted because they are what the FluentSnippets UI offers. Prefer `all` / `backend` / `wp_head` when unsure.
-8. **Reactivation.** If a snippet fatally errored, FluentSnippets auto-disables it and `has_error` is true. An update to it is refused (`snippet_has_error`) unless you pass `"reactivate": true`, which clears the error and applies the update — so a routine edit can't silently re-arm known-broken code.
-
-Moving a snippet to a different group (via `wpcanai-update-snippet`'s `group`) requires **both** the current group and the destination group to be allowlisted.
-
----
-
 ## MCP tool reference (inline)
 
 Ability IDs use slashes; MCP tool names use **hyphens** (`wpcanai/read-meta` → `wpcanai-read-meta`).
 
-**`lang` parameter (Polylang):** the 10 tools below that target a post or page (`list-templates`, `list-pages`, `read-meta`, `write-meta`, `replace-in-meta`, `create-template`, `resolve-content-id`, `scan`, `get-wc-page-ids`, `create-page`) accept an optional `"lang": string` (Polylang language slug). When Polylang is active, `lang` is **required** unless `WPCANAI_MCP_LANG_OPTIONAL` is defined in `wp-config.php`. Calls without `lang` return `WP_Error('lang_required')`; unknown slugs return `WP_Error('unknown_lang')`. See the **CRITICAL: Multi-language (Polylang)** section for details. The 7 settings/options/eval tools further down are unchanged.
+**`lang` parameter (Polylang):** the 10 tools below that target a post or page (`list-templates`, `list-pages`, `read-meta`, `write-meta`, `replace-in-meta`, `create-template`, `resolve-content-id`, `scan`, `get-wc-page-ids`, `create-page`) accept an optional `"lang": string` (Polylang language slug). When Polylang is active, `lang` is **required** unless `WPCANAI_MCP_LANG_OPTIONAL` is defined in `wp-config.php`. Calls without `lang` return `WP_Error('lang_required')`; unknown slugs return `WP_Error('unknown_lang')`. See the **CRITICAL: Multi-language (Polylang)** section for details. Settings/options tools further down are unchanged.
 
 ### `wpcanai-list-templates`
 
@@ -348,13 +332,6 @@ Ability IDs use slashes; MCP tool names use **hyphens** (`wpcanai/read-meta` →
 
 - **Args:** `{ }`.
 - **Returns:** `{ "success": bool, "steps": array }` — each step: `action`, `status` (`done` | `skipped` | `error`), `detail` (recommended bootstrap: theme, layout, header, footer, home page, front page options, default layout, tailwind settings).
-
-### `wpcanai-eval`
-
-- **Args:** `{ "code": string }` — PHP to evaluate (no `<?php` tag). Full WordPress environment is available.
-- **Returns:** `{ "output": string, "return": mixed, "error": string|null }` — `output` is captured `echo`/`print`; `return` is the eval return value (objects are summarized for JSON); `error` is an exception message or `null`.
-- **Note:** A DB transaction wraps execution and is **always rolled back**, so SQL writes do not persist. This is for inspection and experiments only — use `**wpcanai-write-meta`**, `**wpcanai-update-settings`**, `**wpcanai-update-options`**, etc. for real changes.
-- **Disabled by default.** `wpcanai-eval` returns a generic "access denied" unless `define('WPCANAI_ENABLE_EVAL', true)` is set in `wp-config.php`. It is an escape hatch, not a routine tool — every user-facing capability has a dedicated ability (read source content with `wpcanai-i18n-get-content`, not eval).
 
 ### `wpcanai-get-option`
 
@@ -473,31 +450,6 @@ Site name, tagline, and archive/search/404 SEO title+description live in a per-l
 - **Args:** `{ "include_network"?: bool }` (default `false`). → a health report mirroring the wp-admin **Diagnostics** page (PHP/WP/plugin versions, capability + endpoint checks, Tailwind build status, WooCommerce presence + HPOS-safety note).
 - `include_network: true` additionally makes **real outbound HTTP requests** (outbound HTTPS, REST loopback, skills-endpoint reachability, auth-header pass-through) — slower; use it when connectivity or environment issues are suspected instead of guessing.
 
-### `wpcanai-list-snippets`
-
-- **Args:** `{ "status"?: string, "type"?: string, "group"?: string }` — all optional filters (`status`: `published`|`draft`; `type`: `PHP`|`php_content`|`css`|`js`; `group`: group name). Only appears when FluentSnippets is active.
-- **Returns:** `{ "snippets": [{ "file_name", "name", "type", "status", "run_at", "priority", "group", "tags", "description", "created_at", "updated_at", "has_error", "error_message", "writable" }], "groups": string[], "writable_groups": string[] }` — `writable` is per-snippet (its group is on the allowlist); `writable_groups` is the current allowlist so you know what you may touch before attempting a write. Reads are unrestricted.
-
-### `wpcanai-get-snippet`
-
-- **Args:** `{ "file_name": string }` — the snippet's file name (its identifier, e.g. `3-my-snippet.php`).
-- **Returns:** full metadata + the `code` body + error state + `writable` (same fields as a `list-snippets` row plus `code` and `condition`). Error `snippet_not_found` for an unknown file.
-
-### `wpcanai-create-snippet`
-
-- **Args:** `{ "name": string, "type": string, "run_at": string, "group": string, "code": string, "description"?: string, "tags"?: string, "priority"?: int }` — all of `name`/`type`/`run_at`/`group`/`code` required. **PHP `code` must NOT start with `<?php`.** `type`/`run_at` are validated against the type table. `group` must be on the writable allowlist.
-- **Returns:** `{ "success": true, "file_name": string, "status": "draft", "group": string, "note": string }` — the file name is auto-generated (you can't choose it) and is what every later call keys on. **Always a draft** — publish with `wpcanai-set-snippet-status`.
-
-### `wpcanai-update-snippet`
-
-- **Args:** `{ "file_name": string, "code"?: string, "name"?: string, "description"?: string, "tags"?: string, "group"?: string, "run_at"?: string, "priority"?: int, "reactivate"?: bool }` — `file_name` required; send only fields to change (**sparse** — the server merges over current metadata). The current group (and destination `group`, if moving) must be allowlisted. An errored snippet needs `reactivate: true`.
-- **Returns:** `{ "success": true, "file_name": string, "changed_fields": string[] }`.
-
-### `wpcanai-set-snippet-status`
-
-- **Args:** `{ "file_name": string, "status": "published"|"draft" }` — the snippet's group must be allowlisted.
-- **Returns:** `{ "success": true, "file_name": string, "status": string }`. Fires both FluentSnippets lifecycle actions so the index cache rebuilds and a published snippet actually runs.
-
 ---
 
 ## Uploading media
@@ -550,7 +502,7 @@ For **static-site imports** (user ran `/canai-mcp implement <folder>` or similar
    ```
 3. Capture the returned `id` and feed it into the template via the existing MCP tools — prefer `{{ image_attrs(id, 'src,alt') }}` / `{{ media_url(id, 'full') }}` in `_canai_html` (`wpcanai-write-meta`) over a pinned URL; keep the absolute `url` only where an absolute URL is required (OG/Twitter meta, web manifest).
 
-Do **not** try to base64-encode files into `wpcanai-eval` — use this endpoint.
+Do **not** try to base64-encode files into MCP tool args — use this endpoint.
 
 ### Media SEO cleanup (`wpcanai-list-media` / `wpcanai-get-media` / `wpcanai-update-media`)
 
@@ -614,7 +566,7 @@ WPCanAI sites can be multilingual in one of **two mutually exclusive models**: *
 
 5. **Content (CPT / long-form) — per non-default language:**
    - `wpcanai-i18n-list-content { "lang": "ms", "untranslated": true }` → the work queue of posts whose title/body/fields still render in the default language.
-   - Per post: `wpcanai-i18n-get-content { "post_id": <id>, "fields": ["subtitle", ...] }` returns the raw default-language `source` (`title`, `content`, `excerpt`, named custom `fields`). Translate it, then one `wpcanai-i18n-set-post-overrides { "post_id": <id>, "lang": "ms", "overrides": { "title": "…", "content": "…", "excerpt": "…", "fields": { "subtitle": "…" } } }`. (Pass `"lang": "ms"` to `i18n-get-content` to also see any existing override side-by-side.) Do **not** use `wpcanai-eval` for this — it is disabled by default (see its tool note).
+   - Per post: `wpcanai-i18n-get-content { "post_id": <id>, "fields": ["subtitle", ...] }` returns the raw default-language `source` (`title`, `content`, `excerpt`, named custom `fields`). Translate it, then one `wpcanai-i18n-set-post-overrides { "post_id": <id>, "lang": "ms", "overrides": { "title": "…", "content": "…", "excerpt": "…", "fields": { "subtitle": "…" } } }`. (Pass `"lang": "ms"` to `i18n-get-content` to also see any existing override side-by-side.) Use the dedicated i18n tools — do not reach for PHP eval for content translation.
    - Taxonomy terms shown in loops/archives: `wpcanai-i18n-set-term-overrides` per term.
    - Report a per-post coverage table (id → status before/after). URLs don't change — the same post serves `/ms/…` with overridden fields (no per-language copies, no `translation_of`).
    - SEO metadata (title/description) translates via `seo_title`/`seo_description` override keys — read the source with `i18n-get-content` (see [references/REFERENCE.md](references/REFERENCE.md#internationalization-i18n) for the full SEO-bridge behavior). **You only need these keys when the SEO copy must differ from the visible title/body** — otherwise, on a non-default page, `seo_title`/`seo_description` auto-derive from the translated `title`/`name` and `excerpt`/stripped `content` (description truncated to ≤160 chars on a word boundary).
@@ -808,7 +760,7 @@ Empty / missing → server falls back to Play CDN. **Dedup guard:** if a layout 
    }
    ```
 
-   Then **clear stale per-page builds** on consumers that still carry one (from older per-page compiles): `wpcanai-write-meta { "post_id": <consumer_id>, "tailwind_build": "", "tailwind_hash": "" }`. The dedup guard already ignores them, but clearing keeps the data honest and the panels accurate. On Polylang sites, include `"lang": "<slug>"` and use the language-specific layout id. **Do not** write these via `wpcanai-eval` — eval rolls back DB writes; only `wpcanai-write-meta` persists.
+   Then **clear stale per-page builds** on consumers that still carry one (from older per-page compiles): `wpcanai-write-meta { "post_id": <consumer_id>, "tailwind_build": "", "tailwind_hash": "" }`. The dedup guard already ignores them, but clearing keeps the data honest and the panels accurate. On Polylang sites, include `"lang": "<slug>"` and use the language-specific layout id. Only `wpcanai-write-meta` persists these fields — do not use other write paths.
 
 8. **Report** — `X layouts compiled, Y skipped (already current), Z failed`, plus how many consumer per-page builds were cleared. List failures with the layout id and reason.
 
@@ -860,16 +812,13 @@ When the rendered page's layout has a non-empty `_canai_tailwind_build`, `AssetM
 | Update arbitrary wp_options (allowlist / approval) | `wpcanai-update-options` |
 | Poll pending option update           | `wpcanai-get-pending`        |
 | Recommended site bootstrap       | `wpcanai-setup`              |
-| Evaluate PHP (read-only sandbox) | `wpcanai-eval`               |
 | Which post ID for a type?        | `wpcanai-resolve-content-id` |
 | WC page IDs                      | `wpcanai-get-wc-page-ids`    |
 | Diagnose                         | `wpcanai-scan`               |
 | Diagnose environment / network    | `wpcanai-diagnostics`        |
 | List / install / remove a preset  | `wpcanai-list-presets` / `wpcanai-install-preset` (⚠ `clean_slate`) / `wpcanai-uninstall-preset` |
 | Export / import WPCanAI content    | `wpcanai-export` / `wpcanai-import` |
-| List / read FluentSnippets snippets | `wpcanai-list-snippets` / `wpcanai-get-snippet` |
-| Create / update a snippet (draft)  | `wpcanai-create-snippet` / `wpcanai-update-snippet` |
-| Publish / unpublish a snippet      | `wpcanai-set-snippet-status` |
+| FluentSnippets / PHP eval (opt-in) | **`canai-yolo`** skill — not documented here |
 | Precompile Tailwind for production | `wpcanai-write-meta` with `tailwind_build` + `tailwind_hash` (see **Compile Tailwind for Production**) |
 | Translate a site (native i18n)   | see **Native string translation** workflow |
 | Read / set native i18n languages | `wpcanai-i18n-get-settings` / `wpcanai-i18n-set-settings` |

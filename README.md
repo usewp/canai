@@ -13,8 +13,8 @@ each skill is a folder with a `SKILL.md` at its root.
 npx skills add usewp/canai
 ```
 
-That lists the four skills and prompts you to pick which ones to install. To take
-all four without the prompt:
+That lists the skills and prompts you to pick which ones to install. To take
+all without the prompt:
 
 ```bash
 npx skills add usewp/canai --skill '*'
@@ -27,6 +27,7 @@ npx skills add usewp/canai --skill canai-localwp
 npx skills add usewp/canai --skill canai-mcp
 npx skills add usewp/canai --skill canai-prepare
 npx skills add usewp/canai --skill canai-replicate
+npx skills add usewp/canai --skill canai-yolo
 ```
 
 Add `-g` to install globally instead of into the current project, and
@@ -45,9 +46,10 @@ npx skills remove canai-localwp
 | Skill | Use case |
 |---|---|
 | `canai-localwp` | Drive a **local** WordPress over WP-CLI (`.env.wplocal`): create/edit templates and pages, apply WooCommerce templates, run diagnostics. |
-| `canai-mcp` | Drive **any** WordPress site over the WPCanAI MCP server (API key + endpoint): templates, pages, settings, media sideload, translations, Tailwind builds. |
+| `canai-mcp` | Drive **any** WordPress site over the WPCanAI MCP server (API key + endpoint): templates, pages, settings, media sideload, translations, Tailwind builds. **Content-focused** — no FluentSnippets / PHP eval docs. |
 | `canai-prepare` | Produce **single self-contained HTML files** per page (semantic HTML5, Tailwind utilities, vanilla JS/Alpine, Lucide) for later WPCanAI import. Not tied to a WordPress install. |
 | `canai-replicate` | **Replicate a whole live site** into `canai-prepare` format: discover → classify → capture → `DESIGN.md` → transform to Twig templates + pages → verify by visual diff. Hands off to `canai-mcp` / `canai-localwp` to push. |
+| `canai-yolo` | **Opt-in / high risk.** FluentSnippets create/update/publish and `wpcanai-eval` via the same MCP server. Install only when you need site PHP/code workflows. |
 
 ## Companion skills
 
@@ -69,6 +71,8 @@ site → "Open Site Shell").
 generate an API key, and copy the ready-made MCP client JSON shown there (the
 key rides in the endpoint URL). Then ask your agent to list your WPCanAI templates (`wpcanai-list-templates`) to
 confirm the connection works.
+
+**Snippets / eval:** install `canai-yolo` separately (`npx skills add usewp/canai --skill canai-yolo`). Enable the FluentSnippets group allowlist (and `WPCANAI_ENABLE_EVAL` if you need eval) on the site before using those tools.
 
 ## License
 
