@@ -12,7 +12,7 @@ description: >
   "sideload", "upload", "upload image", "upload media", "media library", "attach image", "attachment", "image to media".
 metadata:
   author: canai
-  version: "1.15.0"
+  version: "1.16.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -174,12 +174,13 @@ When converting a static HTML file (e.g. `index.html`) into WPCanAI via MCP tool
 > Keep a value hardcoded **only** when no helper applies or an absolute external URL is genuinely required (e.g. OG/Twitter meta, web-manifest icons, third-party origins). Images (step 5 + the sideload pre-pass) and internal links (step 6) are concrete instances of this rule. See [references/REFERENCE.md](references/REFERENCE.md) → **Media & Links** and **Internationalization (i18n)**.
 
 1. **Do NOT** include a literal `<title>` in layout `_canai_html` — `{{ wp_head() }}` outputs the document title (WordPress / SEO plugins).
-2. Put page-level JavaScript (e.g. `lucide.createIcons()`, Alpine init, custom handlers) in **`_canai_js`**, not as inline `<script>` in `_canai_html`. WPCanAI injects `_canai_js` at `wp_footer()`. The only `<script>` allowed inline in layout `_canai_html` is `tailwind.config = { ... }` (after `{{ wp_head() }}`, so it runs after the Tailwind script WPCanAI injects).
+2. Put page-level JavaScript (e.g. `lucide.createIcons()`, Alpine init, custom handlers) in **`_canai_js`**, not as inline `<script>` in `_canai_html`. WPCanAI injects `_canai_js` at `wp_footer()`. **`_canai_js` is Twig-rendered** (same engine as `_canai_html`) — `{# #}` comments are valid there and stripped before the script is emitted; prefer them over `/* */` for anything that names internals. The only `<script>` allowed inline in layout `_canai_html` is `tailwind.config = { ... }` (after `{{ wp_head() }}`, so it runs after the Tailwind script WPCanAI injects).
 3. **Reuse layouts:** call `wpcanai-list-templates` first. If a **layout** already exists, reuse its `id` for `_canai_layout` / references — do not create a duplicate layout template unless the user asks for a second shell.
 4. **Page body vs layout:** put `<main>` / primary page markup in a **`page`** created with `wpcanai-create-page` (set `layout` to the layout template ID) — not as a `wpcanai_template` of type `layout`. Layout templates are the document shell (`{{ page_content }}`, header/footer includes); page bodies are not `template_type` `layout`.
 5. **Auto-detect and sideload local media BEFORE writing HTML.** Static site folders almost always reference local assets (`./images/hero.jpg`, `assets/logo.svg`, `videos/intro.mp4`, favicons, OG images, CSS `url(...)` backgrounds). If you push the HTML/CSS as-is, every one of those references 404s on the live site. Run the **Static-site asset sideload pre-pass** (next subsection) before any `wpcanai-create-page` / `wpcanai-write-meta` call so the HTML you write resolves media **by ID** through `{{ image_attrs(...) }}` / `{{ media_url(...) }}`, not relative paths or pinned upload URLs.
 6. **Rewrite internal links to WPCanAI helpers** (instance of the principle above). Static sources keep `<a href="about.html">` / `href="/about">`; these break on the live site (wrong base path, non-permalink, moved slugs). Rewrite each internal link to the matching helper: cross-page links → `{{ slug_url('<slug>') }}` (or `{{ id_url(<id>) }}` when the target page id is known from `wpcanai-create-page`); term / archive links → `{{ term_url(<term_id>) }}`. **Leave untouched:** external / absolute (`https://other.com`), protocol-relative (`//cdn…`), and anchor-only (`#section`) links. Report the rewrites in the manifest.
-7. **Normalize section comments to Twig.** Convert every `<!-- Section: X -->` (and any nav-label HTML comment `canai-prepare` emitted) into a `{# Section: X #}` Twig comment — **never** carry HTML nav comments into `_canai_html` (they pollute rendered output). Then **guarantee** every top-level landmark — `<section>` / `<main>` / `<header>` / `<footer>` / `<nav>` / `<aside>` — carries a `{# Section: … #}` comment even when the source lacked one; these feed the editor's structure/outline menu. See the comment convention in [references/REFERENCE.md](references/REFERENCE.md) (**Twig Comment Convention**). A canai-replicate `pushprep` artifact already has this conversion applied — spot-check it, don't redo it from scratch.
+7. **Normalize section comments to Twig.** Convert every `<!-- Section: X -->` (and any nav-label HTML comment `canai-prepare` emitted) into a `{# Section: X #}` Twig comment — **never** carry HTML nav comments into `_canai_html` (they pollute rendered output and are view-source reconnaissance). Then **guarantee** every top-level landmark — `<section>` / `<main>` / `<header>` / `<footer>` / `<nav>` / `<aside>` — carries a `{# Section: … #}` comment even when the source lacked one; these feed the editor's structure/outline menu. See the comment convention in [references/REFERENCE.md](references/REFERENCE.md) (**Twig Comment Convention**). A canai-replicate `pushprep` artifact already has this conversion applied — spot-check it, don't redo it from scratch.
+8. **After any meta write, run `wpcanai-scan` and clear leak findings before claiming done.** Treat `leaky_comment` / `leaky_secret` like broken layouts: convert HTML/`/* */` comments to `{# #}`, remove secret-shaped literals from meta. For a full-site pass, use the **Comment / secret security sweep** recipe below.
 
 ### Static-site asset sideload pre-pass
 
@@ -296,9 +297,18 @@ Ability IDs use slashes; MCP tool names use **hyphens** (`wpcanai/read-meta` →
   | ok | `template_body_ok` | *Template-body*: the template renders this type directly. Distinct from the generic sweep's own `template_ok` below — same word, different meaning. |
   | ok | `delegate_ok` | *Delegate-body*: the page has content and its resolved layout. |
   | info | `no_template` / `wc_page` | Nothing authored for this type yet — either *delegate-body* with no `wpcanai_template` at all (the WC page renders wrapped in the site layout; common on a fresh install, **not** a misconfiguration), or shape `none` (no WC page resolves either). |
+  | info | `leaky_comment` (html) | `_canai_html` still contains `<!-- -->` markers that reach view-source. Convert section labels to Twig `{# #}`. |
+  | warning | `leaky_comment` (js) | `_canai_js` has a `/* */` block that looks like infrastructure fingerprinting (snippet/webhook/internal/…). Use `{# #}` — `_canai_js` is Twig-rendered. |
+  | warning | `leaky_secret` | `_canai_html` / `_canai_js` / `_canai_css` matches a secret-shaped literal (API key, Bearer token, private key PEM, etc.). Remove it from meta before deploy. |
 
   The **generic sweep** (every post with `_canai_html`, plus every published `wpcanai_template` of type `product`/`404`/`search`/`category`/`tag`/`author`/`archive`) emits its own findings: `no_layout`, `no_content`, `no_layout_tpl`, and `template_ok` (a template has both `_canai_html` and `_canai_layout`). Do not confuse this `template_ok` with the WC block's `template_body_ok` above — both can appear together in one scan response and mean different things. **`no_layout` is downgraded to `info` (from `warning`) and cross-references `unreachable_content`** when the WC block already reported that exact post as `unreachable_content` (v1.50.0 final-review fix): that post's `_canai_html` is already unreachable because a template-body shape is in effect, and assigning it a `_canai_layout` would **flip the shape** to delegate-body, displacing the template that currently renders and changing what the live URL shows. Never advise assigning a layout to a post flagged this way without first confirming the user wants that shape change.
 - **Removed in v1.50.0:** `missing_delegate` and `stale_template_html`. Both asserted that a template must be an empty marker delegating to a page — one of two valid shapes, not a rule. They fired against working sites, and their guidance ("should be empty") would have deleted rendering content. Do not reintroduce that check.
+
+### `wpcanai-grep-content`
+
+- **Args:** `{ "pattern": string, "regex"?: bool, "fields"?: string[], "limit"?: int }` — `pattern` required. Literal substring match by default; `regex: true` treats `pattern` as PCRE (delimiters optional). `fields` is a subset of `html`|`css`|`js` (default all three). `limit` 1–100 (default 100).
+- **Returns:** `{ "matches": [{ "post_id", "field", "line", "match" }], "truncated": bool }` — `match` is a trimmed line snippet (≤200 chars). Error `invalid_regex` / `invalid_input` on bad input.
+- **Use for** site-wide sweeps (leaky comments, broken asset URLs, renaming a class) when listing every post and `read-meta`-ing by hand would not scale. Drive fixes with `wpcanai-replace-in-meta` from the returned matches.
 
 ### `wpcanai-get-wc-page-ids`
 
@@ -697,7 +707,19 @@ When a live page references the wrong asset URLs (e.g. relative paths left over 
 
 ### Diagnose configuration
 
-- `wpcanai-scan` `{ }` — delegate, layout, and template issues. On Polylang sites, run once per language (`{ "lang": "en" }`, `{ "lang": "ms" }`) and diff to spot missing translations.
+- `wpcanai-scan` `{ }` — delegate, layout, template, and content-leak issues (`leaky_comment` / `leaky_secret`). On Polylang sites, run once per language (`{ "lang": "en" }`, `{ "lang": "ms" }`) and diff to spot missing translations.
+
+### Comment / secret security sweep
+
+Run after bulk imports, before handing a site back to the user, or whenever the user asks to audit view-source leaks. Same standing-recipe pattern as the sideload pre-pass.
+
+1. **`wpcanai-scan` `{ }`** — collect every `leaky_comment` / `leaky_secret` finding (note `post_id` + `field`).
+2. **Optional site-wide grep** for patterns scan might not classify:  
+   `wpcanai-grep-content { "pattern": "<!--", "fields": ["html"] }`  
+   `wpcanai-grep-content { "pattern": "webhook|snippet|api[_\\s-]?key", "regex": true, "fields": ["js"] }`  
+   `wpcanai-grep-content { "pattern": "sk_(live|test)_", "regex": true }`
+3. **Fix** — for HTML/JS section comments, `wpcanai-replace-in-meta` (or a full `write-meta`) converting `<!-- … -->` / suspicious `/* … */` to `{# … #}`. For `leaky_secret`, remove the credential from meta (move it to wp-config / env / a server-side snippet the browser never sees).
+4. **Re-scan** until no `leaky_*` findings remain. Do not claim the task done while they persist.
 
 ---
 
@@ -815,6 +837,7 @@ When the rendered page's layout has a non-empty `_canai_tailwind_build`, `AssetM
 | Which post ID for a type?        | `wpcanai-resolve-content-id` |
 | WC page IDs                      | `wpcanai-get-wc-page-ids`    |
 | Diagnose                         | `wpcanai-scan`               |
+| Grep `_canai_*` meta             | `wpcanai-grep-content`       |
 | Diagnose environment / network    | `wpcanai-diagnostics`        |
 | List / install / remove a preset  | `wpcanai-list-presets` / `wpcanai-install-preset` (⚠ `clean_slate`) / `wpcanai-uninstall-preset` |
 | Export / import WPCanAI content    | `wpcanai-export` / `wpcanai-import` |

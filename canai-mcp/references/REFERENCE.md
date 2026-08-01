@@ -356,7 +356,11 @@ term
 
 **CRITICAL**: Always use Twig comments `{# #}` for section navigation in WPCanAI templates. Twig comments are stripped during rendering (zero output bloat) and serve purely as developer navigation aids in lengthy template code.
 
+`_canai_html`, `_canai_css`, and `_canai_js` are all rendered through the same Twig engine before output. `{# #}` is equally valid in page-level JavaScript (`_canai_js`) and is stripped before the script reaches `wp_footer()`. Prefer `{# #}` over `/* */` for any comment naming internal services, snippet names, hook names, or architecture details.
+
 **Do NOT use HTML comments `<!-- -->` for section labels** — those pollute the rendered HTML. The only acceptable HTML comment is one that must appear in the final output for a specific reason (e.g., conditional IE tags).
+
+> **Security note.** Leftover HTML comments and unconverted JS `/* */` comments are visible to anyone who views page source. That is real reconnaissance surface — internal plugin/snippet names, backend topology, webhook chains, endpoint paths. Secret-shaped literals (API keys, tokens, private keys) in `_canai_*` meta are worse: they ship credentials to every visitor. Convert nav comments to `{# #}`; never put secrets in template meta. `wpcanai-scan` reports `leaky_comment` / `leaky_secret`; use the skill's **Comment / secret security sweep** recipe to clear them.
 
 ### When to Apply Comments
 
