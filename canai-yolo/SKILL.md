@@ -9,7 +9,7 @@ description: >
   "eval php", "publish snippet", "create snippet".
 metadata:
   author: canai
-  version: "1.0.0"
+  version: "1.1.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -51,6 +51,14 @@ Key rules the schemas alone don't make obvious:
 
 Moving a snippet to a different group (via `wpcanai-update-snippet`'s `group`) requires **both** the current group and the destination group to be allowlisted.
 
+### Writing custom REST routes in a snippet
+
+Agents often implement browser → WordPress relays as a FluentSnippets PHP route plus `_canai_js` `fetch`. Two rules the schemas alone don't make obvious:
+
+1. **Never send a custom nonce under `X-WP-Nonce` (or request param `_wpnonce`).** WordPress core's `rest_cookie_check_errors()` intercepts that exact header/param on **every** REST request site-wide and validates it against the built-in `'wp_rest'` action — **before** your route's `permission_callback` runs. A custom-action nonce under that name is always rejected with `rest_cookie_invalid_nonce`, masking your own permission logic. Use any other header name for a custom nonce action (e.g. `X-<Your-App>-Nonce`).
+
+2. **Surface HTTP status / error code to the client** (console log or distinct on-page states) even when user-facing copy stays generic. A rate-limit `429`, a nonce `403`, and a real `500` are different failures; collapsing them into one message makes production incidents impossible to triage.
+
 ### `wpcanai-list-snippets`
 
 - **Args:** `{ "status"?: string, "type"?: string, "group"?: string }` — all optional filters (`status`: `published`|`draft`; `type`: `PHP`|`php_content`|`css`|`js`; `group`: group name). Only appears when FluentSnippets is active.
@@ -70,6 +78,7 @@ Moving a snippet to a different group (via `wpcanai-update-snippet`'s `group`) r
 
 - **Args:** `{ "file_name": string, "code"?: string, "name"?: string, "description"?: string, "tags"?: string, "group"?: string, "run_at"?: string, "priority"?: int, "reactivate"?: bool }` — `file_name` required; send only fields to change (**sparse** — the server merges over current metadata). The current group (and destination `group`, if moving) must be allowlisted. An errored snippet needs `reactivate: true`.
 - **Returns:** `{ "success": true, "file_name": string, "changed_fields": string[] }`.
+- **Published PHP code updates:** Updating `code` on a **published** PHP snippet used to fatal with `Cannot redeclare function` (FluentSnippets validates in the same request where the live snippet is already loaded). WPCanAI handles this transparently. If an older plugin build still returns that error, unpublish → update → republish via `wpcanai-set-snippet-status`.
 
 ### `wpcanai-set-snippet-status`
 
@@ -83,7 +92,11 @@ Moving a snippet to a different group (via `wpcanai-update-snippet`'s `group`) r
 - **Args:** `{ "code": string }` — PHP to evaluate (no `<?php` tag). Full WordPress environment is available.
 - **Returns:** `{ "output": string, "return": mixed, "error": string|null }` — `output` is captured `echo`/`print`; `return` is the eval return value (objects are summarized for JSON); `error` is an exception message or `null`.
 - **Note:** A DB transaction wraps execution and is **always rolled back**, so SQL writes do not persist. This is for inspection and experiments only — use dedicated abilities (`wpcanai-write-meta`, `wpcanai-update-settings`, `wpcanai-update-options`, snippet tools, etc.) for real changes.
-- **Disabled by default.** `wpcanai-eval` returns a generic "access denied" unless `define('WPCANAI_ENABLE_EVAL', true)` is set in `wp-config.php`. It is an escape hatch, not a routine tool — every user-facing capability has a dedicated ability (e.g. read source content with `wpcanai-i18n-get-content`, not eval).
+- **Disabled by default.** Denial messages distinguish the gate that failed:
+  - `WPCANAI_ENABLE_EVAL is not defined true in wp-config.php` — site-level opt-in missing
+  - `MCP tool "eval" is disabled under WPCanAI → AI Agent → Tools` — Tools kill-switch
+  - `caller lacks permission to manage WPCanAI MCP` — capability / auth
+  It is an escape hatch, not a routine tool — every user-facing capability has a dedicated ability (e.g. read source content with `wpcanai-i18n-get-content`, not eval).
 - **Side effects that are NOT rolled back:** filesystem writes, network, `exec`, mail. Never use eval to create FluentSnippets files.
 
 ---
