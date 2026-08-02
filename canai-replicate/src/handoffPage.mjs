@@ -127,6 +127,15 @@ export async function runHandoffPage({ site, runsDir = "runs", only } = {}) {
   } catch {
     throw new Error(`handoff-page: missing verify/page-report.json at ${reportPath}`);
   }
+
+  const reportSlug = report?.slug != null ? String(report.slug) : "";
+  if (reportSlug !== slug) {
+    throw new Error(
+      `handoff-page: page-report.json slug "${reportSlug || "(missing)"}" does not match --only "${only}" ` +
+        `(normalized: "${slug}") — re-run verify-page for this page before handoff`,
+    );
+  }
+
   assertCanHandoff(report);
 
   if (!(await exists(htmlPath))) {

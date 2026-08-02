@@ -109,7 +109,7 @@ test("runHandoffPage: pass report → backup static, swap in place, pushprep pag
 
 test("runHandoffPage: refuses non-pass page-report", async () => {
   const { runsDir, cleanup } = await stageRun("example.com", {
-    report: { status: "in-progress", canHandoff: false },
+    report: { status: "in-progress", slug: "about", canHandoff: false },
   });
   try {
     await assert.rejects(
@@ -138,4 +138,23 @@ test("runHandoffPage: requires --only", async () => {
     () => runHandoffPage({ site: "example.com", runsDir: "/tmp" }),
     /--only/,
   );
+});
+
+test("runHandoffPage: page-report slug must match --only (after onlyToSlug)", async () => {
+  const { runsDir, cleanup } = await stageRun("example.com", {
+    report: { status: "pass", slug: "contact", canHandoff: true },
+  });
+  try {
+    await assert.rejects(
+      () => runHandoffPage({ site: "example.com", runsDir, only: "about" }),
+      /page-report\.json slug "contact".*does not match --only "about"/i,
+    );
+    // Pathname form of --only also normalizes before compare.
+    await assert.rejects(
+      () => runHandoffPage({ site: "example.com", runsDir, only: "/about" }),
+      /normalized: "about"/i,
+    );
+  } finally {
+    await cleanup();
+  }
 });
