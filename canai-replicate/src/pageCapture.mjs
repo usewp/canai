@@ -32,6 +32,15 @@ export const PAGE_WIDTHS = { desktop: 1440, mobile: 390 };
 
 export const PAGE_WINDOW_HEIGHTS = { desktop: 900, mobile: 844 };
 
+// Desktop SECTIONS_JS stamps data-capture-id on landmarks. Mobile (and any
+// later width pass) must clear those before re-tagging — otherwise tag()
+// skips every element and writePageModeArtifacts fails with
+// "all section slices failed for mobile" (or silently under-slices).
+export const CLEAR_CAPTURE_IDS_JS = `(() => {
+  document.querySelectorAll('[data-capture-id]').forEach((el) => el.removeAttribute('data-capture-id'));
+  return { cleared: true };
+})();`;
+
 export function buildViewportsJson({ desktop, mobile }) {
   return {
     desktop: { width: desktop.width, windowHeight: desktop.windowHeight },
@@ -410,9 +419,20 @@ async function captureWidthPass({
   const pngBuf = await readFile(outPath);
   assertFullPagePng(pngBuf, fileBase);
 
-  const tagged = evalSections
-    ? await evalSections({ width, flags, abFn })
-    : parseEvalJson((await abFn([...flags, "eval", "--stdin"], { input: SECTIONS_JS })).stdout);
+  let tagged;
+  if (evalSections) {
+    tagged = await evalSections({ width, flags, abFn });
+  } else {
+    // Clear ids left by a prior width pass before SECTIONS_JS re-tags.
+    try {
+      await abFn([...flags, "eval", "--stdin"], { input: CLEAR_CAPTURE_IDS_JS });
+    } catch (e) {
+      process.stderr.write(
+        `  ! page-mode clear capture-ids failed @${width} for ${slug}: ${e.message}\n`,
+      );
+    }
+    tagged = parseEvalJson((await abFn([...flags, "eval", "--stdin"], { input: SECTIONS_JS })).stdout);
+  }
   const metaSections = (tagged && tagged.sections) || [];
   const slices = sliceSections(pngBuf, metaSections);
   const sections = mergeSliceMeta(metaSections, slices);

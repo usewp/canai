@@ -6,6 +6,7 @@ import path from "node:path";
 import { encodePngRgba } from "./pngSlice.mjs";
 import {
   PAGE_WIDTHS,
+  CLEAR_CAPTURE_IDS_JS,
   buildViewportsJson,
   writePageModeArtifacts,
   assertFullPagePng,
@@ -13,7 +14,12 @@ import {
   seedPageModeWorklist,
   capturePageMode,
 } from "./pageCapture.mjs";
-import { capture } from "./capture.mjs";
+import { capture, SECTIONS_JS } from "./capture.mjs";
+
+test("CLEAR_CAPTURE_IDS_JS removes data-capture-id before re-tagging", () => {
+  assert.match(CLEAR_CAPTURE_IDS_JS, /removeAttribute\(['"]data-capture-id['"]\)/);
+  assert.match(CLEAR_CAPTURE_IDS_JS, /querySelectorAll\(['"]\[data-capture-id\]['"]\)/);
+});
 
 function solid(w, h, [r, g, b, a = 255]) {
   const pixels = new Uint8Array(w * h * 4);
@@ -394,6 +400,86 @@ test(
       assert.deepEqual(pagesJson.pages, [
         { url: "https://example.com/about/", source: "page-mode" },
       ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  }),
+);
+
+test(
+  "capturePageMode without evalSections clears capture-ids before each SECTIONS_JS",
+  withSilencedStderr(async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "page-capture-clear-"));
+    const desktopPng = varied(8, 10);
+    const mobilePng = varied(4, 8);
+    const evalInputs = [];
+    const sectionsPayload = JSON.stringify({
+      sections: [
+        {
+          id: "hero",
+          role: "hero",
+          tag: "section",
+          className: "hero",
+          left: 0,
+          top: 0,
+          width: 8,
+          height: 5,
+        },
+      ],
+    });
+    try {
+      await capturePageMode({
+        url: "https://example.com/",
+        runsDir: path.join(root, "runs"),
+        site: "example.com",
+        deps: {
+          ab: async (args, opts = {}) => {
+            if (args.includes("eval") && opts.input) evalInputs.push(opts.input);
+            if (opts.input === CLEAR_CAPTURE_IDS_JS) return { stdout: JSON.stringify({ cleared: true }) };
+            if (opts.input === SECTIONS_JS) return { stdout: sectionsPayload };
+            if (opts.input && opts.input.includes("scrollWidth")) {
+              return { stdout: JSON.stringify({ width: 1440, height: 10 }) };
+            }
+            return { stdout: "{}" };
+          },
+          ensureWorkingTab: async () => {},
+          ensureUnemulatedViewport: async () => {},
+          setViewport: async () => {},
+          resolveSessionCdpEndpoint: () => ({ host: "127.0.0.1", port: 9223 }),
+          captureFullPageScreenshot: async ({ width, outPath }) => {
+            const buf = width >= 1000 ? desktopPng : mobilePng;
+            const { writeFile } = await import("node:fs/promises");
+            await writeFile(outPath, buf);
+            return { width, height: 10, requestedHeight: 10, capped: false };
+          },
+          measurePageSize: async ({ width }) => ({
+            width,
+            height: width === 1440 ? 10 : 8,
+          }),
+          // no evalSections — forces CLEAR + SECTIONS_JS path
+          collectPageExtras: async ({ captureDir }) => {
+            const { writeFile, mkdir } = await import("node:fs/promises");
+            await mkdir(captureDir, { recursive: true });
+            for (const [name, body] of [
+              ["content.json", "{}"],
+              ["styles.json", JSON.stringify({ desktop: {}, mobile: {} })],
+              ["ux.json", JSON.stringify({ patterns: [] })],
+              ["dom.html", "<html></html>"],
+              ["assets.json", JSON.stringify({ scripts: [], stylesheets: [], images: [] })],
+            ]) {
+              await writeFile(path.join(captureDir, name), body);
+            }
+            return { scriptUrls: [], stylesheetUrls: [], classNames: [], html: "" };
+          },
+        },
+      });
+
+      const clearIdx = evalInputs.map((s, i) => (s === CLEAR_CAPTURE_IDS_JS ? i : -1)).filter((i) => i >= 0);
+      const sectionsIdx = evalInputs.map((s, i) => (s === SECTIONS_JS ? i : -1)).filter((i) => i >= 0);
+      assert.equal(clearIdx.length, 2, "clear once per width");
+      assert.equal(sectionsIdx.length, 2, "SECTIONS_JS once per width");
+      assert.ok(clearIdx[0] < sectionsIdx[0], "desktop: clear before sections");
+      assert.ok(clearIdx[1] < sectionsIdx[1], "mobile: clear before sections");
     } finally {
       await rm(root, { recursive: true, force: true });
     }
