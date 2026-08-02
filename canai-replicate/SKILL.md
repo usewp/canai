@@ -30,7 +30,7 @@ description: >
   "convert this site to wordpress", "replicate this page", "page mode".
 metadata:
   author: canai
-  version: "3.3.2"
+  version: "3.3.3"
 allowed-tools: Bash Read Write Edit Grep Glob
 ---
 
@@ -240,9 +240,11 @@ in utilities, put minimal CSS in a single
 `_canai_css`. No layout rewrite in CSS; no third-party CDN CSS.
 
 **Authoring.** `prompts/transform-page.md` requires **section-by-section**
-work: open each slice PNG + that entry’s `content.json` fields; match layout
-geometry (stacked vs grid, CTA placement); never invent headings/CTAs/sections
-or drop `main` entries (height gate). Retries must follow `sectionNotes`.
+work: open each slice PNG + that entry’s `content.json` fields; classify
+composition via `prompts/layout-recipes.md` (emit `<!-- layout: … -->`);
+match geometry (stacked vs grid, CTA placement); never invent
+headings/CTAs/sections or drop `main` entries (height gate). Retries must
+follow `sectionNotes`.
 
 **`libs.json` is advisory only.** Detected libraries hint which Alpine recipe
 to pick when UX is ambiguous. Never CDN-include or `<script>`-tag anything

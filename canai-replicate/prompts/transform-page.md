@@ -25,21 +25,23 @@ For **each** entry in `content.json:main` (and for header/footer):
 
 1. Open the matching slice PNG (`sections-desktop/NN-<id>.png` and `sections-mobile/NN-<id>.png`). If the file is missing, still render from `content.json` only — do not invent a replacement block.
 2. Read that entry’s fields only: `headings`, `paragraphs`, `links`, `buttons`, `images`, lists, tables, etc.
-3. Match **layout geometry** to the section PNG before picking Tailwind classes:
+3. **Classify layout** against the **layout composition recipes** file listed under Inputs (`layout-recipes.md`). Pick one recipe name (e.g. `hero-stacked-center`, `hero-split-media-end`). Emit `<!-- layout: <recipe-name> -->` immediately before the landmark. Match **layout geometry** to the section PNG before picking Tailwind classes:
    - stacked / centered vs 2-column vs multi-column grid
    - image left/right/full-bleed vs text-only
    - CTA placement (under headline, beside form, in a bar, etc.)
    - Approximate vertical rhythm (padding / gap) so the section is not crushed or oversized vs the slice
-4. Emit exactly one `<section>` (or the header/footer landmark) whose visible copy is a subset of that entry’s content.json fields — never a superset.
+4. Start from that recipe’s HTML skeleton; substitute only this entry’s content.json fields. Emit exactly one `<section>` (or the header/footer landmark) whose visible copy is a subset of that entry’s content.json fields — never a superset.
+
+**Hero rule:** The first `role: "hero"` (or first main band if none) must use a `hero-*` recipe. Re-check the desktop slice before choosing split vs stacked — defaulting to `lg:grid-cols-2` without a clear two-column PNG is a common failure.
 
 **Forbidden inventions (common failure modes):**
 
-- Do **not** invent section titles, eyebrow labels, slogans, or headings that are not in that entry’s `headings` (and related text fields).
-- Do **not** invent or swap CTA / button labels. Use `buttons` and `links` text **verbatim** and in the order they appear for that section. If the PNG shows one primary CTA, it must be the same label as in `content.json` for that band — never substitute a nav item or another section’s button (e.g. do not put “About” in the hero when content.json’s hero button is something else).
+- Do **not** invent section titles, eyebrow labels, slogans, or headings that are not in that entry’s `headings` (and related text fields). If `headings` is empty, do not invent an `<h1>`/`<h2>` — use the paragraph/link content that exists.
+- Do **not** invent or swap CTA / button labels. Use `buttons` and `links` text **verbatim** and in the order they appear for that section. If the PNG shows one primary CTA, it must be the same label as in `content.json` for that band — never substitute a nav item or another section’s button (e.g. do not put a neighbor section’s “Testimonials” link into the hero when the hero entry’s only link is something else).
 - Do **not** add sections, stats bands, testimonial cards, or media blocks that have no matching `content.json:main` entry.
 - Do **not** drop or merge `content.json:main` entries to “simplify” the page — missing blocks shrink full-page height and fail the height gate.
 - Do **not** invent carousel/slider slide people, quotes, or labels. Every slide’s text and images must come from that section’s content.json fields (or the Alpine recipe’s content slots filled from those fields only).
-- Do **not** prefer a fashionable layout (e.g. hero 2-col `grid lg:grid-cols-2`) when the section PNG is clearly stacked/centered (or vice versa). Screenshot geometry wins over landing-page priors.
+- Do **not** prefer a fashionable layout (e.g. hero 2-col `grid lg:grid-cols-2`) when the section PNG is clearly stacked/centered (or vice versa). Screenshot geometry wins over landing-page priors — see `layout-recipes.md` anti-priors.
 - Do **not** paraphrase, translate, or “improve” marketing copy.
 
 ## Strict rules
@@ -119,7 +121,7 @@ The full canai-prepare format spec — preview markers, Alpine patterns, Lucide 
 ## Quality bar
 
 - Real inlined `<header>` / `<footer>` from `content.json` are present — no Twig chrome includes.
-- Hero (and every other section) matches its section PNG composition **and** uses only that entry’s `content.json` headings / CTAs / images — no invented titles or swapped buttons.
+- Hero (and every other section) matches its section PNG composition via a named `<!-- layout: … -->` recipe from `layout-recipes.md`, and uses only that entry’s `content.json` headings / CTAs / images — no invented titles or swapped buttons.
 - One `<section>` per `content.json:main` entry, same order; no dropped or invented blocks (full-page height should be in the same ballpark as `fullpage-*.png`).
 - Every image has a meaningful `alt` from `content.json` (or `alt=""` if decorative).
 - Tailwind classes use DESIGN.md tokens (e.g. `bg-brand` not `bg-teal-600`) where DESIGN.md defines them.

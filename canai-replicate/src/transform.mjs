@@ -39,6 +39,10 @@ const ALPINE_RECIPES = path.resolve(
   new URL("..", import.meta.url).pathname,
   "prompts/alpine-recipes.md",
 );
+const LAYOUT_RECIPES = path.resolve(
+  new URL("..", import.meta.url).pathname,
+  "prompts/layout-recipes.md",
+);
 // Fix (Important, review round 2): site-wide chrome (header/footer), one
 // bundle per site — see prompts/transform-chrome.md and siteChrome.mjs for
 // why this exists (every page/type used to inline its own header/footer,
@@ -134,6 +138,7 @@ function buildPageModePrompt({ site, slug, url, captureDir, designMdPath, output
 - Asset URLs: \`${path.join(captureDir, "assets.json")}\`
 - Site-wide design system: \`${designMdPath}\` — if this file is missing, create DESIGN.md first via a one-page design pass before transforming
 - UX pattern inventory: \`${path.join(captureDir, "ux.json")}\` — reproduce each pattern with its recipe from \`${ALPINE_RECIPES}\`
+- Layout composition recipes (classify each section — esp. hero — before writing HTML): \`${LAYOUT_RECIPES}\`
 - Detected libraries (hints only — never CDN-include): \`${path.join(captureDir, "libs.json")}\`
 
 ## Output

@@ -1055,11 +1055,14 @@ test("prepareTransformBundles: pageMode true → one page bundle, chrome null, p
     assert.match(prompt, /Section-by-section authoring/i);
     assert.match(prompt, /Forbidden inventions/i);
     assert.match(prompt, /Do \*\*not\*\* invent section titles/i);
+    assert.match(prompt, /Hero rule/i);
+    assert.match(prompt, /layout-recipes/);
     assert.ok(prompt.includes("fullpage-desktop"), "must cite fullpage-desktop.png");
     assert.ok(prompt.includes("fullpage-mobile"), "must cite fullpage-mobile.png");
     assert.ok(prompt.includes("sections-desktop"), "must cite sections-desktop/");
     assert.ok(prompt.includes("sections-mobile"), "must cite sections-mobile/");
     assert.ok(prompt.includes("libs.json"), "must cite libs.json");
+    assert.ok(prompt.includes("layout-recipes.md"), "must cite layout-recipes.md");
     assert.match(prompt, /data-wpcanai-css-escape/);
     assert.match(prompt, /Inline.*<header>|inline <header>/i);
     assert.ok(!prompt.includes("wpcanai_template('header')"), "page-mode must not instruct Twig header includes");
@@ -1067,6 +1070,29 @@ test("prepareTransformBundles: pageMode true → one page bundle, chrome null, p
   } finally {
     await cleanup();
   }
+});
+
+test("layout-recipes.md documents the hero/band recipes transform-page expects", async () => {
+  const md = await readFile(
+    path.join(import.meta.dirname, "..", "prompts", "layout-recipes.md"),
+    "utf8",
+  );
+  for (const name of [
+    "hero-stacked-center",
+    "hero-stacked-start",
+    "hero-split-media-end",
+    "hero-split-media-start",
+    "hero-overlay",
+    "band-stats",
+    "band-cards",
+    "band-media",
+    "band-split",
+    "band-stack",
+  ]) {
+    assert.match(md, new RegExp(`^## ${name}\\b`, "m"), `missing ## ${name}`);
+  }
+  assert.match(md, /Anti-priors/i);
+  assert.match(md, /Classification checklist/i);
 });
 
 test("prepareTransformBundles: pageMode skips type/archive bundles even when pagetypes.json has types", async () => {
