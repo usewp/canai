@@ -2,7 +2,7 @@
 // Pure/fs helpers are unit-testable without a browser; capturePageMode accepts
 // injectable deps so orchestration tests never need Chrome.
 
-import { mkdir, writeFile, readFile, copyFile } from "node:fs/promises";
+import { mkdir, writeFile, readFile } from "node:fs/promises";
 import path from "node:path";
 import { decodePng } from "./pngdiff.mjs";
 import { sliceSections } from "./pngSlice.mjs";
@@ -100,8 +100,9 @@ function allSlicesFailed(sections) {
 
 /**
  * Write page-mode capture artifacts (full-pages, section dirs/json, viewports, libs).
- * Compatibility: `sections/` PNGs mirror desktop files; `sections.json` is a
- * byte-copy of `sections-desktop.json` (same entries/paths) for older readers.
+ * Compatibility: `sections/` PNGs mirror desktop files; `sections.json` mirrors
+ * desktop section metadata with `file` paths rewritten to `sections/…` for older
+ * readers that expect that prefix (not a byte-copy of sections-desktop.json).
  */
 export async function writePageModeArtifacts(
   captureDir,
@@ -135,13 +136,12 @@ export async function writePageModeArtifacts(
   const mobileJson = {
     sections: mobileSections.map((s) => sectionJsonEntry(s, "sections-mobile")),
   };
+  const compatJson = {
+    sections: desktopSections.map((s) => sectionJsonEntry(s, "sections")),
+  };
   await writeFile(path.join(captureDir, "sections-desktop.json"), JSON.stringify(desktopJson, null, 2));
   await writeFile(path.join(captureDir, "sections-mobile.json"), JSON.stringify(mobileJson, null, 2));
-  // Exact copy of desktop JSON for compatibility (paths still say sections-desktop/).
-  await copyFile(
-    path.join(captureDir, "sections-desktop.json"),
-    path.join(captureDir, "sections.json"),
-  );
+  await writeFile(path.join(captureDir, "sections.json"), JSON.stringify(compatJson, null, 2));
 
   await writeFile(path.join(captureDir, "viewports.json"), JSON.stringify(viewports, null, 2));
   await writeFile(path.join(captureDir, "libs.json"), JSON.stringify(libs, null, 2));

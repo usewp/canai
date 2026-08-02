@@ -54,7 +54,7 @@ test("buildViewportsJson shapes viewports.json fields", () => {
   });
 });
 
-test("writePageModeArtifacts writes dual-width tree; sections.json mirrors desktop", async () => {
+test("writePageModeArtifacts writes dual-width tree; sections.json uses sections/ paths", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "page-capture-"));
   const captureDir = path.join(root, "captures", "about");
   try {
@@ -120,10 +120,15 @@ test("writePageModeArtifacts writes dual-width tree; sections.json mirrors deskt
 
     const desktopJson = JSON.parse(await readFile(path.join(captureDir, "sections-desktop.json"), "utf8"));
     const compatJson = JSON.parse(await readFile(path.join(captureDir, "sections.json"), "utf8"));
-    assert.deepEqual(compatJson, desktopJson);
     assert.equal(desktopJson.sections.length, 2);
     assert.equal(desktopJson.sections[0].file, "sections-desktop/01-hero.png");
     assert.deepEqual(desktopJson.sections[0].box, { left: 0, top: 0, width: 8, height: 4 });
+    // Compat JSON keeps desktop metadata but rewrites file paths to sections/.
+    assert.equal(compatJson.sections.length, 2);
+    assert.equal(compatJson.sections[0].file, "sections/01-hero.png");
+    assert.equal(compatJson.sections[1].file, "sections/02-footer.png");
+    assert.deepEqual(compatJson.sections[0].box, desktopJson.sections[0].box);
+    assert.notEqual(compatJson.sections[0].file, desktopJson.sections[0].file);
 
     const mobileJson = JSON.parse(await readFile(path.join(captureDir, "sections-mobile.json"), "utf8"));
     assert.equal(mobileJson.sections[0].file, "sections-mobile/01-hero.png");
