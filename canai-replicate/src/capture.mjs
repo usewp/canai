@@ -3,7 +3,7 @@
 
 import { readFile, writeFile, mkdir, rm } from "node:fs/promises";
 import path from "node:path";
-import { urlToSlug, matchesOnly } from "./slug.mjs";
+import { urlToSlug, matchesOnly, siteFromUrl } from "./slug.mjs";
 import {
   captureNodeScreenshot,
   captureFullPageScreenshot,
@@ -132,7 +132,7 @@ export function ab(
 // This makes content.json line up 1:1 with the per-section screenshots in
 // `sections/` and `sections.json`. SECTIONS_JS MUST be evaluated before
 // this script so that `[data-capture-id]` markers are present.
-const CONTENT_JS = `
+export const CONTENT_JS = `
 (() => {
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
   const text = (el) => (el && (el.innerText || el.textContent) || "").trim().replace(/\\s+/g, " ");
@@ -507,7 +507,7 @@ export function matchLabelValuePair(ownText, fullText, childCount, childText) {
   return { label, value };
 }
 
-const ASSETS_JS = `
+export const ASSETS_JS = `
 (() => {
   const imgs = Array.from(document.images).map(i => i.currentSrc || i.src).filter(Boolean);
   const stylesheets = Array.from(document.querySelectorAll('link[rel=stylesheet]')).map(l => l.href);
@@ -543,7 +543,7 @@ const ASSETS_JS = `
 // (h1/h2/h3/a/button, first-match only) is a quick preview of this same idea;
 // `roles` supersedes it (h1-h6, distinct style combos not just first-match,
 // and an accent-guess fallback when no primary-button class matches).
-const STYLES_JS = `
+export const STYLES_JS = `
 (() => {
   const maps = {
     fonts: new Map(), textColors: new Map(), bgColors: new Map(),
@@ -977,7 +977,7 @@ export function fillStyleWasAccepted(ctx, colorStr, sentinel = "rgb(1, 2, 3)") {
   return ctx.fillStyle !== sentinelEcho;
 }
 
-const DOM_JS = `document.documentElement.outerHTML`;
+export const DOM_JS = `document.documentElement.outerHTML`;
 
 // Cheap page-size probe, run immediately before the full-page screenshot
 // (Fix 1a/Fix 2) so captureOne can decide the clip height itself — instead
@@ -1003,7 +1003,7 @@ export const PAGE_SIZE_JS = `
 // for every section. Then return to the top. CDP's captureBeyondViewport
 // screenshot does NOT trigger these observers, so element-scoped screenshots
 // of below-the-fold blocks come back blank unless we prime the page first.
-const SCROLL_PASS_JS = `
+export const SCROLL_PASS_JS = `
 (async () => {
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   const total = Math.max(
@@ -1319,7 +1319,7 @@ export function planSectionAssignment(kidHeights, { minHeightHero = 200, minHeig
 //      common reveal classes to visible,
 //   2. clear inline opacity/transform/visibility the libraries set on elements,
 //   3. mark library-specific "animated" classes (aos-animate, wow→visible).
-const REVEAL_JS = `
+export const REVEAL_JS = `
 (() => {
   const css = \`
     *, *::before, *::after {
@@ -1376,7 +1376,7 @@ export function parseEvalJson(stdout) {
   }
 }
 
-async function ensureWorkingTab(flags) {
+export async function ensureWorkingTab(flags) {
   // agent-browser's `open` reuses the active tab. If the active tab is a
   // restricted webview (Chrome's Gemini Glic sidebar, chrome://, devtools,
   // etc.) it will reject http(s) navigations with ERR_BLOCKED_BY_CLIENT.
@@ -1511,7 +1511,7 @@ async function measureViewportSize(flags) {
 // an OLDER tab in the very same browser is still pinned at 375x812 —
 // confirming the override is scoped per-target, not global, so a fresh tab
 // is a legitimate, verified escape from it.
-async function ensureUnemulatedViewport({ flags, slug }) {
+export async function ensureUnemulatedViewport({ flags, slug }) {
   const size = await measureViewportSize(flags);
   if (!looksMobileEmulated(size.width, size.height)) return;
 
@@ -2291,11 +2291,17 @@ export async function capture({
   cdp = 9223,
   session = "personal",
   only = null,
+  // Page mode: when set, skip the pagetypes worklist and capture this one URL
+  // at dual widths (1440/390) via pageCapture.capturePageMode.
+  pageUrl = null,
   // Injection seams (Fix 4 wiring test) — production callers never pass
   // these; they default to the real status check and the real
   // (agent-browser-driving) captureOne.
   checkStatus = checkUrlStatus,
   captureOneImpl = captureOne,
+  // Page-mode injection seam — tests stub this; production lazily loads
+  // pageCapture.mjs to avoid a capture ↔ pageCapture circular import.
+  capturePageModeImpl = null,
   // Fix 1a injection seams — production callers never pass these either;
   // they default to the real fresh-tab recovery attempt and the real HTTP
   // reachability probe. Tests override both to drive the browser-death/
@@ -2304,6 +2310,25 @@ export async function capture({
   recoverBrowser = defaultRecoverBrowser,
   probeBrowser = defaultProbeBrowser,
 } = {}) {
+  if (pageUrl) {
+    const resolvedSite = site || siteFromUrl(pageUrl);
+    const runPageMode =
+      capturePageModeImpl ||
+      (await import("./pageCapture.mjs")).capturePageMode;
+    const captured = await runPageMode({
+      url: pageUrl,
+      runsDir,
+      cdp,
+      session,
+      site: resolvedSite,
+    });
+    return {
+      count: 1,
+      ok: 1,
+      results: [{ ok: true, type: null, ...captured }],
+    };
+  }
+
   const runDir = path.join(runsDir, site);
   const { entries, spares } = await buildWorklist(runDir, only);
 
