@@ -10,7 +10,7 @@ import {
   DEFAULT_PAGE_GATE,
 } from "./pageGate.mjs";
 import { severityScore, takeVerifyScreenshot } from "./verify.mjs";
-import { PAGE_WIDTHS, PAGE_WINDOW_HEIGHTS } from "./pageCapture.mjs";
+import { PAGE_WIDTHS, PAGE_WINDOW_HEIGHTS, settleWidthPass } from "./pageCapture.mjs";
 import { onlyToSlug, matchesOnly } from "./slug.mjs";
 import { spawnAgentBrowser, resolveSessionCdpEndpoint } from "./agentBrowser.mjs";
 import { captureFullPageScreenshot, setViewport } from "./cdp.mjs";
@@ -146,8 +146,9 @@ async function readPriorAttempts(metaPath) {
 }
 
 /**
- * Default dual-width screenshot: set viewport, open draft, CDP full-page.
- * Tests inject `screenshotFn` and never hit this path.
+ * Default dual-width screenshot — mirrors pageCapture captureWidthPass:
+ * open draft URL first, setViewport with that url, reveal/scroll settle, then
+ * CDP full-page. Tests inject `screenshotFn` and never hit this path.
  */
 export async function defaultPageScreenshotFn({
   width,
@@ -157,15 +158,15 @@ export async function defaultPageScreenshotFn({
   flags,
   cdp,
   session,
+  slug = "page",
   abImpl = ab,
   setViewportFn = setViewport,
   resolveEndpoint = resolveSessionCdpEndpoint,
   captureFullPage = captureFullPageScreenshot,
   takeScreenshot = takeVerifyScreenshot,
+  settleFn = settleWidthPass,
 }) {
-  const { host, port } = resolveEndpoint({ cdp, session });
-  await setViewportFn({ host, port, width, height: windowHeight });
-  // Ensure tab is on the draft before measuring/screenshotting.
+  // Ensure tab is on the draft before viewport/settle/screenshot (open first).
   let activeUrl = "";
   try {
     activeUrl = (await abImpl([...flags, "get", "url"])).stdout.trim();
@@ -178,8 +179,23 @@ export async function defaultPageScreenshotFn({
     await abImpl([...flags, "wait", "--load", "networkidle"]);
   } catch {}
   try {
-    await abImpl([...flags, "wait", "1500"]);
+    await abImpl([...flags, "wait", "1200"]);
   } catch {}
+
+  await settleFn({
+    url: fileUrl,
+    slug,
+    flags,
+    width,
+    windowHeight,
+    abFn: abImpl,
+    setViewportFn,
+    resolveCdpFn: resolveEndpoint,
+    cdp,
+    session,
+    label: "page-verify",
+  });
+
   await takeScreenshot({
     flags,
     fileUrl,
@@ -252,6 +268,7 @@ export async function verifyPage({
         flags,
         cdp,
         session,
+        slug,
       }));
 
   process.stderr.write(`[page-verify] ${slug}\n`);

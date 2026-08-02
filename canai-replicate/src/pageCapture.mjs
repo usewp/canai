@@ -252,6 +252,46 @@ async function defaultCollectPageExtras({
   };
 }
 
+/**
+ * After the draft/live URL is open: set viewport (with url), then reveal + scroll settle.
+ * Shared by page-mode capture and verify-page screenshots so both paths match.
+ */
+export async function settleWidthPass({
+  url,
+  slug = "page",
+  flags,
+  width,
+  windowHeight,
+  abFn,
+  setViewportFn,
+  resolveCdpFn,
+  cdp,
+  session,
+  label = "page-mode",
+}) {
+  const { host, port } = resolveCdpFn({ cdp, session });
+  await setViewportFn({ host, port, url, width, height: windowHeight });
+  await abFn([...flags, "wait", "400"]);
+
+  try {
+    await abFn([...flags, "eval", "--stdin"], { input: REVEAL_JS });
+  } catch (e) {
+    process.stderr.write(`  ! ${label} reveal failed @${width} for ${slug}: ${e.message}\n`);
+  }
+  try {
+    await abFn([...flags, "eval", "--stdin"], { input: SCROLL_PASS_JS });
+  } catch (e) {
+    process.stderr.write(`  ! ${label} scroll failed @${width} for ${slug}: ${e.message}\n`);
+  }
+  try {
+    await abFn([...flags, "wait", "600"]);
+  } catch (e) {
+    process.stderr.write(`  ! ${label} settle failed @${width} for ${slug}: ${e.message}\n`);
+  }
+
+  return { host, port };
+}
+
 async function captureWidthPass({
   url,
   slug,
@@ -273,25 +313,18 @@ async function captureWidthPass({
     evalSections,
   } = deps;
 
-  const { host, port } = resolveCdpFn({ cdp, session });
-  await setViewportFn({ host, port, url, width, height: windowHeight });
-  await abFn([...flags, "wait", "400"]);
-
-  try {
-    await abFn([...flags, "eval", "--stdin"], { input: REVEAL_JS });
-  } catch (e) {
-    process.stderr.write(`  ! page-mode reveal failed @${width} for ${slug}: ${e.message}\n`);
-  }
-  try {
-    await abFn([...flags, "eval", "--stdin"], { input: SCROLL_PASS_JS });
-  } catch (e) {
-    process.stderr.write(`  ! page-mode scroll failed @${width} for ${slug}: ${e.message}\n`);
-  }
-  try {
-    await abFn([...flags, "wait", "600"]);
-  } catch (e) {
-    process.stderr.write(`  ! page-mode settle failed @${width} for ${slug}: ${e.message}\n`);
-  }
+  const { host, port } = await settleWidthPass({
+    url,
+    slug,
+    flags,
+    width,
+    windowHeight,
+    abFn,
+    setViewportFn,
+    resolveCdpFn,
+    cdp,
+    session,
+  });
 
   const size = measurePageSize
     ? await measurePageSize({ width, flags, abFn })

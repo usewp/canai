@@ -4,9 +4,10 @@ import { mkdtemp, rm, mkdir, writeFile, readFile, access } from "node:fs/promise
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { deflateSync } from "node:zlib";
-import { buildPageReport, verifyPage } from "./verifyPage.mjs";
+import { buildPageReport, verifyPage, defaultPageScreenshotFn } from "./verifyPage.mjs";
 import { nextAttemptState, DEFAULT_PAGE_GATE } from "./pageGate.mjs";
 import { severityScore } from "./verify.mjs";
+import { REVEAL_JS, SCROLL_PASS_JS } from "./capture.mjs";
 
 // ---------------------------------------------------------------------------
 // Fixture helpers (mirrors verify.test.mjs / pngdiff.test.mjs)
@@ -371,6 +372,74 @@ test(
       assert.equal(report.canHandoff, true);
     } finally {
       await cleanup();
+    }
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// defaultPageScreenshotFn — open → viewport(url) → reveal/scroll → shot
+// ---------------------------------------------------------------------------
+
+test(
+  "defaultPageScreenshotFn: opens draft before setViewport(url), then reveal/scroll settle",
+  withSilencedStderr(async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "verify-page-shot-"));
+    const outPath = path.join(root, "out.png");
+    const fileUrl = "file:///tmp/draft-about.html";
+    const png = encodePng(4, 4, red);
+    const calls = [];
+
+    try {
+      const abImpl = async (args, opts = {}) => {
+        const action = args.filter((a) => !String(a).startsWith("--") && a !== "9223" && a !== "personal");
+        calls.push({ kind: "ab", action, input: opts.input ?? null });
+        if (action[0] === "get" && action[1] === "url") {
+          return { stdout: "about:blank\n", stderr: "" };
+        }
+        return { stdout: "", stderr: "" };
+      };
+
+      const setViewportFn = async (opts) => {
+        calls.push({ kind: "setViewport", opts });
+      };
+
+      const takeScreenshot = async () => {
+        calls.push({ kind: "screenshot" });
+        await writeFile(outPath, png);
+      };
+
+      const buf = await defaultPageScreenshotFn({
+        width: 1440,
+        windowHeight: 900,
+        fileUrl,
+        outPath,
+        flags: ["--cdp", "9223", "--session", "personal"],
+        cdp: 9223,
+        session: "personal",
+        slug: "about",
+        abImpl,
+        setViewportFn,
+        resolveEndpoint: () => ({ host: "127.0.0.1", port: 9223 }),
+        takeScreenshot,
+      });
+
+      assert.deepEqual(buf, png);
+
+      const openIdx = calls.findIndex((c) => c.kind === "ab" && c.action[0] === "open" && c.action[1] === fileUrl);
+      const viewportIdx = calls.findIndex((c) => c.kind === "setViewport");
+      const revealIdx = calls.findIndex((c) => c.kind === "ab" && c.input === REVEAL_JS);
+      const scrollIdx = calls.findIndex((c) => c.kind === "ab" && c.input === SCROLL_PASS_JS);
+      const shotIdx = calls.findIndex((c) => c.kind === "screenshot");
+
+      assert.ok(openIdx >= 0, "must open draft URL");
+      assert.ok(viewportIdx > openIdx, "setViewport must run after open");
+      assert.equal(calls[viewportIdx].opts.url, fileUrl);
+      assert.equal(calls[viewportIdx].opts.width, 1440);
+      assert.ok(revealIdx > viewportIdx, "REVEAL_JS after setViewport");
+      assert.ok(scrollIdx > revealIdx, "SCROLL_PASS_JS after REVEAL_JS");
+      assert.ok(shotIdx > scrollIdx, "screenshot after settle");
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
   }),
 );
