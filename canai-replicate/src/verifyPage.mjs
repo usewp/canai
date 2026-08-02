@@ -14,6 +14,7 @@ import { PAGE_WIDTHS, PAGE_WINDOW_HEIGHTS, settleWidthPass } from "./pageCapture
 import { onlyToSlug, matchesOnly } from "./slug.mjs";
 import { spawnAgentBrowser, resolveSessionCdpEndpoint } from "./agentBrowser.mjs";
 import { captureFullPageScreenshot, setViewport } from "./cdp.mjs";
+import { slicePng } from "./pngSlice.mjs";
 
 async function exists(p) {
   try {
@@ -45,6 +46,137 @@ function ab(args, { input } = {}) {
 
 function roundPct(n) {
   return Number(Number(n).toFixed(1));
+}
+
+/**
+ * Format a section note for markdown / agent prompts.
+ * Accepts legacy strings or structured rank entries.
+ */
+export function formatSectionNote(note) {
+  if (typeof note === "string") return note;
+  if (!note || typeof note !== "object") return String(note);
+  const sev = Number(note.severity);
+  const sevStr = Number.isFinite(sev) ? sev.toFixed(1) : "?";
+  return `${note.viewport}/${note.id}: mismatch ${note.mismatchPct}%, height Δ ${note.heightDeltaPct}% (severity ${sevStr})`;
+}
+
+/**
+ * Scale a CSS-pixel box onto a full-page PNG that may be device-pixel sized.
+ */
+export function scaleBoxToPng(box, pngWidth, cssWidth) {
+  if (!box || !(cssWidth > 0) || !(pngWidth > 0)) return null;
+  const scale = pngWidth / cssWidth;
+  return {
+    left: Math.round(Number(box.left) * scale),
+    top: Math.round(Number(box.top) * scale),
+    width: Math.round(Number(box.width) * scale),
+    height: Math.round(Number(box.height) * scale),
+  };
+}
+
+/**
+ * Diff generated full-page slices against capture section PNGs; return worst-first.
+ * Pure (sync): pass `sectionPngs` as { [relFile]: Buffer }.
+ *
+ * @returns {Array<{ viewport, id, role, mismatchPct, heightDeltaPct, severity, file }>}
+ */
+export function rankSectionDiffs({
+  generatedPngBuf,
+  sections,
+  cssWidth,
+  viewport,
+  topN = 5,
+  sectionPngs = {},
+} = {}) {
+  if (!generatedPngBuf || !Array.isArray(sections) || !(cssWidth > 0)) return [];
+  let genDecoded;
+  try {
+    genDecoded = decodePng(generatedPngBuf);
+  } catch {
+    return [];
+  }
+  const ranked = [];
+  for (const sec of sections) {
+    const file = sec?.file;
+    const id = sec?.id;
+    if (!file || !id) continue;
+    const captureBuf = sectionPngs[file];
+    if (!captureBuf) continue;
+    const box = sec.box || {
+      left: sec.left,
+      top: sec.top,
+      width: sec.width,
+      height: sec.height,
+    };
+    const scaled = scaleBoxToPng(box, genDecoded.width, cssWidth);
+    if (!scaled || scaled.width <= 0 || scaled.height <= 0) continue;
+    let genSlice;
+    try {
+      genSlice = slicePng(generatedPngBuf, scaled);
+    } catch {
+      continue;
+    }
+    let score;
+    try {
+      score = diffScore(decodePng(captureBuf), decodePng(genSlice));
+    } catch {
+      continue;
+    }
+    const entry = {
+      viewport,
+      id,
+      role: sec.role ?? null,
+      mismatchPct: roundPct(score.mismatchPct),
+      heightDeltaPct: roundPct(score.heightDeltaPct),
+      severity: severityScore({
+        mismatchPct: score.mismatchPct,
+        heightDeltaPct: score.heightDeltaPct,
+      }),
+      file,
+    };
+    ranked.push(entry);
+  }
+  ranked.sort((a, b) => b.severity - a.severity || b.mismatchPct - a.mismatchPct);
+  return ranked.slice(0, Math.max(0, topN));
+}
+
+/**
+ * Load sections-*.json + PNGs from a capture dir and rank against a generated full-page.
+ */
+export async function collectSectionNotesForViewport({
+  captureDir,
+  generatedPngBuf,
+  viewport, // "desktop" | "mobile"
+  cssWidth,
+  topN = 5,
+  readFileFn = readFile,
+} = {}) {
+  const jsonName = viewport === "mobile" ? "sections-mobile.json" : "sections-desktop.json";
+  const jsonPath = path.join(captureDir, jsonName);
+  let parsed;
+  try {
+    parsed = JSON.parse(await readFileFn(jsonPath, "utf8"));
+  } catch {
+    return [];
+  }
+  const sections = Array.isArray(parsed?.sections) ? parsed.sections : [];
+  const sectionPngs = {};
+  for (const sec of sections) {
+    if (!sec?.file) continue;
+    try {
+      sectionPngs[sec.file] = await readFileFn(path.join(captureDir, sec.file));
+    } catch {
+      // Missing slice — skip that section.
+    }
+  }
+  return rankSectionDiffs({
+    generatedPngBuf,
+    sections,
+    cssWidth,
+    viewport,
+    topN,
+    sectionPngs,
+  });
 }
 
 /**
@@ -121,7 +253,12 @@ export function buildPageReport({
   ];
 
   if (sectionNotes.length) {
-    lines.push("## Section notes", "", ...sectionNotes.map((n) => `- ${n}`), "");
+    lines.push(
+      "## Section notes (worst first — fix these)",
+      "",
+      ...sectionNotes.map((n) => `- ${formatSectionNote(n)}`),
+      "",
+    );
   }
 
   return { markdown: lines.join("\n"), json };
@@ -221,7 +358,9 @@ export async function verifyPage({
   only = null,
   thresholds = {},
   screenshotFn = null,
-  sectionNotes = [],
+  /** When null/undefined, auto-rank section diffs. Pass an array to override. */
+  sectionNotes = null,
+  sectionTopN = 5,
 } = {}) {
   if (!site) throw new Error("verifyPage: site is required");
   if (!only) throw new Error("verifyPage: --only <slug> is required for page-mode verify");
@@ -239,10 +378,11 @@ export async function verifyPage({
 
   const runDir = path.join(runsDir, site);
   const verifyDir = path.join(runDir, "verify");
+  const captureDir = path.join(runDir, "captures", slug);
   const htmlPath = path.join(runDir, "output", "pages", `${slug}.html`);
   const metaPath = path.join(runDir, "output", "pages", `${slug}.page-mode.json`);
-  const desktopCapture = path.join(runDir, "captures", slug, "fullpage-desktop.png");
-  const mobileCapture = path.join(runDir, "captures", slug, "fullpage-mobile.png");
+  const desktopCapture = path.join(captureDir, "fullpage-desktop.png");
+  const mobileCapture = path.join(captureDir, "fullpage-mobile.png");
   const desktopGenerated = path.join(verifyDir, `${slug}-desktop-generated.png`);
   const mobileGenerated = path.join(verifyDir, `${slug}-mobile-generated.png`);
 
@@ -297,6 +437,28 @@ export async function verifyPage({
   const mobile = await scoreAgainstCapture(mobileCapture, mobileBuf);
   const gate = evaluatePageGate({ desktop, mobile }, gateThresholds);
 
+  let notes = sectionNotes;
+  if (notes == null) {
+    const desktopNotes = await collectSectionNotesForViewport({
+      captureDir,
+      generatedPngBuf: desktopBuf,
+      viewport: "desktop",
+      cssWidth: PAGE_WIDTHS.desktop,
+      topN: sectionTopN,
+    });
+    const mobileNotes = await collectSectionNotesForViewport({
+      captureDir,
+      generatedPngBuf: mobileBuf,
+      viewport: "mobile",
+      cssWidth: PAGE_WIDTHS.mobile,
+      topN: sectionTopN,
+    });
+    // Merge, re-sort by severity, keep topN overall so the agent sees the worst slices.
+    notes = [...desktopNotes, ...mobileNotes]
+      .sort((a, b) => b.severity - a.severity || b.mismatchPct - a.mismatchPct)
+      .slice(0, sectionTopN);
+  }
+
   const prior = await readPriorAttempts(metaPath);
   const attempts = prior + 1;
   const attemptState = nextAttemptState({
@@ -312,7 +474,7 @@ export async function verifyPage({
     mobile,
     gate,
     attemptState,
-    sectionNotes,
+    sectionNotes: notes,
     thresholds: gateThresholds,
   });
 
@@ -332,6 +494,12 @@ export async function verifyPage({
   process.stderr.write(
     `  mobile:  ${mobile.mismatchPct}% mismatch, ${mobile.heightDeltaPct}% height Δ\n`,
   );
+  if (notes.length) {
+    process.stderr.write(`  worst sections:\n`);
+    for (const n of notes) {
+      process.stderr.write(`    - ${formatSectionNote(n)}\n`);
+    }
+  }
   process.stderr.write(`  status:  ${attemptState.status} (attempt ${attempts})\n`);
 
   if (attemptState.status === "fail") {

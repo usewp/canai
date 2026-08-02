@@ -101,3 +101,13 @@ The full canai-prepare format spec — preview markers, Alpine patterns, Lucide 
 - At most one `<style data-wpcanai-css-escape>` block; empty or omitted when unused.
 - Output is well-formed and validates as HTML5.
 - The file opens cleanly in a browser via `file://` and is recognizable as the same page at both viewports.
+
+## On verify retry (`page-report` status `in-progress`)
+
+When re-transforming after a failed hard gate, open
+`runs/<site>/verify/page-report.md` (and `.json`) first. Prioritize the
+**Section notes (worst first)** list — each entry is `viewport/id` with
+mismatch % and height Δ against the capture slice. Fix those sections
+against the matching `sections-desktop/` or `sections-mobile/` PNG and
+`content.json` entry before touching unrelated blocks. Do not invent new
+copy or CTAs while patching.

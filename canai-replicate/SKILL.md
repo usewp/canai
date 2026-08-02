@@ -30,7 +30,7 @@ description: >
   "convert this site to wordpress", "replicate this page", "page mode".
 metadata:
   author: canai
-  version: "3.3.0"
+  version: "3.3.1"
 allowed-tools: Bash Read Write Edit Grep Glob
 ---
 
@@ -218,9 +218,12 @@ scores against the dual full-page captures. Defaults: **mismatch < 15%**,
 **height Δ < 10%**, both viewports must pass, **max 3 attempts**
 (`--max-mismatch` / `--max-height-delta` / `--max-attempts` override). Status
 `pass` → ready for handoff; `in-progress` → fix + re-transform + re-verify;
-`fail` after max attempts → stop. Per-section ranking / section-level
-mismatch guidance in `verify-page` is **v1 deferred** — the gate is dual
-full-page only.
+`fail` after max attempts → stop. After the dual full-page scores,
+`verify-page` also ranks per-section crops (generated full-page sliced by
+capture boxes vs `sections-desktop/` / `sections-mobile/`) into
+`sectionNotes` in `page-report.md` / `.json` — worst first — so retries
+know which blocks to fix. Boxes are scaled when the PNG is device-pixel
+sized (`pngWidth / cssWidth`).
 
 **Worklist.** `capture --page <url>` seeds a minimal `pages.json` (merge-safe)
 so `designmd` / `transform --page-mode` work without a prior `discover`.

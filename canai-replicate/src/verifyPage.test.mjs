@@ -4,7 +4,14 @@ import { mkdtemp, rm, mkdir, writeFile, readFile, access } from "node:fs/promise
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { deflateSync } from "node:zlib";
-import { buildPageReport, verifyPage, defaultPageScreenshotFn } from "./verifyPage.mjs";
+import {
+  buildPageReport,
+  verifyPage,
+  defaultPageScreenshotFn,
+  formatSectionNote,
+  scaleBoxToPng,
+  rankSectionDiffs,
+} from "./verifyPage.mjs";
 import { nextAttemptState, DEFAULT_PAGE_GATE } from "./pageGate.mjs";
 import { severityScore } from "./verify.mjs";
 import { REVEAL_JS, SCROLL_PASS_JS } from "./capture.mjs";
@@ -158,6 +165,107 @@ test("buildPageReport: in-progress keeps canRetry and blocks handoff", () => {
   assert.equal(json.canRetry, true);
 });
 
+test("buildPageReport: formats structured sectionNotes in markdown", () => {
+  const attemptState = nextAttemptState({ attempts: 1, pass: false });
+  const { markdown, json } = buildPageReport({
+    site: "s.com",
+    slug: "home",
+    desktop: { mismatchPct: 20, heightDeltaPct: 5 },
+    mobile: { mismatchPct: 10, heightDeltaPct: 2 },
+    gate: { pass: false, reasons: ["desktop: mismatchPct 20 >= 15"], desktop: { pass: false, reasons: [] }, mobile: { pass: true, reasons: [] } },
+    attemptState,
+    sectionNotes: [
+      {
+        viewport: "desktop",
+        id: "hero",
+        role: "hero",
+        mismatchPct: 42.1,
+        heightDeltaPct: 8.3,
+        severity: 44.59,
+        file: "sections-desktop/04-hero.png",
+      },
+    ],
+  });
+  assert.equal(json.sectionNotes[0].id, "hero");
+  assert.match(markdown, /Section notes \(worst first/);
+  assert.match(markdown, /desktop\/hero: mismatch 42\.1%, height Δ 8\.3%/);
+});
+
+// ---------------------------------------------------------------------------
+// rankSectionDiffs / scaleBoxToPng / formatSectionNote
+// ---------------------------------------------------------------------------
+
+test("formatSectionNote: string passthrough + structured line", () => {
+  assert.equal(formatSectionNote("hero looks truncated"), "hero looks truncated");
+  assert.match(
+    formatSectionNote({
+      viewport: "mobile",
+      id: "cta",
+      mismatchPct: 12.5,
+      heightDeltaPct: 3,
+      severity: 13.4,
+    }),
+    /mobile\/cta: mismatch 12\.5%, height Δ 3% \(severity 13\.4\)/,
+  );
+});
+
+test("scaleBoxToPng: 2× device pixels", () => {
+  assert.deepEqual(
+    scaleBoxToPng({ left: 10, top: 20, width: 100, height: 50 }, 2880, 1440),
+    { left: 20, top: 40, width: 200, height: 100 },
+  );
+});
+
+test("rankSectionDiffs: worst section first; scales CSS boxes to PNG", () => {
+  // Generated: left half blue, right half red (100×50 CSS = 100×50 PNG).
+  const generated = encodePng(100, 50, (x) => (x < 50 ? blue() : red()));
+  const heroCap = encodePng(50, 50, red); // vs blue → high mismatch
+  const footCap = encodePng(50, 50, red); // vs red → low mismatch
+
+  const ranked = rankSectionDiffs({
+    generatedPngBuf: generated,
+    cssWidth: 100,
+    viewport: "desktop",
+    topN: 5,
+    sections: [
+      { id: "footer", role: "footer", box: { left: 50, top: 0, width: 50, height: 50 }, file: "sections-desktop/02-footer.png" },
+      { id: "hero", role: "hero", box: { left: 0, top: 0, width: 50, height: 50 }, file: "sections-desktop/01-hero.png" },
+    ],
+    sectionPngs: {
+      "sections-desktop/01-hero.png": heroCap,
+      "sections-desktop/02-footer.png": footCap,
+    },
+  });
+
+  assert.equal(ranked.length, 2);
+  assert.equal(ranked[0].id, "hero");
+  assert.equal(ranked[0].viewport, "desktop");
+  assert.ok(ranked[0].mismatchPct > ranked[1].mismatchPct);
+  assert.ok(ranked[0].severity > ranked[1].severity);
+  assert.equal(ranked[1].id, "footer");
+});
+
+test("rankSectionDiffs: 2× PNG scales CSS box before crop", () => {
+  // CSS 50×25 page; PNG is 100×50 (2×). Left half blue at device pixels.
+  const generated = encodePng(100, 50, (x) => (x < 50 ? blue() : red()));
+  const heroCap = encodePng(50, 50, red); // device-pixel crop of left half
+
+  const ranked = rankSectionDiffs({
+    generatedPngBuf: generated,
+    cssWidth: 50,
+    viewport: "desktop",
+    topN: 1,
+    sections: [
+      { id: "hero", box: { left: 0, top: 0, width: 25, height: 25 }, file: "sections-desktop/hero.png" },
+    ],
+    sectionPngs: { "sections-desktop/hero.png": heroCap },
+  });
+
+  assert.equal(ranked.length, 1);
+  assert.equal(ranked[0].id, "hero");
+  assert.ok(ranked[0].mismatchPct > 50);
+});
+
 // ---------------------------------------------------------------------------
 // verifyPage — stub screenshotFn, staged captures
 // ---------------------------------------------------------------------------
@@ -190,6 +298,7 @@ test(
       assert.equal(report.canHandoff, true);
       assert.equal(report.attempts, 1);
       assert.deepEqual(report.canHandoff, nextAttemptState({ attempts: 1, pass: true }).canHandoff);
+      assert.deepEqual(report.sectionNotes, []);
 
       const verifyDir = path.join(root, "mysite", "verify");
       await access(path.join(verifyDir, "page-report.md"));
@@ -210,6 +319,57 @@ test(
       assert.equal(meta.attempts, 1);
       assert.ok(meta.scores.desktop);
       assert.ok(meta.scores.mobile);
+    } finally {
+      await cleanup();
+    }
+  }),
+);
+
+test(
+  "verifyPage: auto-ranks sectionNotes from capture slices when present",
+  withSilencedStderr(async () => {
+    // 8×8: left blue / right red. Capture fullpages match generated (gate pass).
+    // PAGE_WIDTHS.desktop is 1440 → scale = 8/1440; CSS boxes map half-width → 4px.
+    const desktopPng = encodePng(8, 8, (x) => (x < 4 ? blue() : red()));
+    const mobilePng = encodePng(4, 6, red);
+    const heroCap = encodePng(4, 8, red); // vs blue left → high mismatch
+    const footCap = encodePng(4, 8, red); // vs red right → low mismatch
+    const { root, cleanup } = await mkTree({
+      "mysite/output/pages/home.html": "<html><body>ok</body></html>",
+      "mysite/captures/home/fullpage-desktop.png": desktopPng,
+      "mysite/captures/home/fullpage-mobile.png": mobilePng,
+      "mysite/captures/home/sections-desktop.json": JSON.stringify({
+        sections: [
+          {
+            id: "footer",
+            role: "footer",
+            box: { left: 720, top: 0, width: 720, height: 1440 },
+            file: "sections-desktop/02-footer.png",
+          },
+          {
+            id: "hero",
+            role: "hero",
+            box: { left: 0, top: 0, width: 720, height: 1440 },
+            file: "sections-desktop/01-hero.png",
+          },
+        ],
+      }),
+      "mysite/captures/home/sections-desktop/01-hero.png": heroCap,
+      "mysite/captures/home/sections-desktop/02-footer.png": footCap,
+    });
+    try {
+      const report = await verifyPage({
+        site: "mysite",
+        runsDir: root,
+        only: "home",
+        screenshotFn: async ({ width }) => (width === 1440 ? desktopPng : mobilePng),
+      });
+      assert.ok(report.sectionNotes.length >= 1);
+      assert.equal(report.sectionNotes[0].id, "hero");
+      assert.equal(report.sectionNotes[0].viewport, "desktop");
+      assert.ok(report.sectionNotes[0].mismatchPct > 50);
+      const md = await readFile(path.join(root, "mysite", "verify", "page-report.md"), "utf8");
+      assert.match(md, /desktop\/hero/);
     } finally {
       await cleanup();
     }
