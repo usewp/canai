@@ -4,11 +4,16 @@ Each entry maps a `ux.json` recipe name to the Alpine.js pattern to use in
 generated output. Rules for ALL recipes:
 
 - **Instant state only.** No `x-transition`, no CSS transitions/animations,
-  no duration classes. Animations are out of scope by design.
+  no duration classes. Animations are out of scope by design. **Page mode
+  uses the same rule** — fidelity verify still scores instant-state Alpine,
+  never animated transitions.
 - Keep ARIA attributes (`aria-expanded`, `aria-controls`, `role`) — they are
   part of the semantic contract, not decoration.
 - Prefer the smallest recipe that reproduces the behavior. If the source only
   needs CSS (sticky-header), don't add Alpine at all.
+- **`libs.json` is advisory only.** Capture may list Swiper/jQuery/GSAP/etc.
+  as detected libraries; that never authorizes a CDN `<script>` or stylesheet.
+  Pick the matching Alpine recipe here instead.
 
 ## nav-toggle
 

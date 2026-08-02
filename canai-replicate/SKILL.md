@@ -16,19 +16,21 @@ description: >
   into push-ready JSON artifacts (pushprep, avoiding WPCanAI's
   double-document-shell footgun) → verify by screenshotting every output
   (pixel scoring applies only to Twig-free files, so real verification
-  happens after deploy — this skill has no PHP dependency). --only (URL
-  pathname, output slug,
+  happens after deploy — this skill has no PHP dependency). Also supports
+  page mode: high-fidelity single-URL capture/transform/verify-page/handoff
+  with dual-width hard gates. --only (URL pathname, output slug,
   or page-type name) resumes any stage uniformly. Output is ready for
   canai-mcp / canai-localwp to push into WordPress. Use when the user wants
   to rebuild, migrate, port, or clone a whole site (not just one URL) from a
-  live source. Pairs with agent-browser for sourcing and verification.
+  live source — or one page at high fidelity via page mode. Pairs with
+  agent-browser for sourcing and verification.
   Triggers on: "canai-replicate", "replicate this site", "clone this site",
   "rebuild this site in tailwind", "migrate this site to wpcanai",
   "port this site", "copy this site", "replica", "migrate any website",
-  "convert this site to wordpress".
+  "convert this site to wordpress", "replicate this page", "page mode".
 metadata:
   author: canai
-  version: "3.2.0"
+  version: "3.3.0"
 allowed-tools: Bash Read Write Edit Grep Glob
 ---
 
@@ -154,14 +156,84 @@ COMMANDS
                        (rarely any — generated pages include the shared chrome)
                           → runs/<site>/verify/report.md. Everything else is listed
                           for post-deploy verification; the live site renders Twig.
+  verify-page  <site>  Page-mode dual full-page hard gate (requires --only <slug>).
+                       Scores desktop + mobile generated screenshots against
+                       fullpage-desktop/mobile captures. Defaults: mismatch < 15%,
+                       height Δ < 10%, max 3 attempts.
+                       → runs/<site>/verify/page-report.{md,json} +
+                          <slug>-{desktop,mobile}-generated.png
+  handoff-page <site>  After page-report status=pass: backup static draft, swap
+                       inlined header/footer → Twig chrome includes, then pushprep
+                       (requires --only <slug>; chrome partials must already exist).
+                       → <slug>.page-mode.static.html backup + push/<slug|header|footer>.json
 
 FLAGS
   --cdp <port>            Chrome DevTools port (default: 9223)
   --session <name>        agent-browser session name (default: personal)
   --only <path|slug|type> Restrict to one page or one page type — one shared matcher,
-                          identical across capture/transform/verify
+                          identical across capture/transform/verify/verify-page/handoff-page
+  --page <url>            (capture) Page-mode: capture one URL at dual widths (1440/390)
+  --page-mode             (transform) Page-mode static fidelity draft (inline chrome,
+                          transform-page.md) — no Twig includes until handoff-page
+  --max-mismatch <n>      (verify-page) Max mismatch % before fail (default: 15)
+  --max-height-delta <n>  (verify-page) Max height delta % before fail (default: 10)
+  --max-attempts <n>      (verify-page) Attempts before hard fail (default: 3)
   --runs <dir>            Output root (default: runs)
 ```
+
+## Page mode (high-fidelity single URL)
+
+Use **page mode** when the goal is one live URL at high visual fidelity (pixel
+gate), not a full multi-page migration kit. Full-site mode remains the default
+for discover → classify → many pages/types → shared chrome → Twig templates.
+
+| | full-site | page mode |
+| --- | --- | --- |
+| Scope | whole site / page types | one URL |
+| Capture | `capture <site>` | `capture <site> --page <url>` |
+| Transform | `transform <site>` (Twig chrome includes) | `transform <site> --page-mode` (inline chrome) |
+| Verify | `verify` (mostly unscored Twig) | `verify-page` hard gate |
+| Handoff | `pushprep` after transform | `handoff-page` after verify pass |
+
+**Pipeline (in order):**
+
+```bash
+"$HOME/.claude/skills/canai-replicate/bin/replica" capture example.com --page https://example.com/pricing/
+"$HOME/.claude/skills/canai-replicate/bin/replica" designmd example.com   # still useful; DESIGN.md is style truth
+"$HOME/.claude/skills/canai-replicate/bin/replica" transform example.com --page-mode --only pricing
+"$HOME/.claude/skills/canai-replicate/bin/replica" verify-page example.com --only pricing
+# on pass — chrome partials required first:
+"$HOME/.claude/skills/canai-replicate/bin/replica" transform example.com --only chrome
+"$HOME/.claude/skills/canai-replicate/bin/replica" handoff-page example.com --only pricing
+```
+
+**Widths & artifacts.** Capture shoots at **1440** (desktop) and **390**
+(mobile): full-page PNGs (`fullpage-desktop.png` / `fullpage-mobile.png`), then
+section slices under `sections-desktop/` and `sections-mobile/` (plus a
+compat `sections/` mirror of desktop). `viewports.json` and `libs.json` land
+alongside the usual `content.json` / `dom.html` / `styles.json` / `ux.json`.
+
+**Hard gate.** `verify-page` screenshots the static draft at both widths and
+scores against the dual full-page captures. Defaults: **mismatch < 15%**,
+**height Δ < 10%**, both viewports must pass, **max 3 attempts**
+(`--max-mismatch` / `--max-height-delta` / `--max-attempts` override). Status
+`pass` → ready for handoff; `in-progress` → fix + re-transform + re-verify;
+`fail` after max attempts → stop.
+
+**Two-pass.** Pass 1 is a **static** draft (`--page-mode`): header/footer
+inlined so `file://` verify works with no Twig. Pass 2 is **handoff-page**:
+only after `page-report.json` status is `pass`, backup the static HTML, swap
+inline chrome → `{{ wpcanai_template('header') }}` /
+`{{ wpcanai_template('footer') }}`, then pushprep.
+
+**CSS escape.** Prefer Tailwind utilities. When an effect cannot be expressed
+in utilities, put minimal CSS in a single
+`<style data-wpcanai-css-escape>` block — pushprep routes `<style>` → `css` /
+`_canai_css`. No layout rewrite in CSS; no third-party CDN CSS.
+
+**`libs.json` is advisory only.** Detected libraries hint which Alpine recipe
+to pick when UX is ambiguous. Never CDN-include or `<script>`-tag anything
+listed there — stack remains Tailwind + Alpine recipes + Lucide.
 
 ## Pre-flight
 
@@ -533,9 +605,17 @@ runs/<site>/
 ├── pagetypes.json                    # page types (post-classify) + top-level one-off `pages`
 ├── .classify/PROMPT.md               # classify review prompt — rename/prune before capturing
 ├── captures/<slug>/
-│   ├── screenshot.png                # full-page
-│   ├── sections/                     # per-section PNGs (header → footer)
+│   ├── screenshot.png                # full-page (full-site; page-mode: desktop alias)
+│   ├── fullpage-desktop.png          # page-mode: full-page @ 1440
+│   ├── fullpage-mobile.png           # page-mode: full-page @ 390
+│   ├── sections/                     # per-section PNGs (header → footer; page-mode: desktop mirror)
+│   ├── sections-desktop/             # page-mode: section slices @ 1440
+│   ├── sections-mobile/              # page-mode: section slices @ 390
 │   ├── sections.json                 # role + tag + class + dimensions per file
+│   ├── sections-desktop.json         # page-mode desktop section metadata
+│   ├── sections-mobile.json          # page-mode mobile section metadata
+│   ├── viewports.json                # page-mode: captured widths/heights
+│   ├── libs.json                     # page-mode: detected libs (advisory — never CDN-include)
 │   ├── dom.html                      # post-hydration outerHTML (data-capture-id tagged)
 │   ├── content.json                  # { header, main:[sections], footer } incl. tables/
 │   │                                  #   definitionLists/labelValuePairs
@@ -547,10 +627,12 @@ runs/<site>/
 ├── CONTENT-MODEL.md                  # CPT/field/taxonomy handoff (skipped if no repeating types)
 ├── .contentmodel/{PROMPT.md,samples.json}  # bundle prompt + per-type sample index
 ├── .transform/chrome/PROMPT.md       # bundle prompt for shared site chrome (once per site)
-├── .transform/<slug>/PROMPT.md       # bundle prompt per one-off page
+├── .transform/<slug>/PROMPT.md       # bundle prompt per one-off page (or page-mode draft)
 ├── .transform/type-<name>/PROMPT.md  # bundle prompt per page type
 ├── output/
 │   ├── pages/<slug>.html             # generated one-off pages (canai-prepare format)
+│   ├── pages/<slug>.page-mode.json   # page-mode: attempt/status/scores for verify-page
+│   ├── pages/<slug>.page-mode.static.html  # page-mode: backup before handoff-page chrome swap
 │   └── templates/
 │       ├── header.html               # shared site chrome (template_type=header), once per site
 │       ├── footer.html               # shared site chrome (template_type=footer), once per site
@@ -562,10 +644,14 @@ runs/<site>/
 │                                      #   WordPress (see Handoff below), never a raw
 │                                      #   output/pages/ or output/templates/ file
 └── verify/
-    ├── <slug>-generated.png          # screenshot of the output, for review
+    ├── <slug>-generated.png          # screenshot of the output, for review (full-site verify)
+    ├── <slug>-desktop-generated.png  # page-mode: verify-page screenshot @ 1440
+    ├── <slug>-mobile-generated.png   # page-mode: verify-page screenshot @ 390
     ├── report.md                     # worst-first diff-score table (static pages)
     │                                 #   + Not-scored list (Twig outputs → verify after
     │                                 #   deploy; pages with no original capture)
+    ├── page-report.md                # page-mode: human hard-gate report
+    ├── page-report.json              # page-mode: machine hard-gate report (handoff gate)
     └── index.json                    # every rendered pair, machine-readable
 ```
 
