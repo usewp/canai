@@ -139,5 +139,10 @@ When re-transforming after a failed hard gate, open
 mismatch % and height Δ against the capture slice. Fix those sections
 against the matching `sections-desktop/` or `sections-mobile/` PNG and
 `content.json` entry before touching unrelated blocks. Re-check CTA labels
-and layout geometry for the worst `id`s. Do not invent new copy or CTAs
-while patching.
+and layout geometry for the worst `id`s (use `layout-recipes.md`). Do not
+invent new copy or CTAs while patching.
+
+**Stagnation:** if the next `verify-page` does not improve combined severity
+by at least `--min-severity-improvement` (default 1.0), the run fails early
+as stagnant — do **not** loosen `--max-mismatch` / `--max-height-delta` to
+force a pass.

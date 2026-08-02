@@ -30,7 +30,7 @@ description: >
   "convert this site to wordpress", "replicate this page", "page mode".
 metadata:
   author: canai
-  version: "3.3.3"
+  version: "3.3.4"
 allowed-tools: Bash Read Write Edit Grep Glob
 ---
 
@@ -178,6 +178,9 @@ FLAGS
   --max-mismatch <n>      (verify-page) Max mismatch % before fail (default: 15)
   --max-height-delta <n>  (verify-page) Max height delta % before fail (default: 10)
   --max-attempts <n>      (verify-page) Attempts before hard fail (default: 3)
+  --min-severity-improvement <n>
+                          (verify-page) Min combined-severity improvement between
+                          failed attempts; else early stagnant fail (default: 1.0)
   --runs <dir>            Output root (default: runs)
 ```
 
@@ -224,6 +227,14 @@ capture boxes vs `sections-desktop/` / `sections-mobile/`) into
 `sectionNotes` in `page-report.md` / `.json` — worst first — so retries
 know which blocks to fix. Boxes are scaled when the PNG is device-pixel
 sized (`pngWidth / cssWidth`).
+
+**Attempt policy (do not mask gaps).** Hard thresholds stay at 15 / 10 —
+raising them to force a pass after a stuck dogfood is not the fix; author
+against section PNGs + `content.json` instead. Between failed attempts,
+combined severity (`desktop + mobile`, same weight as verify) must drop by
+at least **`--min-severity-improvement` (default 1.0)** or the run fails
+early as **stagnant** (no more retries). History lands in
+`pages/<slug>.page-mode.json`.
 
 **Worklist.** `capture --page <url>` seeds a minimal `pages.json` (merge-safe)
 so `designmd` / `transform --page-mode` work without a prior `discover`.

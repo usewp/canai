@@ -8,6 +8,7 @@ import {
   evaluatePageGate,
   nextAttemptState,
   DEFAULT_PAGE_GATE,
+  combinedSeverity,
 } from "./pageGate.mjs";
 import { severityScore, takeVerifyScreenshot } from "./verify.mjs";
 import { PAGE_WIDTHS, PAGE_WINDOW_HEIGHTS, settleWidthPass } from "./pageCapture.mjs";
@@ -211,6 +212,11 @@ export function buildPageReport({
     attempts: attemptState.attempts,
     canHandoff: attemptState.canHandoff,
     canRetry: attemptState.canRetry,
+    stagnant: Boolean(attemptState.stagnant),
+    failReason: attemptState.failReason ?? null,
+    combinedSeverity: Number(
+      (desktopScored.severity + mobileScored.severity).toFixed(2),
+    ),
     desktop: desktopScored,
     mobile: mobileScored,
     gate: {
@@ -223,6 +229,8 @@ export function buildPageReport({
       maxMismatchPct: thresholds.maxMismatchPct ?? DEFAULT_PAGE_GATE.maxMismatchPct,
       maxHeightDeltaPct: thresholds.maxHeightDeltaPct ?? DEFAULT_PAGE_GATE.maxHeightDeltaPct,
       maxAttempts: thresholds.maxAttempts ?? DEFAULT_PAGE_GATE.maxAttempts,
+      minSeverityImprovement:
+        thresholds.minSeverityImprovement ?? DEFAULT_PAGE_GATE.minSeverityImprovement,
     },
     sectionNotes,
   };
@@ -234,13 +242,25 @@ export function buildPageReport({
     `- attempts: ${json.attempts}`,
     `- canHandoff: ${json.canHandoff}`,
     `- canRetry: ${json.canRetry}`,
+    `- combinedSeverity: ${json.combinedSeverity}`,
+    ...(json.stagnant ? [`- stagnant: true (severity did not improve enough vs prior attempt)`] : []),
+    ...(json.failReason ? [`- failReason: ${json.failReason}`] : []),
     "",
     "## Hard gate",
     "",
     `- pass: ${gate.pass}`,
-    `- thresholds: mismatchPct < ${json.thresholds.maxMismatchPct}, heightDeltaPct < ${json.thresholds.maxHeightDeltaPct}`,
+    `- thresholds: mismatchPct < ${json.thresholds.maxMismatchPct}, heightDeltaPct < ${json.thresholds.maxHeightDeltaPct}, maxAttempts ${json.thresholds.maxAttempts}, minSeverityImprovement ${json.thresholds.minSeverityImprovement}`,
     ...(gate.reasons.length
       ? ["", "### Fail reasons", "", ...gate.reasons.map((r) => `- ${r}`)]
+      : []),
+    ...(json.stagnant
+      ? [
+          "",
+          "### Stagnation",
+          "",
+          `- Combined severity improved by less than ${json.thresholds.minSeverityImprovement} vs the previous attempt.`,
+          "- Do **not** raise `--max-mismatch` / `--max-height-delta` to force a pass — fix the worst `sectionNotes` instead.",
+        ]
       : []),
     "",
     "## Scores",
@@ -272,13 +292,24 @@ async function scoreAgainstCapture(originalPath, generatedBuf) {
   };
 }
 
-async function readPriorAttempts(metaPath) {
+async function readPriorMeta(metaPath) {
   try {
     const raw = JSON.parse(await readFile(metaPath, "utf8"));
     const n = Number(raw?.attempts);
-    return Number.isFinite(n) && n >= 0 ? n : 0;
+    let combined = null;
+    if (raw?.combinedSeverity != null && Number.isFinite(Number(raw.combinedSeverity))) {
+      combined = Number(raw.combinedSeverity);
+    } else if (raw?.scores?.desktop && raw?.scores?.mobile) {
+      combined = combinedSeverity(raw.scores);
+    }
+    return {
+      attempts: Number.isFinite(n) && n >= 0 ? n : 0,
+      scores: raw?.scores ?? null,
+      combinedSeverity: combined,
+      history: Array.isArray(raw?.history) ? raw.history : [],
+    };
   } catch {
-    return 0;
+    return { attempts: 0, scores: null, combinedSeverity: null, history: [] };
   }
 }
 
@@ -374,6 +405,8 @@ export async function verifyPage({
     maxMismatchPct: thresholds.maxMismatchPct ?? DEFAULT_PAGE_GATE.maxMismatchPct,
     maxHeightDeltaPct: thresholds.maxHeightDeltaPct ?? DEFAULT_PAGE_GATE.maxHeightDeltaPct,
     maxAttempts: thresholds.maxAttempts ?? DEFAULT_PAGE_GATE.maxAttempts,
+    minSeverityImprovement:
+      thresholds.minSeverityImprovement ?? DEFAULT_PAGE_GATE.minSeverityImprovement,
   };
 
   const runDir = path.join(runsDir, site);
@@ -459,12 +492,16 @@ export async function verifyPage({
       .slice(0, sectionTopN);
   }
 
-  const prior = await readPriorAttempts(metaPath);
-  const attempts = prior + 1;
+  const prior = await readPriorMeta(metaPath);
+  const attempts = prior.attempts + 1;
+  const currentSev = combinedSeverity({ desktop, mobile });
   const attemptState = nextAttemptState({
     attempts,
     pass: gate.pass,
     maxAttempts: gateThresholds.maxAttempts,
+    previousSeverity: prior.combinedSeverity,
+    currentSeverity: currentSev,
+    minSeverityImprovement: gateThresholds.minSeverityImprovement,
   });
 
   const { markdown, json } = buildPageReport({
@@ -481,10 +518,24 @@ export async function verifyPage({
   await writeFile(path.join(verifyDir, "page-report.md"), markdown);
   await writeFile(path.join(verifyDir, "page-report.json"), JSON.stringify(json, null, 2));
 
+  const history = [
+    ...prior.history,
+    {
+      attempt: attempts,
+      desktop,
+      mobile,
+      combinedSeverity: Number(currentSev.toFixed(2)),
+      status: attemptState.status,
+    },
+  ];
   const pageMode = {
     attempts,
     status: attemptState.status,
     scores: { desktop, mobile },
+    combinedSeverity: Number(currentSev.toFixed(2)),
+    stagnant: Boolean(attemptState.stagnant),
+    failReason: attemptState.failReason ?? null,
+    history,
   };
   await writeFile(metaPath, JSON.stringify(pageMode, null, 2));
 
@@ -500,12 +551,16 @@ export async function verifyPage({
       process.stderr.write(`    - ${formatSectionNote(n)}\n`);
     }
   }
-  process.stderr.write(`  status:  ${attemptState.status} (attempt ${attempts})\n`);
+  process.stderr.write(
+    `  status:  ${attemptState.status} (attempt ${attempts}` +
+      `${attemptState.stagnant ? ", stagnant" : ""})\n`,
+  );
 
   if (attemptState.status === "fail") {
-    throw new Error(
-      `page-verify failed for ${slug} after ${attempts} attempt(s): ${gate.reasons.join("; ") || "hard gate not met"}`,
-    );
+    const why = attemptState.stagnant
+      ? `stagnant — combined severity improved by less than ${gateThresholds.minSeverityImprovement} vs prior attempt; fix sectionNotes, do not loosen thresholds`
+      : gate.reasons.join("; ") || "hard gate not met";
+    throw new Error(`page-verify failed for ${slug} after ${attempts} attempt(s): ${why}`);
   }
 
   return json;

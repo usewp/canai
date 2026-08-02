@@ -423,7 +423,13 @@ test(
       "mysite/output/pages/about.page-mode.json": JSON.stringify({
         attempts: 2,
         status: "in-progress",
-        scores: {},
+        // Prior attempt already improved a lot vs attempt 1 — avoid stagnant
+        // so this test exercises max-attempts, not stagnation.
+        combinedSeverity: 200,
+        scores: {
+          desktop: { mismatchPct: 100, heightDeltaPct: 0 },
+          mobile: { mismatchPct: 100, heightDeltaPct: 0 },
+        },
       }),
     });
     try {
@@ -435,7 +441,7 @@ test(
             only: "about",
             screenshotFn: async () => generated,
           }),
-        /fail|page.?verify|gate/i,
+        /fail|page.?verify|gate|max-attempts/i,
       );
 
       const meta = JSON.parse(
@@ -443,12 +449,69 @@ test(
       );
       assert.equal(meta.status, "fail");
       assert.equal(meta.attempts, 3);
+      assert.equal(meta.failReason, "max-attempts");
 
       const json = JSON.parse(
         await readFile(path.join(root, "mysite", "verify", "page-report.json"), "utf8"),
       );
       assert.equal(json.status, "fail");
       assert.equal(json.canHandoff, false);
+    } finally {
+      await cleanup();
+    }
+  }),
+);
+
+test(
+  "verifyPage: stagnant second attempt → early fail without burning attempt 3",
+  withSilencedStderr(async () => {
+    const original = encodePng(8, 8, red);
+    const generated = encodePng(8, 8, blue); // ~100% mismatch both times
+    const { root, cleanup } = await mkTree({
+      "mysite/output/pages/about.html": "<html><body>x</body></html>",
+      "mysite/captures/about/fullpage-desktop.png": original,
+      "mysite/captures/about/fullpage-mobile.png": original,
+      "mysite/output/pages/about.page-mode.json": JSON.stringify({
+        attempts: 1,
+        status: "in-progress",
+        combinedSeverity: 200,
+        scores: {
+          desktop: { mismatchPct: 100, heightDeltaPct: 0 },
+          mobile: { mismatchPct: 100, heightDeltaPct: 0 },
+        },
+        history: [
+          {
+            attempt: 1,
+            combinedSeverity: 200,
+            status: "in-progress",
+          },
+        ],
+      }),
+    });
+    try {
+      await assert.rejects(
+        () =>
+          verifyPage({
+            site: "mysite",
+            runsDir: root,
+            only: "about",
+            screenshotFn: async () => generated,
+          }),
+        /stagnant/i,
+      );
+
+      const meta = JSON.parse(
+        await readFile(path.join(root, "mysite", "output", "pages", "about.page-mode.json"), "utf8"),
+      );
+      assert.equal(meta.status, "fail");
+      assert.equal(meta.attempts, 2);
+      assert.equal(meta.stagnant, true);
+      assert.equal(meta.failReason, "stagnant");
+      assert.equal(meta.history.length, 2);
+
+      const md = await readFile(path.join(root, "mysite", "verify", "page-report.md"), "utf8");
+      assert.match(md, /Stagnation/i);
+      assert.match(md, /Do \*\*not\*\* raise/);
     } finally {
       await cleanup();
     }

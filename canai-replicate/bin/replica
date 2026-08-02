@@ -110,6 +110,8 @@ FLAGS
   --max-mismatch <n>         (verify-page) Max mismatch % before fail (default: ${DEFAULT_PAGE_GATE.maxMismatchPct})
   --max-height-delta <n>     (verify-page) Max height delta % before fail (default: ${DEFAULT_PAGE_GATE.maxHeightDeltaPct})
   --max-attempts <n>         (verify-page) Attempts before hard fail (default: ${DEFAULT_PAGE_GATE.maxAttempts})
+  --min-severity-improvement <n>
+                             (verify-page) Min combined-severity drop between failed attempts or stagnate-fail (default: ${DEFAULT_PAGE_GATE.minSeverityImprovement})
 
 EXAMPLES
   replica discover  https://g100.my/
@@ -283,6 +285,9 @@ async function main() {
       if (args["max-mismatch"] != null) thresholds.maxMismatchPct = Number(args["max-mismatch"]);
       if (args["max-height-delta"] != null) thresholds.maxHeightDeltaPct = Number(args["max-height-delta"]);
       if (args["max-attempts"] != null) thresholds.maxAttempts = Number(args["max-attempts"]);
+      if (args["min-severity-improvement"] != null) {
+        thresholds.minSeverityImprovement = Number(args["min-severity-improvement"]);
+      }
       const r = await verifyPage({ site, runsDir, cdp, session, only, thresholds });
       const mark = r.status === "pass" ? "✓" : r.status === "fail" ? "✗" : "…";
       stderr.write(
