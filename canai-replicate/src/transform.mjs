@@ -15,6 +15,12 @@ const PROMPT_TEMPLATE = path.resolve(
   new URL("..", import.meta.url).pathname,
   "prompts/transform.md",
 );
+// Page-mode static fidelity draft — inline chrome, dual full-page refs.
+// Kept separate from transform.md so full-site Twig-chrome rules stay intact.
+const PAGE_MODE_PROMPT_TEMPLATE = path.resolve(
+  new URL("..", import.meta.url).pathname,
+  "prompts/transform-page.md",
+);
 
 async function exists(p) {
   try {
@@ -93,6 +99,42 @@ function buildPrompt({ site, slug, url, captureDir, designMdPath, outputPath, pr
 - Asset URLs: \`${path.join(captureDir, "assets.json")}\`
 - Site-wide design system: \`${designMdPath}\`
 - UX pattern inventory: \`${path.join(captureDir, "ux.json")}\` — reproduce each pattern with its recipe from \`${ALPINE_RECIPES}\`
+
+## Output
+
+Write the single self-contained HTML file to:
+
+\`${outputPath}\`
+
+After writing, confirm the file exists. Do not write anything else.
+`;
+}
+
+function buildPageModePrompt({ site, slug, url, captureDir, designMdPath, outputPath, promptTemplate }) {
+  return `${promptTemplate}
+
+---
+
+## This page
+
+- **Site**: ${site}
+- **URL**: ${url}
+- **Slug**: ${slug}
+- **Mode**: page-mode (static fidelity draft — inline chrome, no Twig includes)
+
+## Inputs (read these)
+
+- Full-page desktop (width 1440): \`${path.join(captureDir, "fullpage-desktop.png")}\`
+- Full-page mobile (width 390): \`${path.join(captureDir, "fullpage-mobile.png")}\`
+- Per-section screenshots (desktop): \`${path.join(captureDir, "sections-desktop")}/\`
+- Per-section screenshots (mobile): \`${path.join(captureDir, "sections-mobile")}/\`
+- Compat section dir (desktop alias): \`${path.join(captureDir, "sections")}/\`
+- Section indexes: \`${path.join(captureDir, "sections-desktop.json")}\`, \`${path.join(captureDir, "sections-mobile.json")}\`, compat \`${path.join(captureDir, "sections.json")}\`
+- Structured content (USE THIS COPY VERBATIM; inline header/footer from here): \`${path.join(captureDir, "content.json")}\`
+- Asset URLs: \`${path.join(captureDir, "assets.json")}\`
+- Site-wide design system: \`${designMdPath}\` — if this file is missing, create DESIGN.md first via a one-page design pass before transforming
+- UX pattern inventory: \`${path.join(captureDir, "ux.json")}\` — reproduce each pattern with its recipe from \`${ALPINE_RECIPES}\`
+- Detected libraries (hints only — never CDN-include): \`${path.join(captureDir, "libs.json")}\`
 
 ## Output
 
@@ -272,7 +314,7 @@ function resolveSlugClaims(oneOffs, types) {
   return { droppedArchives, droppedPages };
 }
 
-export async function prepareTransformBundles({ site, runsDir = "runs", only = null }) {
+export async function prepareTransformBundles({ site, runsDir = "runs", only = null, pageMode = false }) {
   const runDir = path.join(runsDir, site);
   const designMdPath = path.resolve(runDir, "DESIGN.md");
   if (!(await exists(designMdPath))) {
@@ -284,11 +326,13 @@ export async function prepareTransformBundles({ site, runsDir = "runs", only = n
   // pickRepresentativeCaptureUrl() expects (siteChrome.mjs) available past
   // this block either way, so the chrome bundle below can run under both
   // the v3 (pagetypes.json) and v2-fallback (pages.json-only) shapes.
+  // Page-mode never builds chrome/type/archive bundles — one-off page
+  // draft(s) only — so types stay empty and chrome stays null below.
   let oneOffs, types, chromeSource;
   try {
     const pt = JSON.parse(await readFile(path.join(runDir, "pagetypes.json"), "utf8"));
     oneOffs = pt.pages.map((p) => p.url);
-    types = pt.types.filter((t) => t.kind !== "page");
+    types = pageMode ? [] : pt.types.filter((t) => t.kind !== "page");
     oneOffs.push(...pt.types.filter((t) => t.kind === "page").flatMap((t) => t.members));
     chromeSource = pt;
   } catch {
@@ -298,7 +342,7 @@ export async function prepareTransformBundles({ site, runsDir = "runs", only = n
     chromeSource = { pages: pagesJson.pages, types: [] };
   }
 
-  const pagePrompt = await readFile(PROMPT_TEMPLATE, "utf8");
+  const pagePrompt = await readFile(pageMode ? PAGE_MODE_PROMPT_TEMPLATE : PROMPT_TEMPLATE, "utf8");
   const pagesOutDir = path.resolve(runDir, "output", "pages");
   const templatesOutDir = path.resolve(runDir, "output", "templates");
   await mkdir(pagesOutDir, { recursive: true });
@@ -323,8 +367,9 @@ export async function prepareTransformBundles({ site, runsDir = "runs", only = n
   // every existing fixture. Same --only treatment as everything else
   // (`--only chrome` produces just this; `--only <anything else>` skips it;
   // a plain run always attempts it), it just lives in its own slot.
+  // Page-mode drafts inline chrome for local verify — skip entirely.
   let chrome = null;
-  if (matchesOnly(only, { typeName: "chrome" })) {
+  if (!pageMode && matchesOnly(only, { typeName: "chrome" })) {
     const repUrl = pickRepresentativeCaptureUrl(chromeSource);
     if (!repUrl) {
       process.stderr.write(`  ! skipping site chrome: no page or type to pick a representative capture from\n`);
@@ -351,6 +396,7 @@ export async function prepareTransformBundles({ site, runsDir = "runs", only = n
   }
 
   // One-off pages — same flow as v2, but under output/pages/.
+  // Page-mode uses transform-page.md (inline chrome + dual full-page refs).
   for (const url of oneOffs) {
     const slug = urlToSlug(url);
     // Fix 2: matchesOnly (src/slug.mjs) is the ONE shared --only matcher —
@@ -373,13 +419,15 @@ export async function prepareTransformBundles({ site, runsDir = "runs", only = n
     const bundleDir = path.resolve(runDir, ".transform", slug);
     await mkdir(bundleDir, { recursive: true });
     const outputPath = path.resolve(pagesOutDir, slug + ".html");
-    const prompt = buildPrompt({ site, slug, url, captureDir, designMdPath, outputPath, promptTemplate: pagePrompt });
+    const prompt = pageMode
+      ? buildPageModePrompt({ site, slug, url, captureDir, designMdPath, outputPath, promptTemplate: pagePrompt })
+      : buildPrompt({ site, slug, url, captureDir, designMdPath, outputPath, promptTemplate: pagePrompt });
     const promptPath = path.join(bundleDir, "PROMPT.md");
     await writeFile(promptPath, prompt);
     bundles.push({ slug, kind: "page", url, promptPath, outputPath });
   }
 
-  // Repeating types — one bundle per type.
+  // Repeating types — one bundle per type. Skipped in page-mode.
   if (types.length > 0) {
     const contentModelPath = path.resolve(runDir, "CONTENT-MODEL.md");
     const templatePrompt = await readFile(TEMPLATE_PROMPT_TEMPLATE, "utf8");
@@ -459,6 +507,16 @@ export async function prepareTransformBundles({ site, runsDir = "runs", only = n
   // to resolve regardless of --only, as long as --only isn't scoping it out).
   if (only && bundles.length === 0 && !(only === "chrome" && chrome)) {
     throw new Error(`no pages or types match --only ${only}`);
+  }
+  // Page-mode always needs at least one page capture (from --only or the
+  // available one-off worklist) — a zero-bundle page-mode run is an error
+  // even without --only (unlike full-site, which can still return chrome).
+  if (pageMode && bundles.length === 0) {
+    throw new Error(
+      only
+        ? `no pages or types match --only ${only}`
+        : `page-mode: no capture available — pass --only <slug> or capture a page first`,
+    );
   }
   return { site, count: bundles.length, bundles, chrome };
 }

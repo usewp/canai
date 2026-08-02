@@ -1,0 +1,103 @@
+# Task: page → static fidelity draft (page-mode / canai-prepare format)
+
+You are converting one captured web page into a **single self-contained HTML file** for **page-mode** fidelity verify. The result is a static draft that opens under `file://` without WordPress — header and footer are inlined. After verify passes, handoff swaps chrome to Twig includes.
+
+## What you must do
+
+1. Read the **full-page screenshots** first — `fullpage-desktop.png` (width 1440) and `fullpage-mobile.png` (width 390). These are the primary visual truth. Then study per-block detail in **`sections-desktop/`** and **`sections-mobile/`** (compat alias **`sections/`** = desktop). Section indexes: `sections-desktop.json`, `sections-mobile.json`, and compat `sections.json`.
+2. Read **content.json** — this is the **content ground truth**. It mirrors the section structure: `{ header, main: [section, …], footer }`. Each main entry has `id`/`role`/`tag`/`className` plus its own headings, paragraphs, lists, links, images, forms, buttons, tables, definitionLists, and labelValuePairs. The `id` field matches the screenshot filename in the section dirs (e.g. `id: "hero"` ↔ `NN-hero.png`). All text, links, image src/alt, headings, and button labels MUST come from here, verbatim. Do **not** invent copy.
+   - **`tables`** — one entry per `<table>`: `{ caption, headers, rows, pairs }`. `headers` is the column-header row's cell text (`[]` if the table has none); `rows` is every other row as an array of cell text, in column order. `pairs` is only present (non-`null`) when every data row has exactly 2 cells — the common "attribute / value" shape — as `{ label, value }`. Render a `pairs` table as a simple two-column list/table; render a `headers`+`rows` table (3+ columns) as a real `<table>` with `<thead>`/`<tbody>`, preserving column order.
+   - **`definitionLists`** — one entry per `<dl>`: `{ pairs: [{ label, value }, …] }`, from `<dt>`/`<dd>` pairs.
+   - **`labelValuePairs`** — standalone `{ label, value }` pairs found in plain wrapper markup outside any table/dl. Treat each as a labeled fact — render it, don't drop it.
+3. Read **DESIGN.md** — the site-wide style system. All typography, colors, spacing, radii, motion treatments must conform to its tokens. Encode the relevant tokens in a `tailwind.config = { ... }` inline script. If DESIGN.md is missing, stop and create it first via a one-page design pass — do not invent a page-local token system ad hoc.
+4. Read **assets.json** — keep image URLs external; use them as `<img src="https://...">` directly. Do not embed.
+5. Read **ux.json** — the interactive-pattern inventory for this page (nav toggle, dropdown menu, tabs, accordion, carousel, modal, sticky header). For each entry, reproduce it with the **exact, verbatim** recipe from the Alpine recipe library (path given under Inputs below) — copy its HTML structure and Alpine attributes as given, substituting only real content; instant-state only, no transitions, no autoplay. Don't invent interactivity that isn't listed, and don't invent an alternative to a recipe that already covers the pattern.
+6. Read **libs.json** — third-party library hints from capture. Use it only to choose the right Alpine recipe when UX patterns are ambiguous. **Never CDN-include or script-tag any library listed in libs.json.** Stack is Tailwind + Alpine recipes + Lucide only.
+7. Write **one HTML file** matching the page-mode skeleton (below) to the output path specified at the end of this prompt. One `<section>` per entry in `content.json:main` — preserving order. **Inline** real `<header>` and `<footer>` markup from `content.json:header` / `content.json:footer` (no Twig).
+
+## Strict rules
+
+- **Inline `<header>` / `<footer>` from `content.json` (no Twig).** Page-mode drafts must open under `file://` for local verify. Write a real `<header>…</header>` and `<footer>…</footer>` from the captured chrome content. Do **not** emit Twig `wpcanai_template` includes — handoff will swap them later.
+- **Tailwind + Alpine recipes + Lucide only; never CDN-include `libs.json` libraries.** No Swiper, jQuery, GSAP, Bootstrap, or any other third-party script/CSS from the source page's library inventory. Interactive patterns come exclusively from `alpine-recipes.md`. Icons via Lucide (`data-lucide` + `lucide.createIcons()`).
+- **Custom CSS only in a single `<style data-wpcanai-css-escape>` block.** Prefer Tailwind utilities. When an effect cannot be expressed in utilities (keyframes, sticky edge cases, rare selectors), put minimal CSS in one `<style data-wpcanai-css-escape>` block — pushprep already routes `<style>` → `css` / `_canai_css`. No layout rewrite in CSS. No third-party CDN CSS. Parallel rule: tiny Alpine-adjacent helpers may go in a single `<script>` that pushprep routes to `_canai_js` when unavoidable.
+- **Mobile-first against 390 full-page + `sections-mobile/`.** Author responsive classes against `fullpage-mobile.png` and `sections-mobile/` first, then layer desktop (`lg:` / `xl:`) to match `fullpage-desktop.png` / `sections-desktop/`. Do not design desktop-only and hope mobile works.
+- **Content from `content.json` verbatim.** If the screenshot shows copy that isn't in content.json, omit it — never paraphrase, never invent.
+- **Semantic HTML5 only**: `<header>`, `<nav>`, `<main>`, `<section>`, `<article>`, `<aside>`, `<footer>`. No nav links inside `<header>` without `<nav>`.
+- **Tailwind via Play CDN** wrapped in WPCanAI preview markers (see skeleton).
+- **Alpine.js** only if real state is needed (dropdowns, tabs, accordions, modals). Otherwise omit. When it is needed, match the closest recipe in `alpine-recipes.md` — instant-state only, no `x-transition`, no autoplay.
+- **Lucide icons** via `<i data-lucide="kebab-case-name" class="h-5 w-5"></i>` plus the `lucide.createIcons()` init.
+- **Section comments**: `<!-- Section: Hero -->`, `<!-- Section: Features -->`, etc. — these map to `{# Section: … #}` in Twig downstream.
+- **Cross-page links**: emit relative filenames (`href="about.html"`, not `/about` or absolute URLs), unless the link is genuinely external.
+- **DESIGN.md tokens > screenshot pixels**. The screenshot is for layout/structure; DESIGN.md governs the look.
+- **No frameworks** beyond Tailwind utilities + optional Alpine. No React, Vue, Svelte, bundlers, JSX.
+- **No `<title>` duplication concerns** — keep a real `<title>` for local preview; WPCanAI handles this on the live site.
+- **Never write a Twig call's real curly-brace syntax inside an HTML comment.** Twig parses delimiters wherever they appear — including comments. Describe includes in prose if needed; do not quote literal Twig call syntax in comments.
+
+## Canonical skeleton (page-mode)
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Page Title</title>
+  <!-- WPCanAI-PREVIEW-LIBS:START — local preview only; WPCanAI loads these via wp_head() on the live site -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.5/dist/cdn.min.js"></script>
+  <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+  <!-- WPCanAI-PREVIEW-LIBS:END -->
+  <script>
+    // Tokens from DESIGN.md. Replace with real values for this site.
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: { /* extracted from DESIGN.md */ },
+          fontFamily: { /* extracted from DESIGN.md */ },
+        },
+      },
+    };
+  </script>
+  <!-- Optional: only when Tailwind utilities cannot express a needed effect -->
+  <style data-wpcanai-css-escape>
+    /* keyframes / sticky / rare selectors only — no layout rewrite */
+  </style>
+</head>
+<body class="antialiased">
+  <!-- Section: Site header — inlined from content.json for page-mode local verify -->
+  <header> ... </header>
+
+  <!-- Section: Main page body -->
+  <main id="main-content">
+    <!-- Section: Hero -->
+    <section> ... </section>
+    <!-- Section: Next -->
+    <section> ... </section>
+  </main>
+
+  <!-- Section: Site footer — inlined from content.json for page-mode local verify -->
+  <footer> ... </footer>
+
+  <!-- WPCanAI-PREVIEW-LIBS:START -->
+  <script>lucide.createIcons();</script>
+  <!-- WPCanAI-PREVIEW-LIBS:END -->
+</body>
+</html>
+```
+
+## Authoritative reference
+
+The full canai-prepare format spec — preview markers, Alpine patterns, Lucide conventions, asset paths — is documented in the **canai-prepare skill** (and its `references/BOILERPLATE.md`). If anything in this prompt conflicts with the skill on stack conventions, the skill wins; page-mode chrome inlining (this prompt) overrides the full-site Twig-include rule until handoff.
+
+## Quality bar
+
+- Real inlined `<header>` / `<footer>` from `content.json` are present — no Twig chrome includes.
+- Hero section reproduces the headline, subheadline, primary CTA from `content.json`.
+- All sections in the screenshots have a corresponding `<section>` with a section comment.
+- Every image has a meaningful `alt` from `content.json` (or `alt=""` if decorative).
+- Tailwind classes use DESIGN.md tokens (e.g. `bg-brand` not `bg-teal-600`) where DESIGN.md defines them.
+- Mobile layout matches `fullpage-mobile.png` / `sections-mobile/` at 390; desktop matches 1440 refs.
+- No CDN scripts for libraries listed in `libs.json`.
+- At most one `<style data-wpcanai-css-escape>` block; empty or omitted when unused.
+- Output is well-formed and validates as HTML5.
+- The file opens cleanly in a browser via `file://` and is recognizable as the same page at both viewports.

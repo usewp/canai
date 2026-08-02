@@ -1008,3 +1008,159 @@ test("prepareTransformBundles: --only chrome with no representative capture avai
     await cleanup();
   }
 });
+
+// ---------------------------------------------------------------------------
+// Page-mode: static fidelity draft (transform-page.md) — no Twig chrome,
+// no type/archive bundles. Visual refs are dual full-page + section dirs.
+// ---------------------------------------------------------------------------
+
+/** Stage a page-mode capture tree (fullpage + sections dirs + content.json). */
+async function stagePageModeCapture(runDir, slug, content = {}) {
+  const dir = path.join(runDir, "captures", slug);
+  await mkdir(path.join(dir, "sections-desktop"), { recursive: true });
+  await mkdir(path.join(dir, "sections-mobile"), { recursive: true });
+  await mkdir(path.join(dir, "sections"), { recursive: true });
+  await writeFile(path.join(dir, "content.json"), JSON.stringify(content, null, 2));
+  await writeFile(path.join(dir, "fullpage-desktop.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+  await writeFile(path.join(dir, "fullpage-mobile.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+  await writeFile(path.join(dir, "libs.json"), JSON.stringify({ libraries: [] }, null, 2));
+}
+
+test("prepareTransformBundles: pageMode true → one page bundle, chrome null, prompt from transform-page cites fullpage-desktop", async () => {
+  const { runDir, cleanup } = await mkRun("page-mode-basic", {
+    "DESIGN.md": "# DESIGN.md",
+    "pages.json": pagesJson(["https://x.com/about"]),
+  });
+  try {
+    await stagePageModeCapture(runDir, "about", {
+      title: "About",
+      header: { links: [{ text: "Home", href: "/" }] },
+      footer: { links: [] },
+    });
+
+    const r = await prepareTransformBundles({
+      site: "page-mode-basic",
+      runsDir: path.join(runDir, ".."),
+      pageMode: true,
+    });
+
+    assert.equal(r.count, 1);
+    assert.equal(r.chrome, null, "page-mode must not produce a site chrome bundle");
+    assert.equal(r.bundles[0].kind, "page");
+    assert.equal(r.bundles[0].slug, "about");
+    assert.equal(r.bundles[0].outputPath, path.resolve(runDir, "output", "pages", "about.html"));
+
+    const prompt = await readFile(r.bundles[0].promptPath, "utf8");
+    assert.match(prompt, /page-mode|static fidelity/i, "prompt must carry transform-page cues");
+    assert.ok(prompt.includes("fullpage-desktop"), "must cite fullpage-desktop.png");
+    assert.ok(prompt.includes("fullpage-mobile"), "must cite fullpage-mobile.png");
+    assert.ok(prompt.includes("sections-desktop"), "must cite sections-desktop/");
+    assert.ok(prompt.includes("sections-mobile"), "must cite sections-mobile/");
+    assert.ok(prompt.includes("libs.json"), "must cite libs.json");
+    assert.match(prompt, /data-wpcanai-css-escape/);
+    assert.match(prompt, /Inline.*<header>|inline <header>/i);
+    assert.ok(!prompt.includes("wpcanai_template('header')"), "page-mode must not instruct Twig header includes");
+    assert.ok(!prompt.includes("wpcanai_template('footer')"), "page-mode must not instruct Twig footer includes");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("prepareTransformBundles: pageMode skips type/archive bundles even when pagetypes.json has types", async () => {
+  const { runDir, cleanup } = await mkRun("page-mode-skip-types", {
+    "DESIGN.md": "# DESIGN.md",
+    "CONTENT-MODEL.md": "# CONTENT-MODEL.md",
+    "pagetypes.json": pagetypes(
+      [
+        type({
+          members: ["https://x.com/work/a", "https://x.com/work/b", "https://x.com/work/c", "https://x.com/work/d"],
+          samples: ["https://x.com/work/a"],
+          archiveUrl: "https://x.com/work",
+        }),
+      ],
+      ["https://x.com/about"],
+    ),
+  });
+  try {
+    await stagePageModeCapture(runDir, "about", { title: "About" });
+    await stageCapture(runDir, "work__a", { title: "A" });
+    await stageCapture(runDir, "work", { title: "Archive" });
+
+    const r = await prepareTransformBundles({
+      site: "page-mode-skip-types",
+      runsDir: path.join(runDir, ".."),
+      pageMode: true,
+      only: "about",
+    });
+
+    assert.equal(r.count, 1);
+    assert.equal(r.bundles[0].slug, "about");
+    assert.equal(r.chrome, null);
+    assert.ok(!r.bundles.some((b) => b.kind === "template"), "page-mode must skip type/archive bundles");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("prepareTransformBundles: pageMode with --only selects that slug's capture", async () => {
+  const { runDir, cleanup } = await mkRun("page-mode-only", {
+    "DESIGN.md": "# DESIGN.md",
+    "pages.json": pagesJson(["https://x.com/", "https://x.com/about"]),
+  });
+  try {
+    await stagePageModeCapture(runDir, "index", { title: "Home" });
+    await stagePageModeCapture(runDir, "about", { title: "About" });
+
+    const r = await prepareTransformBundles({
+      site: "page-mode-only",
+      runsDir: path.join(runDir, ".."),
+      pageMode: true,
+      only: "about",
+    });
+
+    assert.equal(r.count, 1);
+    assert.equal(r.bundles[0].slug, "about");
+    assert.equal(r.chrome, null);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("prepareTransformBundles: pageMode still requires DESIGN.md (existing check)", async () => {
+  const { runDir, cleanup } = await mkRun("page-mode-no-design", {
+    "pages.json": pagesJson(["https://x.com/about"]),
+  });
+  try {
+    await stagePageModeCapture(runDir, "about", { title: "About" });
+    await assert.rejects(
+      prepareTransformBundles({
+        site: "page-mode-no-design",
+        runsDir: path.join(runDir, ".."),
+        pageMode: true,
+      }),
+      /DESIGN\.md not found/,
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("prepareTransformBundles: pageMode with no matching capture throws", async () => {
+  const { runDir, cleanup } = await mkRun("page-mode-no-capture", {
+    "DESIGN.md": "# DESIGN.md",
+    "pages.json": pagesJson(["https://x.com/about"]),
+  });
+  try {
+    await assert.rejects(
+      prepareTransformBundles({
+        site: "page-mode-no-capture",
+        runsDir: path.join(runDir, ".."),
+        pageMode: true,
+        only: "about",
+      }),
+      /no pages or types match --only about|no capture/,
+    );
+  } finally {
+    await cleanup();
+  }
+});
