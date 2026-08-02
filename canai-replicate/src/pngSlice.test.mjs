@@ -28,6 +28,55 @@ test("clampBox clips overflowing box to image", () => {
   });
 });
 
+test("clampBox clamps negative left/top and shrinks width/height", () => {
+  assert.deepEqual(clampBox({ left: -10, top: 0, width: 30, height: 20 }, 100, 100), {
+    left: 0,
+    top: 0,
+    width: 20,
+    height: 20,
+  });
+  assert.deepEqual(clampBox({ left: 0, top: -5, width: 10, height: 25 }, 100, 100), {
+    left: 0,
+    top: 0,
+    width: 10,
+    height: 20,
+  });
+  assert.deepEqual(clampBox({ left: -4, top: -6, width: 20, height: 30 }, 100, 100), {
+    left: 0,
+    top: 0,
+    width: 16,
+    height: 24,
+  });
+});
+
+test("clampBox rejects boxes that collapse entirely after negative-origin clamp", () => {
+  assert.equal(clampBox({ left: -20, top: 0, width: 10, height: 10 }, 100, 100), null);
+  assert.equal(clampBox({ left: 0, top: -50, width: 10, height: 20 }, 100, 100), null);
+});
+
+test("slicePng with negative origin crops the in-bounds remainder (no off-buffer read)", () => {
+  // 4x4 left-half red / right-half blue — crop starting at left=-1 should
+  // begin at x=0 (red), not walk negative indices.
+  const pixels = new Uint8Array(4 * 4 * 4);
+  for (let y = 0; y < 4; y++) {
+    for (let x = 0; x < 4; x++) {
+      const i = (y * 4 + x) * 4;
+      if (x < 2) {
+        pixels[i] = 255;
+        pixels[i + 3] = 255;
+      } else {
+        pixels[i + 2] = 255;
+        pixels[i + 3] = 255;
+      }
+    }
+  }
+  const png = encodePngRgba(4, 4, pixels);
+  const crop = decodePng(slicePng(png, { left: -1, top: 0, width: 3, height: 2 }));
+  assert.equal(crop.width, 2);
+  assert.equal(crop.height, 2);
+  assert.deepEqual([...crop.pixels.slice(0, 4)], [255, 0, 0, 255]);
+});
+
 test("slicePng crops the requested rectangle", () => {
   // 4x4: left half red, right half blue
   const pixels = new Uint8Array(4 * 4 * 4);

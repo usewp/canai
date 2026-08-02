@@ -26,6 +26,7 @@ import {
   summarizeCountOutcome,
   classifyProducedNothing,
   transformProducedNothing,
+  resolveCapturePageUrl,
 } from "../bin/replica";
 
 // --- summarizeCountOutcome (capture, verify, discover) ---------------------
@@ -105,4 +106,25 @@ test("transformProducedNothing: 0 page/type bundles is fine when chrome (header/
 test("transformProducedNothing: any nonzero bundle count is never a failure, chrome or not", () => {
   assert.equal(transformProducedNothing(1, false), false);
   assert.equal(transformProducedNothing(5, true), false);
+});
+
+// --- resolveCapturePageUrl --------------------------------------------------
+
+test("resolveCapturePageUrl: absent / null → null (full-site capture)", () => {
+  assert.equal(resolveCapturePageUrl(undefined), null);
+  assert.equal(resolveCapturePageUrl(null), null);
+});
+
+test("resolveCapturePageUrl: URL string → trimmed URL", () => {
+  assert.equal(resolveCapturePageUrl("https://example.com/pricing/"), "https://example.com/pricing/");
+  assert.equal(resolveCapturePageUrl("  https://example.com/a  "), "https://example.com/a");
+});
+
+test("resolveCapturePageUrl: bare --page (boolean true) fails loud", () => {
+  assert.throws(() => resolveCapturePageUrl(true), /--page requires a URL|usage: capture/);
+});
+
+test("resolveCapturePageUrl: empty string fails loud", () => {
+  assert.throws(() => resolveCapturePageUrl(""), /--page requires a URL|usage: capture/);
+  assert.throws(() => resolveCapturePageUrl("   "), /--page requires a URL|usage: capture/);
 });

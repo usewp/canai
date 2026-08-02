@@ -33,7 +33,18 @@ export function encodePngRgba(width, height, pixels) {
 }
 
 export function clampBox(box, imgW, imgH) {
-  const { left, top, width, height } = box;
+  let { left, top, width, height } = box;
+  if (width <= 0 || height <= 0) return null;
+  // Negative origins read off-buffer in slicePng — shift the box into the
+  // image and shrink width/height by the overhang.
+  if (left < 0) {
+    width += left;
+    left = 0;
+  }
+  if (top < 0) {
+    height += top;
+    top = 0;
+  }
   if (width <= 0 || height <= 0) return null;
   if (left >= imgW || top >= imgH) return null;
   const right = Math.min(left + width, imgW);

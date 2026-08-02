@@ -42,7 +42,44 @@ export function buildViewportsJson({ desktop, mobile }) {
   };
 }
 
-/** Fail loud on empty / zero-size / fully-transparent full-page PNGs. */
+/** Max RGB channel range (0–255) still treated as a near-uniform blank frame. */
+export const BLANK_NEAR_UNIFORM_RANGE = 12;
+
+/**
+ * True when opaque pixels are all nearly the same color (solid white, solid
+ * gray, failed screenshot fill, etc.). Transparent-only frames are blank too.
+ * Exported for unit tests.
+ */
+export function isBlankFullPagePixels(pixels) {
+  let opaque = 0;
+  let minR = 255;
+  let minG = 255;
+  let minB = 255;
+  let maxR = 0;
+  let maxG = 0;
+  let maxB = 0;
+  for (let i = 0; i < pixels.length; i += 4) {
+    if (pixels[i + 3] === 0) continue;
+    opaque++;
+    const r = pixels[i];
+    const g = pixels[i + 1];
+    const b = pixels[i + 2];
+    if (r < minR) minR = r;
+    if (g < minG) minG = g;
+    if (b < minB) minB = b;
+    if (r > maxR) maxR = r;
+    if (g > maxG) maxG = g;
+    if (b > maxB) maxB = b;
+  }
+  if (opaque === 0) return true;
+  return (
+    maxR - minR <= BLANK_NEAR_UNIFORM_RANGE &&
+    maxG - minG <= BLANK_NEAR_UNIFORM_RANGE &&
+    maxB - minB <= BLANK_NEAR_UNIFORM_RANGE
+  );
+}
+
+/** Fail loud on empty / zero-size / transparent / near-uniform full-page PNGs. */
 export function assertFullPagePng(pngBuf, label = "full-page") {
   if (!pngBuf || pngBuf.length === 0) {
     throw new Error(`${label}: empty full-page PNG buffer`);
@@ -58,10 +95,35 @@ export function assertFullPagePng(pngBuf, label = "full-page") {
   if (!(width > 0) || !(height > 0)) {
     throw new Error(`${label}: zero-size full-page (${width}x${height})`);
   }
-  for (let i = 3; i < pixels.length; i += 4) {
-    if (pixels[i] > 0) return;
+  if (!isBlankFullPagePixels(pixels)) return;
+  throw new Error(`${label}: blank full-page (transparent or near-uniform)`);
+}
+
+/**
+ * Ensure runs/<site>/pages.json lists this URL so designmd/transform can run
+ * without a prior discover. Merges into an existing worklist when present.
+ */
+export async function seedPageModeWorklist(runDir, { site, url }) {
+  await mkdir(runDir, { recursive: true });
+  const outPath = path.join(runDir, "pages.json");
+  let existing = null;
+  try {
+    existing = JSON.parse(await readFile(outPath, "utf8"));
+  } catch {
+    // First page-mode capture — no discover yet.
   }
-  throw new Error(`${label}: blank full-page (fully transparent)`);
+  const pages = Array.isArray(existing?.pages) ? [...existing.pages] : [];
+  if (!pages.some((p) => p && p.url === url)) {
+    pages.push({ url, source: "page-mode" });
+  }
+  const payload = {
+    site: existing?.site || site,
+    source: existing?.source || "page-mode",
+    sitemap: existing?.sitemap ?? null,
+    pages,
+  };
+  await writeFile(outPath, JSON.stringify(payload, null, 2));
+  return outPath;
 }
 
 function sectionJsonEntry(section, dirPrefix) {
@@ -375,6 +437,8 @@ export async function capturePageMode({
   const runDir = path.join(runsDir, resolvedSite);
   const captureDir = path.join(runDir, "captures", slug);
   await mkdir(captureDir, { recursive: true });
+  // Seed a minimal pages.json so designmd/transform work without discover.
+  await seedPageModeWorklist(runDir, { site: resolvedSite, url });
 
   const deps = {
     ab: defaultAb,

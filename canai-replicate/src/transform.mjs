@@ -416,6 +416,15 @@ export async function prepareTransformBundles({ site, runsDir = "runs", only = n
       process.stderr.write(`  ! skipping ${slug}: no capture\n`);
       continue;
     }
+    if (pageMode) {
+      const desktopFull = path.join(captureDir, "fullpage-desktop.png");
+      const mobileFull = path.join(captureDir, "fullpage-mobile.png");
+      if (!(await exists(desktopFull)) || !(await exists(mobileFull))) {
+        throw new Error(
+          `page-mode: ${slug} is missing fullpage-desktop.png and/or fullpage-mobile.png under ${captureDir} — re-run capture --page <url>`,
+        );
+      }
+    }
     const bundleDir = path.resolve(runDir, ".transform", slug);
     await mkdir(bundleDir, { recursive: true });
     const outputPath = path.resolve(pagesOutDir, slug + ".html");

@@ -73,6 +73,16 @@ export function transformProducedNothing(count, hasChrome) {
   return count === 0 && !hasChrome;
 }
 
+/**
+ * Resolve capture `--page`. Absent → null (full-site). A bare `--page` with
+ * no URL string must fail loud — never silently fall into full-site capture.
+ */
+export function resolveCapturePageUrl(pageArg) {
+  if (pageArg === undefined || pageArg === null || pageArg === false) return null;
+  if (typeof pageArg === "string" && pageArg.trim()) return pageArg.trim();
+  throw new Error("usage: capture <site> --page <url>  (--page requires a URL)");
+}
+
 const HELP = `replica — migrate any website to semantic single-HTML files
 
 USAGE
@@ -156,7 +166,7 @@ async function main() {
     case "capture": {
       const site = args._[0];
       if (!site) throw new Error("usage: capture <site> [--page <url>]");
-      const pageUrl = typeof args.page === "string" ? args.page : null;
+      const pageUrl = resolveCapturePageUrl(args.page);
       const ab = resolveAgentBrowser();
       if (ab.via === "npx") stderr.write(`ℹ using \`npx -y agent-browser\` (no global install found)\n`);
       const r = await capture({ site, runsDir, cdp, session, only, pageUrl });

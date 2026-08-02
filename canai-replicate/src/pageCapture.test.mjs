@@ -9,6 +9,8 @@ import {
   buildViewportsJson,
   writePageModeArtifacts,
   assertFullPagePng,
+  isBlankFullPagePixels,
+  seedPageModeWorklist,
   capturePageMode,
 } from "./pageCapture.mjs";
 import { capture } from "./capture.mjs";
@@ -20,6 +22,22 @@ function solid(w, h, [r, g, b, a = 255]) {
     pixels[i * 4 + 1] = g;
     pixels[i * 4 + 2] = b;
     pixels[i * 4 + 3] = a;
+  }
+  return encodePngRgba(w, h, pixels);
+}
+
+/** Non-uniform frame — passes assertFullPagePng (checkerboard). */
+function varied(w, h) {
+  const pixels = new Uint8Array(w * h * 4);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      const on = (x + y) % 2 === 0;
+      pixels[i] = on ? 220 : 30;
+      pixels[i + 1] = on ? 40 : 180;
+      pixels[i + 2] = on ? 40 : 220;
+      pixels[i + 3] = 255;
+    }
   }
   return encodePngRgba(w, h, pixels);
 }
@@ -58,8 +76,8 @@ test("writePageModeArtifacts writes dual-width tree; sections.json uses sections
   const root = await mkdtemp(path.join(tmpdir(), "page-capture-"));
   const captureDir = path.join(root, "captures", "about");
   try {
-    const desktopPng = solid(8, 8, [200, 10, 10, 255]);
-    const mobilePng = solid(4, 6, [10, 10, 200, 255]);
+    const desktopPng = varied(8, 8);
+    const mobilePng = varied(4, 6);
     const desktopSections = [
       {
         id: "hero",
@@ -152,8 +170,8 @@ test("writePageModeArtifacts fails loud when all slices fail", async () => {
     await assert.rejects(
       () =>
         writePageModeArtifacts(captureDir, {
-          fullpageDesktopPng: solid(4, 4, [1, 2, 3, 255]),
-          fullpageMobilePng: solid(4, 4, [1, 2, 3, 255]),
+          fullpageDesktopPng: varied(4, 4),
+          fullpageMobilePng: varied(4, 4),
           desktopSections: [
             {
               id: "bad",
@@ -189,7 +207,77 @@ test("assertFullPagePng rejects zero-height / blank buffers", () => {
   assert.throws(() => assertFullPagePng(Buffer.alloc(0), "desktop"), /blank|empty|zero/i);
   const transparent = encodePngRgba(2, 2, new Uint8Array(2 * 2 * 4));
   assert.throws(() => assertFullPagePng(transparent, "mobile"), /blank/i);
-  assert.doesNotThrow(() => assertFullPagePng(solid(2, 2, [10, 20, 30, 255]), "desktop"));
+  assert.throws(() => assertFullPagePng(solid(2, 2, [255, 255, 255, 255]), "desktop"), /blank|near-uniform/i);
+  assert.throws(() => assertFullPagePng(solid(3, 3, [10, 20, 30, 255]), "desktop"), /blank|near-uniform/i);
+  assert.doesNotThrow(() => assertFullPagePng(varied(4, 4), "desktop"));
+});
+
+test("isBlankFullPagePixels: solid white / near-uniform vs real content", () => {
+  const white = new Uint8Array(4 * 4 * 4);
+  for (let i = 0; i < 4 * 4; i++) {
+    white[i * 4] = 255;
+    white[i * 4 + 1] = 255;
+    white[i * 4 + 2] = 255;
+    white[i * 4 + 3] = 255;
+  }
+  assert.equal(isBlankFullPagePixels(white), true);
+  assert.equal(isBlankFullPagePixels(new Uint8Array(4 * 4 * 4)), true, "all transparent");
+
+  const content = new Uint8Array(4 * 4 * 4);
+  for (let i = 0; i < 4 * 4; i++) {
+    content[i * 4] = i % 2 === 0 ? 10 : 200;
+    content[i * 4 + 1] = i % 2 === 0 ? 20 : 40;
+    content[i * 4 + 2] = i % 2 === 0 ? 30 : 220;
+    content[i * 4 + 3] = 255;
+  }
+  assert.equal(isBlankFullPagePixels(content), false);
+});
+
+test("seedPageModeWorklist writes pages.json shape designmd/transform read", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "page-seed-"));
+  const runDir = path.join(root, "example.com");
+  try {
+    const out = await seedPageModeWorklist(runDir, {
+      site: "example.com",
+      url: "https://example.com/pricing/",
+    });
+    assert.equal(out, path.join(runDir, "pages.json"));
+    const json = JSON.parse(await readFile(out, "utf8"));
+    assert.equal(json.site, "example.com");
+    assert.equal(json.source, "page-mode");
+    assert.deepEqual(json.pages, [{ url: "https://example.com/pricing/", source: "page-mode" }]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("seedPageModeWorklist merges URL into existing pages.json without wiping", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "page-seed-merge-"));
+  const runDir = path.join(root, "example.com");
+  try {
+    const { mkdir, writeFile } = await import("node:fs/promises");
+    await mkdir(runDir, { recursive: true });
+    await writeFile(
+      path.join(runDir, "pages.json"),
+      JSON.stringify({
+        site: "example.com",
+        source: "sitemap",
+        sitemap: "https://example.com/sitemap.xml",
+        pages: [{ url: "https://example.com/", source: "sitemap" }],
+      }),
+    );
+    await seedPageModeWorklist(runDir, {
+      site: "example.com",
+      url: "https://example.com/pricing/",
+    });
+    const json = JSON.parse(await readFile(path.join(runDir, "pages.json"), "utf8"));
+    assert.equal(json.source, "sitemap");
+    assert.equal(json.pages.length, 2);
+    assert.equal(json.pages[0].url, "https://example.com/");
+    assert.equal(json.pages[1].url, "https://example.com/pricing/");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test(
@@ -197,8 +285,8 @@ test(
   withSilencedStderr(async () => {
     const root = await mkdtemp(path.join(tmpdir(), "page-capture-orch-"));
     try {
-      const desktopPng = solid(8, 10, [220, 30, 30, 255]);
-      const mobilePng = solid(4, 8, [30, 30, 220, 255]);
+      const desktopPng = varied(8, 10);
+      const mobilePng = varied(4, 8);
       const desktopSectionsMeta = [
         {
           id: "hero",
@@ -297,6 +385,15 @@ test(
       await access(path.join(captureDir, "libs.json"));
       const libs = JSON.parse(await readFile(path.join(captureDir, "libs.json"), "utf8"));
       assert.ok(libs.libraries.some((l) => l.name === "swiper"));
+
+      // Page-mode capture seeds pages.json so designmd/transform need no discover.
+      const pagesJson = JSON.parse(
+        await readFile(path.join(root, "runs", "example.com", "pages.json"), "utf8"),
+      );
+      assert.equal(pagesJson.site, "example.com");
+      assert.deepEqual(pagesJson.pages, [
+        { url: "https://example.com/about/", source: "page-mode" },
+      ]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

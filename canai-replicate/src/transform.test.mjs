@@ -1164,3 +1164,25 @@ test("prepareTransformBundles: pageMode with no matching capture throws", async 
     await cleanup();
   }
 });
+
+test("prepareTransformBundles: pageMode fails loud when fullpage PNGs are missing", async () => {
+  const { runDir, cleanup } = await mkRun("page-mode-no-fullpage", {
+    "DESIGN.md": "# DESIGN.md",
+    "pages.json": pagesJson(["https://x.com/about"]),
+  });
+  try {
+    // content.json alone is enough for full-site page bundles, but page-mode
+    // needs the dual full-page artifacts from capture --page.
+    await stageCapture(runDir, "about", { title: "About" });
+    await assert.rejects(
+      prepareTransformBundles({
+        site: "page-mode-no-fullpage",
+        runsDir: path.join(runDir, ".."),
+        pageMode: true,
+      }),
+      /fullpage-desktop\.png|fullpage-mobile\.png|re-run capture --page/,
+    );
+  } finally {
+    await cleanup();
+  }
+});

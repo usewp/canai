@@ -218,7 +218,12 @@ scores against the dual full-page captures. Defaults: **mismatch < 15%**,
 **height Δ < 10%**, both viewports must pass, **max 3 attempts**
 (`--max-mismatch` / `--max-height-delta` / `--max-attempts` override). Status
 `pass` → ready for handoff; `in-progress` → fix + re-transform + re-verify;
-`fail` after max attempts → stop.
+`fail` after max attempts → stop. Per-section ranking / section-level
+mismatch guidance in `verify-page` is **v1 deferred** — the gate is dual
+full-page only.
+
+**Worklist.** `capture --page <url>` seeds a minimal `pages.json` (merge-safe)
+so `designmd` / `transform --page-mode` work without a prior `discover`.
 
 **Two-pass.** Pass 1 is a **static** draft (`--page-mode`): header/footer
 inlined so `file://` verify works with no Twig. Pass 2 is **handoff-page**:
