@@ -1,4 +1,17 @@
+import { readFile, writeFile, access } from "node:fs/promises";
+import path from "node:path";
 import { assertCanHandoff } from "./pageGate.mjs";
+import { onlyToSlug } from "./slug.mjs";
+import { preparePushArtifacts } from "./pushprep.mjs";
+
+async function exists(p) {
+  try {
+    await access(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Find a balanced open/close pair for `tag` (e.g. "header").
@@ -84,4 +97,79 @@ export function swapInlineChromeToTwig(html) {
 export function handoffPageHtml({ html, report }) {
   assertCanHandoff(report);
   return swapInlineChromeToTwig(html);
+}
+
+/**
+ * Full handoff-page stage: assert verify pass, require chrome partials,
+ * backup static draft, swap chrome to Twig in place, then pushprep.
+ *
+ * Chrome policy (v1): if header.html/footer.html are missing, throw and tell
+ * the agent to run `replica transform <site> --only chrome` first — do not
+ * mechanically wrap captured header/footer here.
+ *
+ * @param {{ site: string, runsDir?: string, only: string }} opts
+ */
+export async function runHandoffPage({ site, runsDir = "runs", only } = {}) {
+  if (!site) throw new Error("handoff-page: site is required");
+  if (!only) throw new Error("handoff-page: --only <slug> is required");
+
+  const slug = onlyToSlug(only);
+  const runDir = path.join(runsDir, site);
+  const reportPath = path.join(runDir, "verify", "page-report.json");
+  const htmlPath = path.join(runDir, "output", "pages", `${slug}.html`);
+  const backupPath = path.join(runDir, "output", "pages", `${slug}.page-mode.static.html`);
+  const headerPath = path.join(runDir, "output", "templates", "header.html");
+  const footerPath = path.join(runDir, "output", "templates", "footer.html");
+
+  let report;
+  try {
+    report = JSON.parse(await readFile(reportPath, "utf8"));
+  } catch {
+    throw new Error(`handoff-page: missing verify/page-report.json at ${reportPath}`);
+  }
+  assertCanHandoff(report);
+
+  if (!(await exists(htmlPath))) {
+    throw new Error(`handoff-page: missing output/pages/${slug}.html`);
+  }
+
+  // Prefer: require agent-authored chrome via transform --only chrome.
+  if (!(await exists(headerPath)) || !(await exists(footerPath))) {
+    throw new Error(
+      `handoff-page: output/templates/header.html or footer.html missing — ` +
+        `run \`replica transform ${site} --only chrome\` first ` +
+        `(use a representative page capture), then re-run handoff-page`,
+    );
+  }
+
+  const html = await readFile(htmlPath, "utf8");
+  await writeFile(backupPath, html);
+  const swapped = handoffPageHtml({ html, report });
+  await writeFile(htmlPath, swapped);
+
+  const pagePush = await preparePushArtifacts({ site, runsDir, only: slug });
+  const headerPush = await preparePushArtifacts({ site, runsDir, only: "header" });
+  const footerPush = await preparePushArtifacts({ site, runsDir, only: "footer" });
+
+  const ok =
+    (pagePush.ok ?? 0) + (headerPush.ok ?? 0) + (footerPush.ok ?? 0);
+  const count =
+    (pagePush.count ?? 0) + (headerPush.count ?? 0) + (footerPush.count ?? 0);
+  const failures = [
+    ...(pagePush.failures || []),
+    ...(headerPush.failures || []),
+    ...(footerPush.failures || []),
+  ];
+
+  return {
+    site,
+    slug,
+    backupPath,
+    htmlPath,
+    count,
+    ok,
+    failures,
+    outDir: pagePush.outDir,
+    push: { page: pagePush, header: headerPush, footer: footerPush },
+  };
 }

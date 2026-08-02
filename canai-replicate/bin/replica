@@ -9,7 +9,10 @@ import { prepareContentModelBundle } from "../src/contentmodel.mjs";
 import { prepareTransformBundles } from "../src/transform.mjs";
 import { preparePushArtifacts } from "../src/pushprep.mjs";
 import { verify } from "../src/verify.mjs";
+import { verifyPage } from "../src/verifyPage.mjs";
+import { runHandoffPage } from "../src/handoffPage.mjs";
 import { resolveAgentBrowser } from "../src/agentBrowser.mjs";
+import { DEFAULT_PAGE_GATE } from "../src/pageGate.mjs";
 
 function parseArgs(rest) {
   const out = { _: [] };
@@ -84,21 +87,32 @@ COMMANDS
   transform <site>           Prepare per-page/per-type bundles + prompts; agent writes runs/<site>/output/pages/<slug>.html or output/templates/<type>-single.html
   pushprep  <site>           Convert output/pages + output/templates into push-ready runs/<site>/output/push/<slug>.json (strips the doctype/head/body shell + preview-libs). NEVER push a raw output/pages|templates/*.html file into _canai_html — push the output/push/ artifact instead.
   verify    <site>           Screenshot outputs, score static pages vs originals, write report.md
+  verify-page <site>         Page-mode dual full-page hard gate (requires --only <slug>)
+  handoff-page <site>        After page-report pass: swap inline chrome→Twig, pushprep (requires --only <slug>)
 
 FLAGS
   --runs <dir>               Output root (default: runs)
   --cdp <port>               Chrome DevTools port (default: 9223)
   --session <name>           agent-browser session name (default: personal)
   --only <path|slug|type>    Restrict to one page (URL pathname or slug) or one page type (type name)
+  --page <url>               (capture) Page-mode: capture one URL at dual widths (1440/390)
+  --page-mode                (transform) Page-mode static fidelity draft (inline chrome, transform-page.md)
+  --max-mismatch <n>         (verify-page) Max mismatch % before fail (default: ${DEFAULT_PAGE_GATE.maxMismatchPct})
+  --max-height-delta <n>     (verify-page) Max height delta % before fail (default: ${DEFAULT_PAGE_GATE.maxHeightDeltaPct})
+  --max-attempts <n>         (verify-page) Attempts before hard fail (default: ${DEFAULT_PAGE_GATE.maxAttempts})
 
 EXAMPLES
   replica discover  https://g100.my/
   replica capture   g100.my
+  replica capture   g100.my --page https://g100.my/pricing/
   replica designmd  g100.my
   replica contentmodel g100.my
   replica transform g100.my --only /
+  replica transform g100.my --page-mode --only pricing
   replica pushprep  g100.my
   replica verify    g100.my
+  replica verify-page g100.my --only pricing
+  replica handoff-page g100.my --only pricing
 `;
 
 async function main() {
@@ -141,12 +155,14 @@ async function main() {
     }
     case "capture": {
       const site = args._[0];
-      if (!site) throw new Error("usage: capture <site>");
+      if (!site) throw new Error("usage: capture <site> [--page <url>]");
+      const pageUrl = typeof args.page === "string" ? args.page : null;
       const ab = resolveAgentBrowser();
       if (ab.via === "npx") stderr.write(`ℹ using \`npx -y agent-browser\` (no global install found)\n`);
-      const r = await capture({ site, runsDir, cdp, session, only });
+      const r = await capture({ site, runsDir, cdp, session, only, pageUrl });
       const { mark, failedSuffix, isTotalFailure } = summarizeCountOutcome(r.ok, r.count);
-      stderr.write(`${mark} ${r.ok}/${r.count} pages captured${failedSuffix}\n`);
+      const pageNote = pageUrl ? " (page-mode)" : "";
+      stderr.write(`${mark} ${r.ok}/${r.count} pages captured${failedSuffix}${pageNote}\n`);
       if (isTotalFailure) {
         throw new Error(`capture produced 0/${r.count} successfully captured pages — see the per-page errors above`);
       }
@@ -176,8 +192,9 @@ async function main() {
     }
     case "transform": {
       const site = args._[0];
-      if (!site) throw new Error("usage: transform <site>");
-      const r = await prepareTransformBundles({ site, runsDir, only });
+      if (!site) throw new Error("usage: transform <site> [--page-mode] [--only <slug>]");
+      const pageMode = !!args["page-mode"];
+      const r = await prepareTransformBundles({ site, runsDir, only, pageMode });
       if (r.chrome) {
         stderr.write(
           `  chrome (site-wide header/footer, from ${r.chrome.sourceCapture})\n` +
@@ -186,14 +203,22 @@ async function main() {
         );
       }
       const transformNothing = transformProducedNothing(r.count, !!r.chrome);
-      stderr.write(`${transformNothing ? "✗" : "✓"} ${r.count} transform bundle(s) ready:\n`);
+      const modeNote = pageMode ? " (page-mode)" : "";
+      stderr.write(`${transformNothing ? "✗" : "✓"} ${r.count} transform bundle(s) ready${modeNote}:\n`);
       for (const b of r.bundles) {
         stderr.write(`  ${b.slug}\n    prompt: ${b.promptPath}\n    output: ${b.outputPath}\n`);
         if (b.archiveOutputPath) {
           stderr.write(`    archive output: ${b.archiveOutputPath}\n`);
         }
       }
-      stderr.write(`\nHand each PROMPT.md to a coding agent (claudecode/cursor/gemini) to produce the output HTML — chrome first, so header.html/footer.html exist before the others are authored against them.\n`);
+      if (pageMode) {
+        stderr.write(
+          `\nHand each PROMPT.md to a coding agent to produce the static fidelity draft (inline chrome). ` +
+            `After verify-page passes, run handoff-page (requires chrome via \`transform --only chrome\` first).\n`,
+        );
+      } else {
+        stderr.write(`\nHand each PROMPT.md to a coding agent (claudecode/cursor/gemini) to produce the output HTML — chrome first, so header.html/footer.html exist before the others are authored against them.\n`);
+      }
       if (transformNothing) {
         throw new Error(`transform produced 0 bundles for ${site} — nothing to hand to a coding agent`);
       }
@@ -236,6 +261,44 @@ async function main() {
       );
       if (isTotalFailure) {
         throw new Error(`verify produced 0/${r.count} successfully screenshotted pages — see ${r.reportPath} for detail`);
+      }
+      break;
+    }
+    case "verify-page": {
+      const site = args._[0];
+      if (!site || !only) throw new Error("usage: verify-page <site> --only <slug>");
+      const ab = resolveAgentBrowser();
+      if (ab.via === "npx") stderr.write(`ℹ using \`npx -y agent-browser\` (no global install found)\n`);
+      const thresholds = {};
+      if (args["max-mismatch"] != null) thresholds.maxMismatchPct = Number(args["max-mismatch"]);
+      if (args["max-height-delta"] != null) thresholds.maxHeightDeltaPct = Number(args["max-height-delta"]);
+      if (args["max-attempts"] != null) thresholds.maxAttempts = Number(args["max-attempts"]);
+      const r = await verifyPage({ site, runsDir, cdp, session, only, thresholds });
+      const mark = r.status === "pass" ? "✓" : r.status === "fail" ? "✗" : "…";
+      stderr.write(
+        `${mark} verify-page ${r.slug}: status=${r.status} (attempt ${r.attempts})` +
+          `${r.canHandoff ? " — ready for handoff-page" : ""}\n` +
+          `  report: ${runsDir}/${site}/verify/page-report.json\n`,
+      );
+      break;
+    }
+    case "handoff-page": {
+      const site = args._[0];
+      if (!site || !only) throw new Error("usage: handoff-page <site> --only <slug>");
+      const r = await runHandoffPage({ site, runsDir, only });
+      const { mark, failedSuffix, isTotalFailure } = summarizeCountOutcome(r.ok, r.count);
+      stderr.write(
+        `${mark} handoff-page ${r.slug}: chrome→Twig, backup ${r.backupPath}\n` +
+          `${mark} ${r.ok}/${r.count} push artifact(s)${failedSuffix} → ${r.outDir}\n`,
+      );
+      if (r.failures.length > 0) {
+        stderr.write(`\nFailed conversions:\n`);
+        for (const f of r.failures) {
+          stderr.write(`  ✗ ${f.file}\n    ${f.errors.join("\n    ")}\n`);
+        }
+      }
+      if (isTotalFailure) {
+        throw new Error(`handoff-page pushprep converted 0/${r.count} files for ${site}`);
       }
       break;
     }
