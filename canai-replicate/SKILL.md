@@ -30,7 +30,7 @@ description: >
   "convert this site to wordpress", "replicate this page", "page mode".
 metadata:
   author: canai
-  version: "3.3.1"
+  version: "3.3.2"
 allowed-tools: Bash Read Write Edit Grep Glob
 ---
 
@@ -238,6 +238,11 @@ inline chrome → `{{ wpcanai_template('header') }}` /
 in utilities, put minimal CSS in a single
 `<style data-wpcanai-css-escape>` block — pushprep routes `<style>` → `css` /
 `_canai_css`. No layout rewrite in CSS; no third-party CDN CSS.
+
+**Authoring.** `prompts/transform-page.md` requires **section-by-section**
+work: open each slice PNG + that entry’s `content.json` fields; match layout
+geometry (stacked vs grid, CTA placement); never invent headings/CTAs/sections
+or drop `main` entries (height gate). Retries must follow `sectionNotes`.
 
 **`libs.json` is advisory only.** Detected libraries hint which Alpine recipe
 to pick when UX is ambiguous. Never CDN-include or `<script>`-tag anything

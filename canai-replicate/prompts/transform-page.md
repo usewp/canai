@@ -2,6 +2,8 @@
 
 You are converting one captured web page into a **single self-contained HTML file** for **page-mode** fidelity verify. The result is a static draft that opens under `file://` without WordPress — header and footer are inlined. After verify passes, handoff swaps chrome to Twig includes.
 
+Your job is **replication**, not redesign. Pixel gate scoring fails when you invent layout, CTAs, headings, or sections that are not in the capture.
+
 ## What you must do
 
 1. Read the **full-page screenshots** first — `fullpage-desktop.png` (width 1440) and `fullpage-mobile.png` (width 390). These are the primary visual truth. Then study per-block detail in **`sections-desktop/`** and **`sections-mobile/`** (compat alias **`sections/`** = desktop). Section indexes: `sections-desktop.json`, `sections-mobile.json`, and compat `sections.json`.
@@ -15,20 +17,45 @@ You are converting one captured web page into a **single self-contained HTML fil
 6. Read **libs.json** — third-party library hints from capture. Use it only to choose the right Alpine recipe when UX patterns are ambiguous. **Never CDN-include or script-tag any library listed in libs.json.** Stack is Tailwind + Alpine recipes + Lucide only.
 7. Write **one HTML file** matching the page-mode skeleton (below) to the output path specified at the end of this prompt. One `<section>` per entry in `content.json:main` — preserving order. **Inline** real `<header>` and `<footer>` markup from `content.json:header` / `content.json:footer` (no Twig).
 
+## Section-by-section authoring (required)
+
+Author **one section at a time**. Do not draft the whole page from memory of a “typical landing page.”
+
+For **each** entry in `content.json:main` (and for header/footer):
+
+1. Open the matching slice PNG (`sections-desktop/NN-<id>.png` and `sections-mobile/NN-<id>.png`). If the file is missing, still render from `content.json` only — do not invent a replacement block.
+2. Read that entry’s fields only: `headings`, `paragraphs`, `links`, `buttons`, `images`, lists, tables, etc.
+3. Match **layout geometry** to the section PNG before picking Tailwind classes:
+   - stacked / centered vs 2-column vs multi-column grid
+   - image left/right/full-bleed vs text-only
+   - CTA placement (under headline, beside form, in a bar, etc.)
+   - Approximate vertical rhythm (padding / gap) so the section is not crushed or oversized vs the slice
+4. Emit exactly one `<section>` (or the header/footer landmark) whose visible copy is a subset of that entry’s content.json fields — never a superset.
+
+**Forbidden inventions (common failure modes):**
+
+- Do **not** invent section titles, eyebrow labels, slogans, or headings that are not in that entry’s `headings` (and related text fields).
+- Do **not** invent or swap CTA / button labels. Use `buttons` and `links` text **verbatim** and in the order they appear for that section. If the PNG shows one primary CTA, it must be the same label as in `content.json` for that band — never substitute a nav item or another section’s button (e.g. do not put “About” in the hero when content.json’s hero button is something else).
+- Do **not** add sections, stats bands, testimonial cards, or media blocks that have no matching `content.json:main` entry.
+- Do **not** drop or merge `content.json:main` entries to “simplify” the page — missing blocks shrink full-page height and fail the height gate.
+- Do **not** invent carousel/slider slide people, quotes, or labels. Every slide’s text and images must come from that section’s content.json fields (or the Alpine recipe’s content slots filled from those fields only).
+- Do **not** prefer a fashionable layout (e.g. hero 2-col `grid lg:grid-cols-2`) when the section PNG is clearly stacked/centered (or vice versa). Screenshot geometry wins over landing-page priors.
+- Do **not** paraphrase, translate, or “improve” marketing copy.
+
 ## Strict rules
 
 - **Inline `<header>` / `<footer>` from `content.json` (no Twig).** Page-mode drafts must open under `file://` for local verify. Write a real `<header>…</header>` and `<footer>…</footer>` from the captured chrome content. Do **not** emit Twig `wpcanai_template` includes — handoff will swap them later.
 - **Tailwind + Alpine recipes + Lucide only; never CDN-include `libs.json` libraries.** No Swiper, jQuery, GSAP, Bootstrap, or any other third-party script/CSS from the source page's library inventory. Interactive patterns come exclusively from `alpine-recipes.md`. Icons via Lucide (`data-lucide` + `lucide.createIcons()`).
 - **Custom CSS only in a single `<style data-wpcanai-css-escape>` block.** Prefer Tailwind utilities. When an effect cannot be expressed in utilities (keyframes, sticky edge cases, rare selectors), put minimal CSS in one `<style data-wpcanai-css-escape>` block — pushprep already routes `<style>` → `css` / `_canai_css`. No layout rewrite in CSS. No third-party CDN CSS. Parallel rule: tiny Alpine-adjacent helpers may go in a single `<script>` that pushprep routes to `_canai_js` when unavoidable.
 - **Mobile-first against 390 full-page + `sections-mobile/`.** Author responsive classes against `fullpage-mobile.png` and `sections-mobile/` first, then layer desktop (`lg:` / `xl:`) to match `fullpage-desktop.png` / `sections-desktop/`. Do not design desktop-only and hope mobile works.
-- **Content from `content.json` verbatim.** If the screenshot shows copy that isn't in content.json, omit it — never paraphrase, never invent.
+- **Content from `content.json` verbatim.** If the screenshot shows copy that isn't in content.json, omit it — never paraphrase, never invent. If content.json has copy the screenshot also shows, you must include it.
 - **Semantic HTML5 only**: `<header>`, `<nav>`, `<main>`, `<section>`, `<article>`, `<aside>`, `<footer>`. No nav links inside `<header>` without `<nav>`.
 - **Tailwind via Play CDN** wrapped in WPCanAI preview markers (see skeleton).
-- **Alpine.js** only if real state is needed (dropdowns, tabs, accordions, modals). Otherwise omit. When it is needed, match the closest recipe in `alpine-recipes.md` — instant-state only, no `x-transition`, no autoplay.
+- **Alpine.js** only if real state is needed (dropdowns, tabs, accordions, modals, carousels listed in ux.json). Otherwise omit. When it is needed, match the closest recipe in `alpine-recipes.md` — instant-state only, no `x-transition`, no autoplay.
 - **Lucide icons** via `<i data-lucide="kebab-case-name" class="h-5 w-5"></i>` plus the `lucide.createIcons()` init.
-- **Section comments**: `<!-- Section: Hero -->`, `<!-- Section: Features -->`, etc. — these map to `{# Section: … #}` in Twig downstream.
+- **Section comments**: `<!-- Section: Hero -->`, `<!-- Section: Features -->`, etc. — these map to `{# Section: … #}` in Twig downstream. Comment titles may describe role; **visible** headings still must match `content.json`.
 - **Cross-page links**: emit relative filenames (`href="about.html"`, not `/about` or absolute URLs), unless the link is genuinely external.
-- **DESIGN.md tokens > screenshot pixels**. The screenshot is for layout/structure; DESIGN.md governs the look.
+- **DESIGN.md tokens for look; section PNGs for structure.** Tokens govern color/type/radius; section screenshots govern composition and CTA placement. Do not let DESIGN.md “taste” override geometry.
 - **No frameworks** beyond Tailwind utilities + optional Alpine. No React, Vue, Svelte, bundlers, JSX.
 - **No `<title>` duplication concerns** — keep a real `<title>` for local preview; WPCanAI handles this on the live site.
 - **Never write a Twig call's real curly-brace syntax inside an HTML comment.** Twig parses delimiters wherever they appear — including comments. Describe includes in prose if needed; do not quote literal Twig call syntax in comments.
@@ -92,8 +119,8 @@ The full canai-prepare format spec — preview markers, Alpine patterns, Lucide 
 ## Quality bar
 
 - Real inlined `<header>` / `<footer>` from `content.json` are present — no Twig chrome includes.
-- Hero section reproduces the headline, subheadline, primary CTA from `content.json`.
-- All sections in the screenshots have a corresponding `<section>` with a section comment.
+- Hero (and every other section) matches its section PNG composition **and** uses only that entry’s `content.json` headings / CTAs / images — no invented titles or swapped buttons.
+- One `<section>` per `content.json:main` entry, same order; no dropped or invented blocks (full-page height should be in the same ballpark as `fullpage-*.png`).
 - Every image has a meaningful `alt` from `content.json` (or `alt=""` if decorative).
 - Tailwind classes use DESIGN.md tokens (e.g. `bg-brand` not `bg-teal-600`) where DESIGN.md defines them.
 - Mobile layout matches `fullpage-mobile.png` / `sections-mobile/` at 390; desktop matches 1440 refs.
@@ -109,5 +136,6 @@ When re-transforming after a failed hard gate, open
 **Section notes (worst first)** list — each entry is `viewport/id` with
 mismatch % and height Δ against the capture slice. Fix those sections
 against the matching `sections-desktop/` or `sections-mobile/` PNG and
-`content.json` entry before touching unrelated blocks. Do not invent new
-copy or CTAs while patching.
+`content.json` entry before touching unrelated blocks. Re-check CTA labels
+and layout geometry for the worst `id`s. Do not invent new copy or CTAs
+while patching.

@@ -1052,6 +1052,9 @@ test("prepareTransformBundles: pageMode true → one page bundle, chrome null, p
 
     const prompt = await readFile(r.bundles[0].promptPath, "utf8");
     assert.match(prompt, /page-mode|static fidelity/i, "prompt must carry transform-page cues");
+    assert.match(prompt, /Section-by-section authoring/i);
+    assert.match(prompt, /Forbidden inventions/i);
+    assert.match(prompt, /Do \*\*not\*\* invent section titles/i);
     assert.ok(prompt.includes("fullpage-desktop"), "must cite fullpage-desktop.png");
     assert.ok(prompt.includes("fullpage-mobile"), "must cite fullpage-mobile.png");
     assert.ok(prompt.includes("sections-desktop"), "must cite sections-desktop/");
