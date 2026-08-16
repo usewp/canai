@@ -183,7 +183,7 @@ have no template type.
 
 WPCanAI resolves content in this order (first match wins) — but **which post that resolves to depends on the shape currently in effect**, not just on whether a template or a delegate exists. See [The two configuration shapes](#the-two-configuration-shapes) for the full mechanics; the summary:
 
-1. **Broken layout** — the layout slot points at a template post that no longer exists → the page renders **blank**, regardless of what's on the delegate page.
+1. **Broken layout** — the layout slot points at a template post that no longer exists → the delegate page falls back to rendering its own `_canai_html` **unwrapped** (no layout chrome); the pointer should still be fixed or cleared.
 2. **Template-body** — the type's `wpcanai_template` occupies the layout slot (the default, unless the delegate page's own `_canai_layout` displaces it) and is **not** tagged `layout` → that template's own `_canai_html` renders the whole page. This wins even when a `_canai_delegate_page_id` or a WC delegate page also resolves — an explicit delegate or an auto-resolved WC page is **not** a guarantee that the delegate page's content is what renders.
 3. **Delegate-body** — the layout slot resolves to a genuine `layout`-tagged post (via the delegate page's own `_canai_layout`, an explicit `_canai_delegate_page_id`, or WC auto-resolve) → the delegate page's `_canai_html` supplies the body, wrapped by that layout.
 4. **None** — no template, no delegate content, and no site default layout → WPCanAI does not take over the request.
@@ -569,9 +569,12 @@ foreach ($base_types as $label) {
         : "ℹ [$label]: No WC page\n";
       break;
     case "broken-layout":
-      // critical: a stored layout id whose post no longer exists — the page renders BLANK
-      echo "🔴 BROKEN LAYOUT [$label]: layout template {$d['layout_post_id']} no longer exists; page renders BLANK";
-      echo $d["unreachable_post_id"] > 0 ? "; page {$d['unreachable_post_id']} has _canai_html stranded behind it\n" : "\n";
+      // warning: a stored layout id whose post no longer exists. resolve_layout_post()
+      // treats that as "no layout", so the delegate page falls back to rendering its
+      // own _canai_html unwrapped (no layout chrome) — not blank.
+      echo $d["content_post_id"] > 0
+        ? "🟡 BROKEN LAYOUT [$label]: layout template {$d['layout_post_id']} no longer exists; page {$d['content_post_id']} falls back to rendering its own content unwrapped (no layout chrome)\n"
+        : "🟡 BROKEN LAYOUT [$label]: layout template {$d['layout_post_id']} no longer exists, and the delegate page has no _canai_html of its own, so nothing WPCanAI-specific renders\n";
       break;
     case "template-body":
       // Valid shape: the type template is not a layout wrapper, so its own
@@ -658,7 +661,7 @@ foreach ($templates as $t) {
 #### Reporting
 
 After running all checks:
-1. **Summarize findings** — group by severity (🔴 critical, 🟡 warning, ⚠ info)
+1. **Summarize findings** — group by severity (🟡 warning, ⚠ info, ✅ ok)
 2. **Explain** what each problem means and what happens if left unfixed
 3. **Ask user for confirmation** before applying any fixes — never auto-fix
 4. **Proposed fixes** — confirm which shape the user actually wants before changing or deleting any content:
