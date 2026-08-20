@@ -135,7 +135,7 @@ export async function seedPageModeWorklist(runDir, { site, url }) {
   return outPath;
 }
 
-function sectionJsonEntry(section, dirPrefix) {
+export function sectionJsonEntry(section, dirPrefix) {
   const box = section.box || {
     left: section.left,
     top: section.top,
@@ -156,7 +156,7 @@ function sectionJsonEntry(section, dirPrefix) {
   };
 }
 
-async function writeSectionPngs(dir, sections) {
+export async function writeSectionPngs(dir, sections) {
   await resetSectionsDir(dir);
   for (const section of sections) {
     if (section.buffer && section.fileName) {

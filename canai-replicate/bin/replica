@@ -180,6 +180,23 @@ async function main() {
       }
       break;
     }
+    case "slice": {
+      const site = args._[0];
+      if (!site) throw new Error("usage: slice <site> [--only <slug>]");
+      const { slice } = await import("../src/slice.mjs");
+      const r = await slice({ site, runsDir, only });
+      // NOT summarizeCountOutcome(r.ok, ...): that helper takes (succeeded,
+      // total) as NUMBERS. slice has no partial-success state — a viewport
+      // either slices or is skipped — so a plain zero check is the honest one.
+      if (r.count === 0) {
+        throw new Error(
+          `slice produced 0 section sets — no capture has both a full-page PNG and section metadata (run capture first)`,
+        );
+      }
+      const pngCount = r.slices.reduce((n, s) => n + s.written, 0);
+      stderr.write(`✓ sliced ${r.count} section set(s), ${pngCount} PNG(s)\n`);
+      break;
+    }
     case "designmd": {
       const site = args._[0];
       if (!site) throw new Error("usage: designmd <site>");
