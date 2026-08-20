@@ -197,6 +197,26 @@ async function main() {
       stderr.write(`✓ sliced ${r.count} section set(s), ${pngCount} PNG(s)\n`);
       break;
     }
+    case "check": {
+      const site = args._[0];
+      if (!site) throw new Error("usage: check <site> [--only <slug>]");
+      const { check } = await import("../src/check.mjs");
+      const r = await check({ site, runsDir, only });
+      for (const res of r.results) {
+        for (const w of res.warnings) stderr.write(`  ! ${res.slug}: ${w}\n`);
+        for (const e of res.errors) stderr.write(`  ✗ ${res.slug}: ${e}\n`);
+      }
+      if (r.total === 0) {
+        throw new Error(`check found no capture directories under runs/${site}/captures`);
+      }
+      stderr.write(`${r.ok ? "✓" : "✗"} ${r.count}/${r.total} capture(s) valid\n`);
+      if (!r.ok) {
+        throw new Error(
+          `check failed for ${r.total - r.count} capture(s) — see the per-capture reasons above`,
+        );
+      }
+      break;
+    }
     case "designmd": {
       const site = args._[0];
       if (!site) throw new Error("usage: designmd <site>");
