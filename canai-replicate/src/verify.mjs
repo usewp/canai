@@ -137,7 +137,7 @@ export async function scorePageAgainstOriginal({ kind, originalPng, generatedPng
 // height), so a page that rendered almost nothing looks deceptively close
 // on mismatchPct alone when the design is whitespace-heavy — the sliver
 // that IS compared is mostly background color in both images. Task 10's
-// calibration against wpdev.xcloudzen.com's real index page found: a
+// calibration against a real WordPress index page found: a
 // faithful rebuild scored 3.4% mismatch / 5.5% height delta, while a page
 // truncated to just its header+hero (missing ~60% of the content) scored
 // 11.2% mismatch — only ~3x worse — but 59.9% height delta, ~11x worse.

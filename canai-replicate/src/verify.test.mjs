@@ -512,7 +512,7 @@ test("buildReportLines sorts the scored table worst-first by mismatchPct", () =>
 });
 
 test("buildReportLines ranks a low-mismatch/high-height-delta page above a higher-mismatch/low-height-delta one (real calibration finding)", () => {
-  // Reproduces the actual numbers found calibrating against wpdev.xcloudzen.com:
+  // Reproduces the actual numbers found during calibration against a live site:
   // a page truncated to header+hero only (most content missing) scored LOWER
   // raw mismatchPct than its heightDeltaPct would suggest, because pngdiff
   // only diffs the overlapping (shorter) region. If report.md sorted by raw

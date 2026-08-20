@@ -176,7 +176,7 @@
   }
 
   // Fix 3 (last-resort fallback): a theme with no <header>/<footer>/<main>
-  // landmarks at all — reproduced live on wpdev.xcloudzen.com's WooCommerce
+  // landmarks at all — reproduced live on a WooCommerce
   // /shop/ (hello-elementor theme; header/footer/main all resolve to null,
   // per 2026-07-13-canai-replicate-capture-followups.md) — can walk away
   // from the loop above having tagged NOTHING: kids came back empty (or

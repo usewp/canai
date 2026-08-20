@@ -128,3 +128,42 @@ test("resolveCapturePageUrl: empty string fails loud", () => {
   assert.throws(() => resolveCapturePageUrl(""), /--page requires a URL|usage: capture/);
   assert.throws(() => resolveCapturePageUrl("   "), /--page requires a URL|usage: capture/);
 });
+
+// Regression: the CLI's switch cases were never executed by these tests —
+// they only import the pure helpers above. That let a dangling
+// `resolveAgentBrowser()` survive in verify-page-score after its import was
+// removed in 4.0.0, so the command threw ReferenceError on every run while
+// the suite stayed green. Dispatch every command with deliberately bad args:
+// a usage/domain error is fine and expected, a ReferenceError/TypeError from
+// a stale identifier is not.
+test("every command dispatches without a dangling reference", async () => {
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const run = promisify(execFile);
+  const bin = new URL("../bin/replica", import.meta.url).pathname;
+
+  const COMMANDS = [
+    ["discover"], ["classify", "x.test"], ["capture", "x.test"],
+    ["slice", "x.test"], ["check", "x.test"], ["designmd", "x.test"],
+    ["contentmodel", "x.test"], ["transform", "x.test"], ["pushprep", "x.test"],
+    ["verify", "x.test"], ["verify-score", "x.test"],
+    ["verify-page", "x.test", "--only", "p"],
+    ["verify-page-score", "x.test", "--only", "p"],
+    ["handoff-page", "x.test", "--only", "p"],
+  ];
+
+  for (const argv of COMMANDS) {
+    let output = "";
+    try {
+      const r = await run(process.execPath, [bin, ...argv], { cwd: "/tmp" });
+      output = r.stdout + r.stderr;
+    } catch (e) {
+      output = `${e.stdout ?? ""}${e.stderr ?? ""}`;
+    }
+    assert.doesNotMatch(
+      output,
+      /is not defined|is not a function|Cannot find module/,
+      `\`replica ${argv.join(" ")}\` hit a stale identifier:\n${output}`,
+    );
+  }
+});

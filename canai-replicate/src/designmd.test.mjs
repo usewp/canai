@@ -243,7 +243,7 @@ test("prepareDesignBundle: a picked candidate with no capture directory at all i
 });
 
 // --- pickRepresentative (via prepareDesignBundle): utility-route deprioritization ---
-// (the g100.my/wpdev acid test found the diversity fill landing on unstyled
+// (a live acid test found the diversity fill landing on unstyled
 // WooCommerce/WP-seed pages like /checkout/ and /hello-world/ and citing
 // their UA-default styles.json as PRIMARY SOURCE for the brand palette.)
 

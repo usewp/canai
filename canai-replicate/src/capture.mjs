@@ -197,7 +197,7 @@ export const STYLES_JS = await readPayload("styles");
 // against prompts/alpine-recipes.md's headings — the join key between the
 // two files (see the consistency test in capture.test.mjs).
 //
-// Live-verified against wpdev.xcloudzen.com, stripe.com, and elementor.com
+// Live-verified against a WordPress dev site and two large marketing sites
 // (Task 5 report, then a fix pass — see task-5-report.md's "Fix pass"
 // section) before landing three precision fixes on top of the base
 // detectors:

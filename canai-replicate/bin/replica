@@ -116,20 +116,20 @@ FLAGS
                              (verify-page) Min combined-severity drop between failed attempts or stagnate-fail (default: ${DEFAULT_PAGE_GATE.minSeverityImprovement})
 
 EXAMPLES
-  replica discover  https://g100.my/
-  replica capture   g100.my --profile "$HOME/.canai-browser"
-  replica slice     g100.my
-  replica check     g100.my
-  replica designmd  g100.my
-  replica contentmodel g100.my
-  replica transform g100.my --only /
-  replica transform g100.my --page-mode --only pricing
-  replica pushprep  g100.my
-  replica verify    g100.my
-  replica verify-score g100.my
-  replica verify-page g100.my --only pricing
-  replica verify-page-score g100.my --only pricing
-  replica handoff-page g100.my --only pricing
+  replica discover  https://example.com/
+  replica capture   example.com --profile "$HOME/.canai-browser"
+  replica slice     example.com
+  replica check     example.com
+  replica designmd  example.com
+  replica contentmodel example.com
+  replica transform example.com --only /
+  replica transform example.com --page-mode --only pricing
+  replica pushprep  example.com
+  replica verify    example.com
+  replica verify-score example.com
+  replica verify-page example.com --only pricing
+  replica verify-page-score example.com --only pricing
+  replica handoff-page example.com --only pricing
 `;
 
 async function main() {
@@ -328,9 +328,7 @@ async function main() {
     }
     case "verify-page-score": {
       const site = args._[0];
-      if (!site || !only) throw new Error("usage: verify-page <site> --only <slug>");
-      const ab = resolveAgentBrowser();
-      if (ab.via === "npx") stderr.write(`ℹ using \`npx -y agent-browser\` (no global install found)\n`);
+      if (!site || !only) throw new Error("usage: verify-page-score <site> --only <slug>");
       const thresholds = {};
       if (args["max-mismatch"] != null) thresholds.maxMismatchPct = Number(args["max-mismatch"]);
       if (args["max-height-delta"] != null) thresholds.maxHeightDeltaPct = Number(args["max-height-delta"]);
