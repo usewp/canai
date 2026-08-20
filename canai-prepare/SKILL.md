@@ -48,7 +48,7 @@ See [references/BOILERPLATE.md](references/BOILERPLATE.md) for the canonical ske
 
 ## Library injection — WPCanAI handles it on the site
 
-WPCanAI outputs the same libraries through WordPress hooks when enabled in **WP Admin → WPCanAI** settings (`TailwindManager`, `IconManager`, `AssetManager`):
+CanAI outputs the same libraries through WordPress hooks when enabled in **WP Admin → CanAI → Settings** (`TailwindManager`, `LucideManager`, `AlpineManager`, `AssetManager`):
 
 
 | What the static preview file simulates                                                            | Where WPCanAI loads it                                                                                                                                                                          |
