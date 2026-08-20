@@ -10,11 +10,9 @@ import {
   DEFAULT_PAGE_GATE,
   combinedSeverity,
 } from "./pageGate.mjs";
-import { severityScore, takeVerifyScreenshot } from "./verify.mjs";
-import { PAGE_WIDTHS, PAGE_WINDOW_HEIGHTS, settleWidthPass } from "./pageCapture.mjs";
+import { severityScore } from "./verify.mjs";
+import { PAGE_WIDTHS, PAGE_WINDOW_HEIGHTS } from "./pageCapture.mjs";
 import { onlyToSlug, matchesOnly } from "./slug.mjs";
-import { spawnAgentBrowser, resolveSessionCdpEndpoint } from "./agentBrowser.mjs";
-import { captureFullPageScreenshot, setViewport } from "./cdp.mjs";
 import { slicePng } from "./pngSlice.mjs";
 
 async function exists(p) {
@@ -24,25 +22,6 @@ async function exists(p) {
   } catch {
     return false;
   }
-}
-
-function ab(args, { input } = {}) {
-  return new Promise((resolve, reject) => {
-    const proc = spawnAgentBrowser(args, { stdio: [input != null ? "pipe" : "ignore", "pipe", "pipe"] });
-    let stdout = "";
-    let stderr = "";
-    proc.stdout.on("data", (d) => (stdout += d.toString()));
-    proc.stderr.on("data", (d) => (stderr += d.toString()));
-    proc.on("error", reject);
-    proc.on("close", (code) => {
-      if (code !== 0) return reject(new Error(`agent-browser exited ${code}: ${stderr.trim()}`));
-      resolve({ stdout, stderr });
-    });
-    if (input != null) {
-      proc.stdin.write(input);
-      proc.stdin.end();
-    }
-  });
 }
 
 function roundPct(n) {
@@ -314,78 +293,12 @@ async function readPriorMeta(metaPath) {
 }
 
 /**
- * Default dual-width screenshot — mirrors pageCapture captureWidthPass:
- * open draft URL first, setViewport with that url, reveal/scroll settle, then
- * CDP full-page. Tests inject `screenshotFn` and never hit this path.
- */
-export async function defaultPageScreenshotFn({
-  width,
-  windowHeight,
-  fileUrl,
-  outPath,
-  flags,
-  cdp,
-  session,
-  slug = "page",
-  abImpl = ab,
-  setViewportFn = setViewport,
-  resolveEndpoint = resolveSessionCdpEndpoint,
-  captureFullPage = captureFullPageScreenshot,
-  takeScreenshot = takeVerifyScreenshot,
-  settleFn = settleWidthPass,
-}) {
-  // Ensure tab is on the draft before viewport/settle/screenshot (open first).
-  let activeUrl = "";
-  try {
-    activeUrl = (await abImpl([...flags, "get", "url"])).stdout.trim();
-  } catch {}
-  if (!/^(https?|file):/.test(activeUrl) || /gemini\.google\.com\/glic/.test(activeUrl)) {
-    await abImpl([...flags, "tab", "new", "about:blank"]);
-  }
-  await abImpl([...flags, "open", fileUrl]);
-  try {
-    await abImpl([...flags, "wait", "--load", "networkidle"]);
-  } catch {}
-  try {
-    await abImpl([...flags, "wait", "1200"]);
-  } catch {}
-
-  await settleFn({
-    url: fileUrl,
-    slug,
-    flags,
-    width,
-    windowHeight,
-    abFn: abImpl,
-    setViewportFn,
-    resolveCdpFn: resolveEndpoint,
-    cdp,
-    session,
-    label: "page-verify",
-  });
-
-  await takeScreenshot({
-    flags,
-    fileUrl,
-    generatedPng: outPath,
-    cdp,
-    session,
-    abImpl,
-    resolveEndpoint,
-    captureFullPage,
-  });
-  return readFile(outPath);
-}
-
-/**
  * Verify one page-mode static draft against dual full-page captures.
  * Throws when status is `fail` after max attempts; returns report json otherwise.
  */
 export async function verifyPage({
   site,
   runsDir = "runs",
-  cdp = 9223,
-  session = "personal",
   only = null,
   thresholds = {},
   screenshotFn = null,
@@ -431,18 +344,21 @@ export async function verifyPage({
 
   await mkdir(verifyDir, { recursive: true });
 
-  const flags = ["--cdp", String(cdp), "--session", session];
   const fileUrl = `file://${path.resolve(htmlPath)}`;
-  const shot =
-    screenshotFn ||
-    ((opts) =>
-      defaultPageScreenshotFn({
-        ...opts,
-        flags,
-        cdp,
-        session,
-        slug,
-      }));
+  // replica does not drive a browser as of 4.0.0. The agent screenshots the
+  // draft with agent-browser (see verifyPageBundle) and this reads what it
+  // wrote. Tests still inject screenshotFn and never touch the filesystem.
+  const shot = screenshotFn || (async ({ outPath, viewport }) => {
+    try {
+      return await readFile(outPath);
+    } catch {
+      throw new Error(
+        `verify-page: missing ${viewport} screenshot ${outPath}\n` +
+          `Run the bundle at ${path.join(runDir, ".verify", "page-PROMPT.md")} with agent-browser first ` +
+          `(open ${fileUrl}, set viewport, screenshot --full).`,
+      );
+    }
+  });
 
   process.stderr.write(`[page-verify] ${slug}\n`);
 
@@ -564,4 +480,62 @@ export async function verifyPage({
   }
 
   return json;
+}
+
+
+/**
+ * Write the page-mode verify bundle. The agent screenshots the static draft at
+ * both widths with agent-browser; verifyPage (the scorer) reads those PNGs and
+ * runs the hard gate. Thresholds are unchanged: mismatch < 15%, height delta
+ * < 10%, both viewports must pass, max 3 attempts.
+ */
+export async function verifyPageBundle({
+  site,
+  runsDir = "runs",
+  only = null,
+  profile = null,
+  session = "canai",
+} = {}) {
+  if (!site) throw new Error("verifyPageBundle: site is required");
+  if (!only) throw new Error("verifyPageBundle: --only <slug> is required for page-mode verify");
+
+  const slug = onlyToSlug(only);
+  const runDir = path.join(runsDir, site);
+  const htmlPath = path.join(runDir, "output", "pages", `${slug}.html`);
+  try {
+    await access(htmlPath);
+  } catch {
+    throw new Error(`verify-page: no draft at ${htmlPath} — run transform --page-mode --only ${slug} first`);
+  }
+
+  const verifyDir = path.join(runDir, "verify");
+  const bundleDir = path.join(runDir, ".verify");
+  await mkdir(verifyDir, { recursive: true });
+  await mkdir(bundleDir, { recursive: true });
+
+  const flagStr = [profile ? `--profile "${profile}"` : "", session ? `--session ${session}` : ""]
+    .filter(Boolean)
+    .join(" ");
+  const ab = `agent-browser${flagStr ? " " + flagStr : ""}`;
+  const fileUrl = `file://${path.resolve(htmlPath)}`;
+
+  const pass = (viewport, width, windowHeight) =>
+    `${ab} open "${fileUrl}"\n` +
+    `${ab} set viewport ${width} ${windowHeight}\n` +
+    `${ab} wait --load networkidle\n` +
+    `${ab} screenshot --full "${path.join(verifyDir, `${slug}-${viewport}-generated.png`)}"`;
+
+  const promptPath = path.join(bundleDir, "page-PROMPT.md");
+  await writeFile(
+    promptPath,
+    `# Page-mode verify bundle — ${site} / ${slug}\n\n` +
+      `Screenshot the static draft at BOTH widths, then run\n` +
+      `\`replica verify-page-score ${site} --only ${slug}\`.\n\n` +
+      `\`\`\`bash\n${pass("desktop", PAGE_WIDTHS.desktop, PAGE_WINDOW_HEIGHTS.desktop)}\n\n` +
+      `${pass("mobile", PAGE_WIDTHS.mobile, PAGE_WINDOW_HEIGHTS.mobile)}\n\`\`\`\n\n` +
+      `The draft is Twig-free by design in page mode, so it renders correctly from file://.\n` +
+      `Never screenshot an element — agent-browser returns blank images below the fold.\n`,
+  );
+
+  return { site, slug, count: 1, ok: true, promptPath };
 }

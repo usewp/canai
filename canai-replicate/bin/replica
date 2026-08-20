@@ -3,15 +3,13 @@ import { argv, exit, stderr } from "node:process";
 import { pathToFileURL } from "node:url";
 import { discover } from "../src/discover.mjs";
 import { classify } from "../src/classify.mjs";
-import { capture } from "../src/capture.mjs";
 import { prepareDesignBundle } from "../src/designmd.mjs";
 import { prepareContentModelBundle } from "../src/contentmodel.mjs";
 import { prepareTransformBundles } from "../src/transform.mjs";
 import { preparePushArtifacts } from "../src/pushprep.mjs";
-import { verify } from "../src/verify.mjs";
-import { verifyPage } from "../src/verifyPage.mjs";
+import { verifyScore, verifyBundle } from "../src/verify.mjs";
+import { verifyPage, verifyPageBundle } from "../src/verifyPage.mjs";
 import { runHandoffPage } from "../src/handoffPage.mjs";
-import { resolveAgentBrowser } from "../src/agentBrowser.mjs";
 import { DEFAULT_PAGE_GATE } from "../src/pageGate.mjs";
 
 function parseArgs(rest) {
@@ -91,7 +89,9 @@ USAGE
 COMMANDS
   discover  <url>            Find pages (sitemap or crawl). Writes runs/<site>/pages.json
   classify  <site>           Cluster pages into page types. Writes runs/<site>/pagetypes.json + .classify/PROMPT.md
-  capture   <site>           Drive agent-browser per page. Writes runs/<site>/captures/<slug>/
+  capture   <site>           Write the agent-browser capture bundle → runs/<site>/.capture/PROMPT.md (YOU run it)
+  slice     <site>           Cut full-page screenshots into per-section PNGs
+  check     <site>           Validate capture artifacts (decodes PNGs; blank slices fail)
   designmd  <site>           Prepare bundle + prompt for design-md skill
   contentmodel <site>        Prepare CPT/custom-field handoff bundle → agent writes runs/<site>/CONTENT-MODEL.md
   transform <site>           Prepare per-page/per-type bundles + prompts; agent writes runs/<site>/output/pages/<slug>.html or output/templates/<type>-single.html
@@ -102,8 +102,8 @@ COMMANDS
 
 FLAGS
   --runs <dir>               Output root (default: runs)
-  --cdp <port>               Chrome DevTools port (default: 9223)
-  --session <name>           agent-browser session name (default: personal)
+  --profile <path>           agent-browser Chrome profile dir (recommended: "$HOME/.canai-browser")
+  --session <name>           agent-browser session name (default: canai)
   --only <path|slug|type>    Restrict to one page (URL pathname or slug) or one page type (type name)
   --page <url>               (capture) Page-mode: capture one URL at dual widths (1440/390)
   --page-mode                (transform) Page-mode static fidelity draft (inline chrome, transform-page.md)
@@ -115,8 +115,9 @@ FLAGS
 
 EXAMPLES
   replica discover  https://g100.my/
-  replica capture   g100.my
-  replica capture   g100.my --page https://g100.my/pricing/
+  replica capture   g100.my --profile "$HOME/.canai-browser"
+  replica slice     g100.my
+  replica check     g100.my
   replica designmd  g100.my
   replica contentmodel g100.my
   replica transform g100.my --only /
@@ -135,8 +136,8 @@ async function main() {
   }
   const args = parseArgs(rest);
   const runsDir = args.runs || "runs";
-  const cdp = Number(args.cdp || 9223);
-  const session = args.session || "personal";
+  const session = args.session || "canai";
+  const profile = args.profile || null;
   const only = args.only || null;
 
   switch (cmd) {
@@ -168,16 +169,10 @@ async function main() {
     case "capture": {
       const site = args._[0];
       if (!site) throw new Error("usage: capture <site> [--page <url>]");
-      const pageUrl = resolveCapturePageUrl(args.page);
-      const ab = resolveAgentBrowser();
-      if (ab.via === "npx") stderr.write(`ℹ using \`npx -y agent-browser\` (no global install found)\n`);
-      const r = await capture({ site, runsDir, cdp, session, only, pageUrl });
-      const { mark, failedSuffix, isTotalFailure } = summarizeCountOutcome(r.ok, r.count);
-      const pageNote = pageUrl ? " (page-mode)" : "";
-      stderr.write(`${mark} ${r.ok}/${r.count} pages captured${failedSuffix}${pageNote}\n`);
-      if (isTotalFailure) {
-        throw new Error(`capture produced 0/${r.count} successfully captured pages — see the per-page errors above`);
-      }
+      const { captureBundle } = await import("../src/captureBundle.mjs");
+      const r = await captureBundle({ site, runsDir, only, profile, session });
+      stderr.write(`✓ capture bundle for ${r.count} page(s) → ${r.promptPath}\n`);
+      stderr.write(`  run it with agent-browser, then: replica slice ${site} && replica check ${site}\n`);
       break;
     }
     case "slice": {
@@ -294,9 +289,15 @@ async function main() {
     case "verify": {
       const site = args._[0];
       if (!site) throw new Error("usage: verify <site>");
-      const ab = resolveAgentBrowser();
-      if (ab.via === "npx") stderr.write(`ℹ using \`npx -y agent-browser\` (no global install found)\n`);
-      const r = await verify({ site, runsDir, cdp, session, only });
+      const r = await verifyBundle({ site, runsDir, only, profile, session });
+      stderr.write(`✓ verify bundle for ${r.count} output(s) → ${r.promptPath}\n`);
+      stderr.write(`  run it with agent-browser, then: replica verify-score ${site}\n`);
+      break;
+    }
+    case "verify-score": {
+      const site = args._[0];
+      if (!site) throw new Error("usage: verify-score <site>");
+      const r = await verifyScore({ site, runsDir, only });
       const { mark, failedSuffix, isTotalFailure } = summarizeCountOutcome(r.ok, r.count);
       // Fix (final review): current-generation output almost always includes
       // the shared {{ wpcanai_template('header') }}/footer chrome (see
@@ -316,6 +317,14 @@ async function main() {
     case "verify-page": {
       const site = args._[0];
       if (!site || !only) throw new Error("usage: verify-page <site> --only <slug>");
+      const r = await verifyPageBundle({ site, runsDir, only, profile, session });
+      stderr.write(`✓ page-verify bundle for ${r.slug} → ${r.promptPath}\n`);
+      stderr.write(`  run it with agent-browser, then: replica verify-page-score ${site} --only ${r.slug}\n`);
+      break;
+    }
+    case "verify-page-score": {
+      const site = args._[0];
+      if (!site || !only) throw new Error("usage: verify-page <site> --only <slug>");
       const ab = resolveAgentBrowser();
       if (ab.via === "npx") stderr.write(`ℹ using \`npx -y agent-browser\` (no global install found)\n`);
       const thresholds = {};
@@ -325,7 +334,7 @@ async function main() {
       if (args["min-severity-improvement"] != null) {
         thresholds.minSeverityImprovement = Number(args["min-severity-improvement"]);
       }
-      const r = await verifyPage({ site, runsDir, cdp, session, only, thresholds });
+      const r = await verifyPage({ site, runsDir, only, thresholds });
       const mark = r.status === "pass" ? "✓" : r.status === "fail" ? "✗" : "…";
       stderr.write(
         `${mark} verify-page ${r.slug}: status=${r.status} (attempt ${r.attempts})` +

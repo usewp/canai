@@ -21,35 +21,10 @@
 
 import { readFile, writeFile, mkdir, readdir, access } from "node:fs/promises";
 import path from "node:path";
-import { spawnAgentBrowser, resolveSessionCdpEndpoint } from "./agentBrowser.mjs";
 import { matchesOnly } from "./slug.mjs";
 import { decodePng, diffScore } from "./pngdiff.mjs";
 import { isChromePartial, containsTwigSyntax, classifyTemplateFilename } from "./outputFiles.mjs";
-import { captureFullPageScreenshot } from "./cdp.mjs";
-import { isBrowserDeathError, PAGE_SIZE_JS, parseEvalJson } from "./capture.mjs";
-
-// `input`, when given, is written to the child's stdin then closed — needed
-// for `eval --stdin` (see takeVerifyScreenshot's page-size measurement
-// below). Existing call sites (none of which pass a second argument) are
-// unaffected: stdin stays "ignore", exactly as before.
-function ab(args, { input } = {}) {
-  return new Promise((resolve, reject) => {
-    const proc = spawnAgentBrowser(args, { stdio: [input != null ? "pipe" : "ignore", "pipe", "pipe"] });
-    let stdout = "";
-    let stderr = "";
-    proc.stdout.on("data", (d) => (stdout += d.toString()));
-    proc.stderr.on("data", (d) => (stderr += d.toString()));
-    proc.on("error", reject);
-    proc.on("close", (code) => {
-      if (code !== 0) return reject(new Error(`agent-browser exited ${code}: ${stderr.trim()}`));
-      resolve({ stdout, stderr });
-    });
-    if (input != null) {
-      proc.stdin.write(input);
-      proc.stdin.end();
-    }
-  });
-}
+import { isBrowserDeathError } from "./capture.mjs";
 
 async function exists(p) {
   try {
@@ -294,115 +269,35 @@ export function buildReportLines({ site, results }) {
   ];
 }
 
-// Fix 2 (prerelease review): verify used to take its full-page screenshot via
-// agent-browser's own unguarded `screenshot --full` — the exact call that,
-// with no clip-guard or bounded timeout, crashed Chrome during capture and
-// produced silently-clamped 26,394px voids before cdp.mjs's
-// captureFullPageScreenshot fixed capture.mjs's captureOne (commit a3c4638;
-// see that function's doc comment in cdp.mjs for the full live evidence).
-// verify imported none of that fix. A tall rendered page or template — a
-// long recipe-single template is exactly this dogfood's own trigger shape —
-// can crash Chrome here just as easily.
-//
-// takeVerifyScreenshot measures the page itself (PAGE_SIZE_JS, imported from
-// capture.mjs so the formula stays in lockstep with captureOne's own measurement)
-// and takes the shot through cdp.mjs's captureFullPageScreenshot — the same
-// height cap (MAX_FULL_PAGE_HEIGHT_PX) and the same longer, bounded timeout
-// every caller of that function gets, instead of a re-implementation.
-//
-// Injection seams (abImpl/resolveEndpoint/captureFullPage) default to the
-// real implementations; tests override them to prove the capped/timeout
-// wiring without a live browser or WebSocket (mirrors cdp.test.mjs's own
-// fetch/WebSocket stubbing style).
-export async function takeVerifyScreenshot({
-  flags,
-  fileUrl,
-  generatedPng,
-  cdp,
-  session,
-  abImpl = ab,
-  resolveEndpoint = resolveSessionCdpEndpoint,
-  captureFullPage = captureFullPageScreenshot,
-}) {
-  const sizeRes = await abImpl([...flags, "eval", "--stdin"], { input: PAGE_SIZE_JS });
-  const size = parseEvalJson(sizeRes.stdout);
-  const width = Number(size && size.width);
-  const height = Number(size && size.height);
-  if (!(width > 0) || !(height > 0)) {
-    throw new Error(`could not measure page size for full-page screenshot (got ${JSON.stringify(size)})`);
-  }
-  const { host, port } = resolveEndpoint({ cdp, session });
-  return captureFullPage({ host, port, url: fileUrl, width, height, outPath: generatedPng });
-}
-
-// Fix 2 recovery: mirrors capture.mjs's own (unexported) defaultRecoverBrowser
-// exactly — ask agent-browser for a fresh tab after a browser-death error;
-// success is landing on about:blank. If the whole browser process is gone,
-// agent-browser's own auto-launch attempt-and-fail is what makes this fail
-// fast; the caller reacts to a false return, never to this throwing.
-export async function recoverBrowserTab({ flags, abImpl = ab }) {
+/**
+ * Read a screenshot the AGENT took. replica stopped driving a browser in
+ * 4.0.0 — verifyBundle writes the agent-browser commands, the agent runs them,
+ * and this confirms the PNG landed before scoring it.
+ */
+async function readGeneratedShot({ generatedPng, slug, promptPath }) {
   try {
-    await abImpl([...flags, "tab", "new", "about:blank"]);
-    const res = await abImpl([...flags, "get", "url"]);
-    return /^about:blank/.test(res.stdout.trim());
+    await access(generatedPng);
   } catch {
-    return false;
+    throw new Error(
+      `missing generated screenshot for ${slug}: ${generatedPng} — run the bundle at ${promptPath} with agent-browser first`,
+    );
   }
+  return {};
 }
 
-// The browser-touching part of verifying one entry: ensure a working tab,
-// navigate to it, let it settle, take the full-page screenshot. Extracted
-// (mirrors capture.mjs's captureOne/captureOneImpl split) so verify()'s
-// browser-death retry below can re-run exactly this sequence — never the
-// scoring step (scorePageAgainstOriginal), which is pure file I/O against
-// already-written PNGs and never needs a retry.
-export async function verifyOne({
-  flags,
-  fileUrl,
-  generatedPng,
-  cdp,
-  session,
-  abImpl = ab,
-  takeScreenshot = takeVerifyScreenshot,
-}) {
-  // Ensure a regular tab; see capture.mjs ensureWorkingTab note.
-  let activeUrl = "";
-  try {
-    activeUrl = (await abImpl([...flags, "get", "url"])).stdout.trim();
-  } catch {}
-  if (!/^(https?|file):/.test(activeUrl) || /gemini\.google\.com\/glic/.test(activeUrl)) {
-    await abImpl([...flags, "tab", "new", "about:blank"]);
-  }
-  await abImpl([...flags, "open", fileUrl]);
-  try {
-    await abImpl([...flags, "wait", "--load", "networkidle"]);
-  } catch {}
-  try {
-    await abImpl([...flags, "wait", "1500"]);
-  } catch {}
-  return takeScreenshot({ flags, fileUrl, generatedPng, cdp, session, abImpl });
-}
-
-export async function verify({
+export async function verifyScore({
   site,
   runsDir = "runs",
-  cdp = 9223,
-  session = "personal",
   only = null,
-  // Injection seams (Fix 2) — production callers never pass these; they
-  // default to the real browser-touching sequence (verifyOne) and the real
-  // fresh-tab recovery (recoverBrowserTab). Tests override them to drive the
-  // browser-death/recovery/continue orchestration deterministically,
-  // mirroring capture()'s captureOneImpl/recoverBrowser seams (capture.mjs)
-  // without a live browser or WebSocket.
-  verifyOneImpl = verifyOne,
-  recoverBrowser = recoverBrowserTab,
+  // Injection seam kept for tests, which supply screenshots without touching
+  // the filesystem. Production uses readGeneratedShot.
+  verifyOneImpl = readGeneratedShot,
 } = {}) {
   const runDir = path.join(runsDir, site);
   const outputDir = path.join(runDir, "output");
   const verifyDir = path.join(runDir, "verify");
   await mkdir(verifyDir, { recursive: true });
-  const flags = ["--cdp", String(cdp), "--session", session];
+  const promptPath = path.join(runDir, ".verify", "PROMPT.md");
 
   const rawEntries = await collectOutputs(outputDir);
   for (const e of rawEntries) {
@@ -446,10 +341,9 @@ export async function verify({
     // entry simply gets its own fair one-shot recovery attempt; kept this
     // much simpler on purpose (verify's loop doesn't need capture's
     // fallback-URL machinery to begin with).
-    let recoveryAttempted = false;
     for (;;) {
       try {
-        const shot = await verifyOneImpl({ flags, fileUrl, generatedPng, cdp, session });
+        const shot = await verifyOneImpl({ fileUrl, generatedPng, slug, promptPath });
         if (shot && shot.capped) {
           process.stderr.write(
             `  ! full-page screenshot capped at ${shot.height}px for ${slug} (page is actually ${shot.requestedHeight}px tall)\n`,
@@ -477,21 +371,6 @@ export async function verify({
         break;
       } catch (e) {
         process.stderr.write(`  ✗ ${e.message}\n`);
-        if (isBrowserDeathError(e) && !recoveryAttempted) {
-          recoveryAttempted = true;
-          process.stderr.write(`  ! ${slug}: looks like the browser/tab died (${e.message}) — attempting recovery\n`);
-          let recovered = false;
-          try {
-            recovered = await recoverBrowser({ flags });
-          } catch {
-            recovered = false;
-          }
-          if (recovered) {
-            process.stderr.write(`  ↻ browser recovered for ${slug} — retrying\n`);
-            continue; // retry the SAME entry once
-          }
-          process.stderr.write(`  ✗ ${slug}: browser recovery failed\n`);
-        }
         results.push({ slug, kind, ok: false, error: e.message, ...(hasTwig ? { hasTwig } : {}) });
         break;
       }
@@ -522,4 +401,56 @@ export async function verify({
     manifestPath,
     reportPath,
   };
+}
+
+
+/**
+ * Write the bundle the AGENT runs with agent-browser to screenshot every
+ * output. replica does not open a browser; it says exactly what to open, at
+ * what width, and where the PNG must land, then verifyScore reads them.
+ */
+export async function verifyBundle({
+  site,
+  runsDir = "runs",
+  only = null,
+  profile = null,
+  session = "canai",
+} = {}) {
+  const runDir = path.join(runsDir, site);
+  const outputDir = path.join(runDir, "output");
+  const verifyDir = path.join(runDir, "verify");
+  const bundleDir = path.join(runDir, ".verify");
+  await mkdir(verifyDir, { recursive: true });
+  await mkdir(bundleDir, { recursive: true });
+
+  const entries = applyOnlyFilter(excludeChromePartials(await collectOutputs(outputDir)), only);
+  if (entries.length === 0) {
+    throw new Error(`verify: no outputs to screenshot for ${site} — run transform first`);
+  }
+
+  const flagStr = [profile ? `--profile "${profile}"` : "", session ? `--session ${session}` : ""]
+    .filter(Boolean)
+    .join(" ");
+  const ab = `agent-browser${flagStr ? " " + flagStr : ""}`;
+
+  const blocks = entries.map((e) => {
+    const slug = e.file.replace(/\.html$/, "");
+    const fileUrl = `file://${path.resolve(e.path)}`;
+    const outPng = path.join(verifyDir, `${slug}-generated.png`);
+    return `### \`${slug}\`\n\n\`\`\`bash\n${ab} open "${fileUrl}"\n${ab} wait --load networkidle\n${ab} screenshot --full "${outPng}"\n\`\`\`\n`;
+  });
+
+  const promptPath = path.join(bundleDir, "PROMPT.md");
+  await writeFile(
+    promptPath,
+    `# Verify bundle — ${site}\n\n` +
+      `Screenshot each generated output, then run \`replica verify-score ${site}\`.\n\n` +
+      `Outputs containing Twig render with placeholders visible — that is expected and they are\n` +
+      `not pixel-scored. Shared chrome partials are excluded entirely: they are fragments\n` +
+      `spliced into other templates, not independently openable pages.\n\n` +
+      `## Outputs (${entries.length})\n\n${blocks.join("\n")}\n` +
+      `## Then\n\n\`\`\`bash\nreplica verify-score ${site}\n\`\`\`\n`,
+  );
+
+  return { site, count: entries.length, ok: entries.length > 0, promptPath };
 }

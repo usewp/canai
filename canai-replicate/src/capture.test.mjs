@@ -1,8 +1,20 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { EventEmitter } from "node:events";
-import { mkdtemp, rm, mkdir, writeFile, readdir, stat, readFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import {
+  EventEmitter
+} from "node:events";
+import {
+  mkdtemp,
+  rm,
+  mkdir,
+  writeFile,
+  readdir,
+  stat,
+  readFile
+} from "node:fs/promises";
+import {
+  tmpdir
+} from "node:os";
 import path from "node:path";
 import http from "node:http";
 import {
@@ -14,7 +26,6 @@ import {
   accentScore,
   looksMobileEmulated,
   fillStyleWasAccepted,
-  ab,
   resetSectionsDir,
   UX_JS,
   SECTIONS_JS,
@@ -24,14 +35,14 @@ import {
   buildDefinitionListPairs,
   matchLabelValuePair,
   checkUrlStatus,
-  capture,
   isThirdPartyWidgetContainer,
   exceedsClipLimits,
   planSectionAssignment,
-  isBrowserDeathError,
+  isBrowserDeathError
 } from "./capture.mjs";
-import { urlToSlug } from "./slug.mjs";
-import { MAX_CLIP_WIDTH_PX, MAX_CLIP_HEIGHT_PX, MAX_CLIP_AREA_PX2 } from "./cdp.mjs";
+import {
+  urlToSlug
+} from "./slug.mjs";
 
 // Writes `files` (JSON-stringified) into <tmp>/runs/<site>/ and returns that
 // run dir — exactly what buildWorklist expects as its first arg — plus a
@@ -785,79 +796,12 @@ function makeFakeProc({ neverClose = false, exitCode = 0, exitSignal = null, std
   return proc;
 }
 
-test("ab(): resolves normally on a prompt zero-exit — the timeout wrapper doesn't change the happy path", async () => {
-  const proc = makeFakeProc({ stdoutData: "hello" });
-  const res = await ab(["eval"], { spawnFn: () => proc, timeoutMs: 5000 });
-  assert.equal(res.stdout, "hello");
-});
 
-test("ab(): a non-zero exit still rejects with the pre-existing error shape, unaffected by the timeout wrapper", async () => {
-  const proc = makeFakeProc({ exitCode: 2, stderrData: "boom" });
-  await assert.rejects(
-    () => ab(["eval"], { spawnFn: () => proc, timeoutMs: 5000 }),
-    (err) => {
-      assert.match(err.message, /agent-browser exited 2: boom/);
-      assert.equal(err.code, 2);
-      assert.equal(err.timedOut, undefined);
-      return true;
-    },
-  );
-});
 
-test("ab(): a signal-killed exit (not a timeout) still names the signal, unaffected by the timeout wrapper", async () => {
-  const proc = makeFakeProc({ exitCode: null, exitSignal: "SIGTERM" });
-  await assert.rejects(
-    () => ab(["eval"], { spawnFn: () => proc, timeoutMs: 5000 }),
-    (err) => {
-      assert.match(err.message, /agent-browser exited null \(killed by signal SIGTERM\)/);
-      return true;
-    },
-  );
-});
 
-test("ab(): a spawn 'error' event still rejects immediately, unaffected by the timeout wrapper", async () => {
-  const proc = makeFakeProc({ neverClose: true });
-  const p = ab(["eval"], { spawnFn: () => proc, timeoutMs: 5000 });
-  queueMicrotask(() => proc.emit("error", new Error("spawn agent-browser ENOENT")));
-  await assert.rejects(() => p, /ENOENT/);
-});
 
-test("ab(): a subprocess that never closes times out promptly instead of hanging forever, and the child is killed (no zombie)", async () => {
-  const proc = makeFakeProc({ neverClose: true });
-  const started = Date.now();
-  await assert.rejects(
-    () => ab(["eval"], { spawnFn: () => proc, timeoutMs: 30 }),
-    (err) => {
-      assert.match(err.message, /timed out after 30ms and was killed/);
-      assert.equal(err.timedOut, true);
-      return true;
-    },
-  );
-  assert.ok(Date.now() - started < 2000, "must reject promptly, not hang for the test run's own timeout");
-  assert.equal(proc.killed, true, "the stalled child must be killed, not left running");
-  assert.deepEqual(proc.killSignals, ["SIGTERM"], "SIGTERM is attempted first");
-});
 
-test("ab(): escalates to SIGKILL if the child is still alive after killGraceMs", async () => {
-  const proc = makeFakeProc({ neverClose: true }); // ignores kill() entirely — never actually exits
-  await assert.rejects(() => ab(["eval"], { spawnFn: () => proc, timeoutMs: 20, killGraceMs: 20 }));
-  // The rejection fires at timeoutMs; give the killGraceMs escalation timer
-  // a little longer than its own delay to fire before asserting on it.
-  await new Promise((r) => setTimeout(r, 150));
-  assert.deepEqual(
-    proc.killSignals,
-    ["SIGTERM", "SIGKILL"],
-    "a child that ignores SIGTERM past killGraceMs must be escalated to SIGKILL",
-  );
-});
 
-test("ab(): a close event that arrives after the timeout already rejected is ignored, not a second settle", async () => {
-  const proc = makeFakeProc({ neverClose: true });
-  await assert.rejects(() => ab(["eval"], { spawnFn: () => proc, timeoutMs: 20 }));
-  // A "late" close arriving after timeout must not throw (e.g. an
-  // unhandled "resolve after reject" crash) or otherwise misbehave.
-  assert.doesNotThrow(() => proc.emit("close", 0, null));
-});
 
 // --- Task 4d, Finding 4: stale sections/ files must not survive a re-run --
 
@@ -995,19 +939,7 @@ test("exceedsClipLimits: matches the exact pathological tailwindcss.com whole-pa
   assert.equal(exceedsClipLimits(1722, 11605), true);
 });
 
-test("exceedsClipLimits: width, height, and area are each independently checked", () => {
-  assert.equal(exceedsClipLimits(MAX_CLIP_WIDTH_PX + 1, 100), true);
-  assert.equal(exceedsClipLimits(100, MAX_CLIP_HEIGHT_PX + 1), true);
-  const w = MAX_CLIP_WIDTH_PX - 1;
-  const h = Math.ceil(MAX_CLIP_AREA_PX2 / w) + 1;
-  assert.ok(h <= MAX_CLIP_HEIGHT_PX, "test fixture must exercise the area check, not the height check");
-  assert.equal(exceedsClipLimits(w, h), true);
-});
 
-test("exceedsClipLimits: exactly at the width or height limit (with the other dimension small, so area stays within budget) is NOT exceeding — matches cdp.mjs clipSizeError's own > not >=", () => {
-  assert.equal(exceedsClipLimits(MAX_CLIP_WIDTH_PX, 100), false);
-  assert.equal(exceedsClipLimits(100, MAX_CLIP_HEIGHT_PX), false);
-});
 
 test("planSectionAssignment: a normal page — first sizeable kid becomes hero, later sizeable kids become sections, in order", () => {
   const r = planSectionAssignment([300, 40, 150, 90]); // hero(300), too-small(40, skipped), section(150), section(90)
@@ -1059,11 +991,6 @@ test("SECTIONS_JS: contains the Fix 4 third-party widget denylist and applies it
   assert.match(SECTIONS_JS, /if \(isThirdPartyWidget\(el\)\) return false;/);
 });
 
-test("SECTIONS_JS: the oversized-hero drill uses cdp.mjs's ACTUAL MAX_CLIP_* values (interpolated, not a stale hand-copied number)", () => {
-  assert.match(SECTIONS_JS, new RegExp(`w > ${MAX_CLIP_WIDTH_PX} `));
-  assert.match(SECTIONS_JS, new RegExp(`h > ${MAX_CLIP_HEIGHT_PX} `));
-  assert.match(SECTIONS_JS, new RegExp(`\\(w \\* h\\) > ${MAX_CLIP_AREA_PX2}`));
-});
 
 // --- Fix pass, Fix 1: nav-toggle vs dropdown-menu desktop-visibility split
 // (pure decision logic). isRenderedGivenComputedStyle is a hand-synced
@@ -1480,102 +1407,8 @@ test("checkUrlStatus: real HTTP round-trip via a local node:http server — 200,
 // status-check helper above — without a real browser.
 // ---------------------------------------------------------------------------
 
-test("capture(): a non-2xx pre-flight status check on a sample fails over to its spare via the existing fallback pool, and replaceSample still fires", withSilencedStderr(async () => {
-  const { runDir, cleanup } = await mkRun("status-check-site", {
-    "pagetypes.json": pagetypes([
-      {
-        name: "posts",
-        kind: "single:post",
-        pattern: "/blog/*",
-        confidence: "fingerprint",
-        members: ["https://x.com/blog/dead", "https://x.com/blog/spare"],
-        samples: ["https://x.com/blog/dead"],
-        archiveUrl: null,
-      },
-    ]),
-  });
-  try {
-    const checkStatus = async (url) =>
-      url === "https://x.com/blog/dead" ? { ok: false, status: 404 } : { ok: true, status: 200 };
-    const captureOneImpl = async ({ url, slug }) => ({ slug, url, sectionCount: 3 });
 
-    const r = await capture({
-      site: "status-check-site",
-      runsDir: path.join(runDir, ".."),
-      checkStatus,
-      captureOneImpl,
-    });
-    assert.equal(r.count, 1);
-    assert.equal(r.ok, 1, "the dead sample must fail OVER to its spare, not be recorded as a hard failure");
-    assert.equal(r.results[0].url, "https://x.com/blog/spare");
 
-    const pt = JSON.parse(await readFile(path.join(runDir, "pagetypes.json"), "utf8"));
-    assert.deepEqual(
-      pt.types[0].samples,
-      ["https://x.com/blog/spare"],
-      "replaceSample must still fire on a status-check-triggered fallback, exactly as it does for a captureOne failure",
-    );
-  } finally {
-    await cleanup();
-  }
-}));
-
-test("capture(): every candidate failing its status check (sample + spares exhausted) records ok:false with the status error — captureOneImpl never runs at all", withSilencedStderr(async () => {
-  const { runDir, cleanup } = await mkRun("status-check-all-dead-site", {
-    "pagetypes.json": pagetypes([
-      {
-        name: "posts",
-        kind: "single:post",
-        pattern: "/blog/*",
-        confidence: "fingerprint",
-        members: ["https://x.com/blog/dead-1", "https://x.com/blog/dead-2"],
-        samples: ["https://x.com/blog/dead-1"],
-        archiveUrl: null,
-      },
-    ]),
-  });
-  try {
-    let captureOneCalls = 0;
-    const checkStatus = async () => ({ ok: false, status: 404 });
-    const captureOneImpl = async (args) => {
-      captureOneCalls += 1;
-      return { ...args, sectionCount: 1 };
-    };
-    const r = await capture({
-      site: "status-check-all-dead-site",
-      runsDir: path.join(runDir, ".."),
-      checkStatus,
-      captureOneImpl,
-    });
-    assert.equal(r.ok, 0);
-    assert.equal(r.count, 1);
-    assert.match(r.results[0].error, /pre-flight status check failed/);
-    assert.match(r.results[0].error, /404/);
-    assert.equal(captureOneCalls, 0, "a page that never passes its status check must never reach the browser at all");
-  } finally {
-    await cleanup();
-  }
-}));
-
-test("capture(): a healthy status check lets captureOneImpl run normally for every untyped page (v2 fallback shape)", withSilencedStderr(async () => {
-  const { runDir, cleanup } = await mkRun("status-check-healthy-site", {
-    "pagetypes.json": pagetypes([], ["https://x.com/", "https://x.com/about"]),
-  });
-  try {
-    const checkStatus = async () => ({ ok: true, status: 200 });
-    const captureOneImpl = async ({ url, slug }) => ({ slug, url, sectionCount: 2 });
-    const r = await capture({
-      site: "status-check-healthy-site",
-      runsDir: path.join(runDir, ".."),
-      checkStatus,
-      captureOneImpl,
-    });
-    assert.equal(r.ok, 2);
-    assert.equal(r.count, 2);
-  } finally {
-    await cleanup();
-  }
-}));
 
 // --- Fix 1a: isBrowserDeathError — the crash/hang detector --------------
 // Every string below is a REAL error observed live in this task's before-
@@ -1632,254 +1465,7 @@ test("isBrowserDeathError: null/undefined never throws or matches", () => {
 // orchestration. Mirrors the existing checkStatus/captureOneImpl injection
 // pattern above (mkRun fixtures, withSilencedStderr, no real browser).
 
-test("capture(): a browser-death error triggers ONE recovery attempt and retries the SAME url (not a spare) when recovery succeeds", withSilencedStderr(async () => {
-  const { runDir, cleanup } = await mkRun("recover-site", {
-    "pagetypes.json": pagetypes([
-      {
-        name: "posts",
-        kind: "single:post",
-        pattern: "/blog/*",
-        confidence: "fingerprint",
-        members: ["https://x.com/blog/a", "https://x.com/blog/spare"],
-        samples: ["https://x.com/blog/a"],
-        archiveUrl: null,
-      },
-    ]),
-  });
-  try {
-    let calls = 0;
-    const seenUrls = [];
-    const captureOneImpl = async ({ url, slug }) => {
-      calls += 1;
-      seenUrls.push(url);
-      if (calls === 1) throw new Error("agent-browser exited 1: ✗ CDP response channel closed");
-      return { slug, url, sectionCount: 1 };
-    };
-    let recoverCalls = 0;
-    const recoverBrowser = async () => {
-      recoverCalls += 1;
-      return true;
-    };
-    const probeBrowser = async () => {
-      throw new Error("must not be called — browser was never confirmed down");
-    };
 
-    const r = await capture({
-      site: "recover-site",
-      runsDir: path.join(runDir, ".."),
-      checkStatus: async () => ({ ok: true, status: 200 }),
-      captureOneImpl,
-      recoverBrowser,
-      probeBrowser,
-    });
-    assert.equal(r.ok, 1);
-    assert.equal(calls, 2, "captureOneImpl must be retried after a successful recovery");
-    assert.equal(recoverCalls, 1);
-    assert.deepEqual(seenUrls, ["https://x.com/blog/a", "https://x.com/blog/a"], "recovery retries the ORIGINAL url, never consumes the spare");
-    assert.equal(r.results[0].url, "https://x.com/blog/a");
-  } finally {
-    await cleanup();
-  }
-}));
 
-test("capture(): when browser recovery fails, the entry falls through to its existing spare-fallback pool instead of retrying forever", withSilencedStderr(async () => {
-  const { runDir, cleanup } = await mkRun("recover-fail-site", {
-    "pagetypes.json": pagetypes([
-      {
-        name: "posts",
-        kind: "single:post",
-        pattern: "/blog/*",
-        confidence: "fingerprint",
-        members: ["https://x.com/blog/a", "https://x.com/blog/spare"],
-        samples: ["https://x.com/blog/a"],
-        archiveUrl: null,
-      },
-    ]),
-  });
-  try {
-    const captureOneImpl = async ({ url, slug }) => {
-      if (url === "https://x.com/blog/a") {
-        throw new Error("agent-browser exited 1: ✗ CDP response channel closed");
-      }
-      return { slug, url, sectionCount: 1 };
-    };
-    let recoverCalls = 0;
-    const recoverBrowser = async () => {
-      recoverCalls += 1;
-      return false;
-    };
-    const probeBrowser = async () => true;
 
-    const r = await capture({
-      site: "recover-fail-site",
-      runsDir: path.join(runDir, ".."),
-      checkStatus: async () => ({ ok: true, status: 200 }),
-      captureOneImpl,
-      recoverBrowser,
-      probeBrowser,
-    });
-    assert.equal(r.ok, 1, "must still succeed via the spare, even though recovery for the primary sample failed");
-    assert.equal(recoverCalls, 1, "recovery is attempted exactly once per entry, not once per spare retry");
-    assert.equal(r.results[0].url, "https://x.com/blog/spare");
-  } finally {
-    await cleanup();
-  }
-}));
 
-test("capture(): once the browser is confirmed down, later entries are cheaply probed (not fully retried) until it comes back", withSilencedStderr(async () => {
-  // Directly models the dogfood's actual observed cascade: capture crashes
-  // on the FIRST page, then every remaining page in a 10-page run failed
-  // identically with "Connection refused" — 0/10, exit 0. This proves the
-  // fix's fail-fast-then-eventually-resume behavior against a 4-page
-  // worklist: page-1 crashes and can't recover, page-2/page-3 are skipped
-  // via a cheap probe (captureOneImpl never even called for them), page-4's
-  // probe reports the browser back up and it captures normally.
-  const { runDir, cleanup } = await mkRun("cascade-site", {
-    "pagetypes.json": pagetypes([], [
-      "https://x.com/page-1",
-      "https://x.com/page-2",
-      "https://x.com/page-3",
-      "https://x.com/page-4",
-    ]),
-  });
-  try {
-    let captureOneCalls = 0;
-    const captureOneImpl = async ({ url, slug }) => {
-      captureOneCalls += 1;
-      if (url === "https://x.com/page-1") {
-        throw new Error("agent-browser exited 1: ✗ CDP response channel closed");
-      }
-      return { slug, url, sectionCount: 1 };
-    };
-    const recoverBrowser = async () => false; // recovery never works this run
-    let probeCalls = 0;
-    const probeReturns = [false, false, true]; // page-2: still down, page-3: still down, page-4: back up
-    const probeBrowser = async () => probeReturns[probeCalls++] ?? true;
-
-    const r = await capture({
-      site: "cascade-site",
-      runsDir: path.join(runDir, ".."),
-      checkStatus: async () => ({ ok: true, status: 200 }),
-      captureOneImpl,
-      recoverBrowser,
-      probeBrowser,
-    });
-
-    assert.equal(r.count, 4);
-    assert.equal(r.ok, 1, "only page-4 (once the probe reports the browser back up) succeeds");
-    assert.deepEqual(r.results.map((x) => x.ok), [false, false, false, true]);
-    assert.equal(probeCalls, 3, "page-2 and page-3 are cheaply probed while down; page-4's probe reports it back up");
-    assert.equal(
-      captureOneCalls,
-      2,
-      "captureOneImpl runs for page-1 (discovers the crash) and page-4 (browser confirmed back up) only — " +
-        "page-2/page-3 must be skipped without ever reaching captureOneImpl",
-    );
-    assert.match(r.results[1].error, /unreachable/);
-    assert.match(r.results[2].error, /unreachable/);
-    // Never a false success and never a bare, uninformative message.
-    assert.equal(r.results[0].error, "agent-browser exited 1: ✗ CDP response channel closed");
-  } finally {
-    await cleanup();
-  }
-}));
-
-test("capture(): an ordinary captureOneImpl failure (not browser-death-shaped) never triggers recovery — falls straight to the existing spare-fallback path", withSilencedStderr(async () => {
-  const { runDir, cleanup } = await mkRun("ordinary-fail-site", {
-    "pagetypes.json": pagetypes([
-      {
-        name: "posts",
-        kind: "single:post",
-        pattern: "/blog/*",
-        confidence: "fingerprint",
-        members: ["https://x.com/blog/a", "https://x.com/blog/spare"],
-        samples: ["https://x.com/blog/a"],
-        archiveUrl: null,
-      },
-    ]),
-  });
-  try {
-    const captureOneImpl = async ({ url, slug }) => {
-      if (url === "https://x.com/blog/a") {
-        throw new Error(
-          "agent-browser exited 1: ✗ Operation timed out. The page may still be loading or the element may not exist.",
-        );
-      }
-      return { slug, url, sectionCount: 1 };
-    };
-    // Counters, NOT throwing stubs: capture() wraps the recoverBrowser call
-    // in its own try/catch (a throw from recovery must never crash the
-    // run — see capture()'s doc comment), which would silently swallow a
-    // "must not be called" throw and let a wrongly-invoked mock hide behind
-    // an otherwise-correct-looking result. Counting catches that a throwing
-    // stub cannot (proven directly below via mutation: dropping capture()'s
-    // `phase === "capture"` gate makes THIS assertion fail while the
-    // outcome-shape assertions below keep passing).
-    let recoverCalls = 0;
-    let probeCalls = 0;
-    const recoverBrowser = async () => {
-      recoverCalls += 1;
-      return false;
-    };
-    const probeBrowser = async () => {
-      probeCalls += 1;
-      return false;
-    };
-
-    const r = await capture({
-      site: "ordinary-fail-site",
-      runsDir: path.join(runDir, ".."),
-      checkStatus: async () => ({ ok: true, status: 200 }),
-      captureOneImpl,
-      recoverBrowser,
-      probeBrowser,
-    });
-    assert.equal(r.ok, 1);
-    assert.equal(r.results[0].url, "https://x.com/blog/spare");
-    assert.equal(recoverCalls, 0, "an ordinary (non-browser-death) failure must never attempt recovery");
-    assert.equal(probeCalls, 0, "the browser must never be marked down for an ordinary failure, so nothing gets probed");
-  } finally {
-    await cleanup();
-  }
-}));
-
-test("capture(): a pre-flight status-check failure is NEVER treated as browser death, even when its error text mentions connection refused (a dead TARGET SITE, not our own browser)", withSilencedStderr(async () => {
-  const { runDir, cleanup } = await mkRun("dead-site-site", {
-    "pagetypes.json": pagetypes([], ["https://x.com/dead"]),
-  });
-  try {
-    const checkStatus = async () => ({ ok: false, status: null, error: "connect ECONNREFUSED 203.0.113.5:443" });
-    // Counters, not throwing stubs — see the sibling "ordinary failure" test
-    // above for why a throw here can be silently swallowed by capture()'s
-    // own defensive try/catch around recoverBrowser, hiding a wrongly
-    // phase-scoped call behind an otherwise-correct-looking failed result.
-    let recoverCalls = 0;
-    let probeCalls = 0;
-    const recoverBrowser = async () => {
-      recoverCalls += 1;
-      return false;
-    };
-    const probeBrowser = async () => {
-      probeCalls += 1;
-      return false;
-    };
-    const captureOneImpl = async () => {
-      throw new Error("must never be reached — status check failed first");
-    };
-
-    const r = await capture({
-      site: "dead-site-site",
-      runsDir: path.join(runDir, ".."),
-      checkStatus,
-      captureOneImpl,
-      recoverBrowser,
-      probeBrowser,
-    });
-    assert.equal(r.ok, 0);
-    assert.match(r.results[0].error, /pre-flight status check failed/);
-    assert.equal(recoverCalls, 0, "a status-check failure (even one that SAYS 'connection refused') must never attempt browser recovery");
-    assert.equal(probeCalls, 0, "the browser must never be marked down from a status-check failure alone");
-  } finally {
-    await cleanup();
-  }
-}));
