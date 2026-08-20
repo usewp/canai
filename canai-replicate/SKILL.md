@@ -30,7 +30,7 @@ description: >
   "convert this site to wordpress", "replicate this page", "page mode".
 metadata:
   author: canai
-  version: "3.5.0"
+  version: "4.0.0"
 allowed-tools: Bash Read Write Edit Grep Glob
 ---
 
@@ -70,7 +70,9 @@ per-page/per-type transform workflow on top.
 
 ## Tool
 
-The pipeline is bundled inside this skill. Always invoke it via:
+`replica` is bundled inside this skill. **It never drives a browser** — it
+writes bundles, slices and validates PNGs, scores diffs, and does the data
+pipeline. You drive the browser with `agent-browser`. Invoke it via:
 
 ```bash
 "$HOME/.claude/skills/canai-replicate/bin/replica" <command> ...
@@ -84,27 +86,72 @@ or repo clone is required; just having the skill installed is enough.
 
 ## Requirements
 
-- **Node 22+** (the raw-CDP node-screenshot helper relies on the global
-  `WebSocket`).
-- **A Chrome instance `agent-browser` can drive**, reachable via
-  `--remote-debugging-port=<cdp>` (see Pre-flight below; default port 9223).
-  That port is only where a `--session <name>` **first** attaches, though —
-  agent-browser sessions are long-lived daemons, so every later invocation
-  with the same session name keeps using whatever browser it originally
-  attached to, silently ignoring a different `--cdp` from then on.
-  `capture`/`verify` never assume `--cdp` is where the session's browser
-  actually lives: their raw-CDP calls (per-section node screenshots, and the
-  mobile-viewport emulation `styles.json` needs — agent-browser's own
-  `screenshot <selector>` returns blank images for elements below the fold,
-  which is why these bypass it) resolve the session's real endpoint via
-  `agent-browser --cdp <cdp> --session <name> get cdp-url` first, and fail
-  loudly on a mismatch instead of silently screenshotting the wrong tab.
-- **`agent-browser`** — the CLI shells out to it for navigation, scrolling,
-  full-page screenshots, and resolving each session's real CDP endpoint. A
-  global install on `$PATH` is optional; if it isn't found, the CLI
-  auto-runs it via `npx -y agent-browser` (needs network on first fetch).
+- **The `agent-browser` CLI.** `brew install agent-browser` or
+  `npm i -g agent-browser`. **You** drive the browser with it; `replica` never
+  does (see Setup below).
+- **The Claude-side `agent-browser` skill** — a *separate* install from the
+  CLI: its own `SKILL.md` under `~/.claude/skills/agent-browser/`.
+- **A dedicated Chrome profile directory** (see Setup step 3). This is what
+  removes the "allow CDP" prompt.
+- **Node 22+** for `replica` itself.
 - **No npm dependencies** to install — `package.json` declares no
   `dependencies` block; everything runs against the Node standard library.
+- **No PHP, no Twig engine, no CDP plumbing.** `replica` does pure file, JSON
+  and pixel work.
+
+## Setup
+
+Ask the user before installing anything, and confirm each step.
+
+**1. Install the agent-browser CLI.**
+
+```bash
+agent-browser --version || brew install agent-browser   # or: npm i -g agent-browser
+```
+
+**2. Install the Claude-side agent-browser skill.** This is **not** the same
+thing as the CLI:
+
+```bash
+ls ~/.claude/skills/agent-browser/SKILL.md
+```
+
+A third thing, which is *not* an install: the CLI ships its own
+version-matched usage guides. Load them once the CLI is present —
+`agent-browser skills get core --full`.
+
+**3. Create a dedicated Chrome profile, then verify end to end.**
+
+```bash
+agent-browser --profile "$HOME/.canai-browser" --session canai open <target-url>
+```
+
+Never drive the user's real Chrome profile. Chrome has refused remote
+debugging on the **default** user-data directory since Chrome 136, and that
+refusal is what surfaces as the **"allow CDP" prompt** and the connection
+failures behind it. A purpose-made directory sidesteps it completely, keeps
+capture work away from the user's own browsing, and persists login state
+between runs — which is what makes authenticated captures possible at all. The
+directory is created on first use; there is nothing to set up by hand.
+
+Then verify against the **real target**, not in the abstract: navigate, dump
+the accessibility tree, and confirm it contains content belonging to that page.
+
+```bash
+agent-browser --profile "$HOME/.canai-browser" --session canai snapshot
+```
+
+A bare health check proves nothing — `agent-browser snapshot` on a cold session
+prints `(empty page)` and **exits 0**. If the page turns out to be behind a
+login wall or a bot interstitial, stop and tell the user rather than capturing
+the interstitial as if it were content.
+
+**4. Pull the page.** Run the capture bundle (below), passing the same
+`--profile` and `--session` on every command so all stages drive one browser.
+
+**5. Simplify to the CanAI stack.** Semantic HTML5 + Tailwind utilities +
+Alpine recipes + Lucide icons — the `transform` stage and the canai-prepare
+rules it defers to.
 
 ## Where outputs land
 
@@ -123,9 +170,8 @@ COMMANDS
   classify     <site>  Cluster pages into page types (URL pattern + DOM fingerprint)
                        → runs/<site>/pagetypes.json + .classify/PROMPT.md (review it —
                           also gates any woo:* kind on confirming WooCommerce is real)
-  capture      <site>  Drive agent-browser per sample page + one-offs (each URL's
-                       HEAD/ranged-GET must 2xx before its capture is accepted, else
-                       it fails over to a spare)
+  capture      <site>  Write the agent-browser capture bundle — YOU run it
+                       → runs/<site>/.capture/PROMPT.md
                        → runs/<site>/captures/<slug>/{screenshot.png, sections/, sections.json,
                           content.json, assets.json, dom.html, styles.json, ux.json}
   designmd     <site>  Prepare design-extraction bundle (cites styles.json as ground truth)
@@ -151,11 +197,16 @@ COMMANDS
                           template_type, html, css, js, warnings }) — **this is what
                           gets pushed to WordPress**, never a raw output/pages/ or
                           output/templates/ file (see Handoff below)
-  verify       <site>  Screenshot every output; pixel-score only the Twig-free ones
+  slice        <site>  Cut full-page screenshots into per-section PNGs (browser-free)
+  check        <site>  Validate capture artifacts — decodes PNGs, blank slices FAIL
+  verify       <site>  Write the screenshot bundle — YOU run it
+  verify-score <site>  Pixel-score the Twig-free outputs
                        (rarely any — generated pages include the shared chrome)
                           → runs/<site>/verify/report.md. Everything else is listed
                           for post-deploy verification; the live site renders Twig.
-  verify-page  <site>  Page-mode dual full-page hard gate (requires --only <slug>).
+  verify-page  <site>  Write the page-mode screenshot bundle (requires --only <slug>)
+  verify-page-score <site>
+                       Page-mode dual full-page hard gate (requires --only <slug>).
                        Scores desktop + mobile generated screenshots against
                        fullpage-desktop/mobile captures. Defaults: mismatch < 15%,
                        height Δ < 10%, max 3 attempts.
@@ -167,8 +218,8 @@ COMMANDS
                        → <slug>.page-mode.static.html backup + push/<slug|header|footer>.json
 
 FLAGS
-  --cdp <port>            Chrome DevTools port (default: 9223)
-  --session <name>        agent-browser session name (default: personal)
+  --profile <path>        agent-browser Chrome profile dir (use "$HOME/.canai-browser")
+  --session <name>        agent-browser session name (default: canai)
   --only <path|slug|type> Restrict to one page or one page type — one shared matcher,
                           identical across capture/transform/verify/verify-page/handoff-page
   --page <url>            (capture) Page-mode: capture one URL at dual widths (1440/390)
@@ -259,36 +310,6 @@ follow `sectionNotes`.
 **`libs.json` is advisory only.** Detected libraries hint which Alpine recipe
 to pick when UX is ambiguous. Never CDN-include or `<script>`-tag anything
 listed there — stack remains Tailwind + Alpine recipes + Lucide.
-
-## Pre-flight
-
-Chrome must be running with CDP open on the port you'll use. For the default
-`personal` session on port 9223:
-
-```bash
-/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
-  --remote-debugging-port=9223 \
-  --user-data-dir="$HOME/.agent-browser-personal" \
-  about:blank
-```
-
-Confirm:
-
-```bash
-curl -fsS http://127.0.0.1:9223/json/version | jq .Browser
-```
-
-Note: `--session <name>` is a long-lived agent-browser daemon, not something
-this CLI spins up fresh each run. If a session name was already used against
-a *different* `--cdp` port earlier, it keeps driving that original browser —
-`--cdp` is silently ignored for it from then on. The per-section screenshots
-(raw CDP, see below) account for this: `capture` resolves the session's real
-CDP endpoint via `agent-browser ... get cdp-url` rather than trusting `--cdp`
-at face value, so a mismatched port/session pair still works as long as the
-session's actual browser has the page open. If it *doesn't* (e.g. the session
-is bound to a browser that never navigated anywhere), capture now fails
-loudly with a clear error naming the mismatch, instead of silently
-screenshotting an unrelated tab.
 
 ## Pipeline (run in order)
 
@@ -756,6 +777,23 @@ runs/<site>/
 
 ## Failure modes
 
+- **Never use `agent-browser screenshot <selector>` — it returns BLANK images
+  for anything below the fold.** Verified on agent-browser 0.32.3: a heading at
+  `y=4481` produced a correctly-sized 116x27 PNG containing **exactly one
+  colour** (`#f8f9fa`, the page background), and running `scrollintoview` first
+  produced a byte-identical blank. The file size looked entirely plausible —
+  only decoding reveals it. This is why sections are cut from a full-page
+  screenshot (`replica slice`) and never captured per element, and why
+  `replica check` decodes every PNG instead of trusting its size.
+- **"Allow CDP" prompt, or the browser refusing to start.** You are driving
+  Chrome's default user-data directory. Chrome has refused remote debugging
+  there since Chrome 136. Use a dedicated profile —
+  `agent-browser --profile "$HOME/.canai-browser" --session canai ...` — on
+  every command in the run. See Setup step 3.
+- **`agent-browser snapshot` reporting success proves nothing.** On a cold
+  session it prints `(empty page)` and exits 0. Always navigate to the real
+  target first, then check the dump contains that page's own content.
+
 - **A `ls` of `captures/<slug>/` overstates how much real data you have** —
   a directory existing on disk does NOT mean its capture succeeded; a crash
   partway through leaves an empty-ish directory with no `content.json` (or
@@ -765,8 +803,8 @@ runs/<site>/
   from real captures by a plain `ls`). Before picking sample captures for
   anything downstream (content entry, a demo, a design review), check
   **file size / `content.json` presence**, not directory existence —
-  `find runs/<site>/captures -maxdepth 1 -type d ! -exec test -s {}/content.json \; -print`
-  lists every capture missing real content. (`capture`'s own crash
+  **`replica check <site>`** is the gate for exactly this — it fails per
+  directory with a specific reason instead of leaving you to spot the gap. (`capture`'s own crash
   resilience — bounded recovery, per-page failure reporting — is handled in
   `src/capture.mjs`; this note is about not being fooled by a run captured
   before that resilience existed, or by any capture that still fails after
@@ -793,7 +831,7 @@ runs/<site>/
   `sections.json` and `dom.html` and add a selector hint when either bites.
 - **A section's clip is too large and gets skipped, not hung** — a
   single-wrapper layout (common in some React/Vue app shells) can get its
-  entire page tagged as one giant "hero". `src/cdp.mjs` refuses any clip over
+  entire page tagged as one giant "hero". `src/clipLimits.mjs` refuses any clip over
   4000×6000px / 12M px² *before* opening a connection (`clipSizeError`), and
   every CDP call has its own timeout — this now fails fast with a clear
   message recorded in `sections.json` (`file: null, error: "refusing to

@@ -96,8 +96,10 @@ COMMANDS
   contentmodel <site>        Prepare CPT/custom-field handoff bundle → agent writes runs/<site>/CONTENT-MODEL.md
   transform <site>           Prepare per-page/per-type bundles + prompts; agent writes runs/<site>/output/pages/<slug>.html or output/templates/<type>-single.html
   pushprep  <site>           Convert output/pages + output/templates into push-ready runs/<site>/output/push/<slug>.json (strips the doctype/head/body shell + preview-libs). NEVER push a raw output/pages|templates/*.html file into _canai_html — push the output/push/ artifact instead.
-  verify    <site>           Screenshot outputs, score static pages vs originals, write report.md
-  verify-page <site>         Page-mode dual full-page hard gate (requires --only <slug>)
+  verify    <site>           Write the agent-browser screenshot bundle → runs/<site>/.verify/PROMPT.md (YOU run it)
+  verify-score <site>        Pixel-score the screenshots, write report.md
+  verify-page <site>         Write the page-mode screenshot bundle (requires --only <slug>)
+  verify-page-score <site>   Page-mode dual full-page hard gate (requires --only <slug>)
   handoff-page <site>        After page-report pass: swap inline chrome→Twig, pushprep (requires --only <slug>)
 
 FLAGS
@@ -124,7 +126,9 @@ EXAMPLES
   replica transform g100.my --page-mode --only pricing
   replica pushprep  g100.my
   replica verify    g100.my
+  replica verify-score g100.my
   replica verify-page g100.my --only pricing
+  replica verify-page-score g100.my --only pricing
   replica handoff-page g100.my --only pricing
 `;
 
