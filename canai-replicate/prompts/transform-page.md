@@ -52,14 +52,14 @@ For **each** entry in `content.json:main` (and for header/footer):
 - **Mobile-first against 390 full-page + `sections-mobile/`.** Author responsive classes against `fullpage-mobile.png` and `sections-mobile/` first, then layer desktop (`lg:` / `xl:`) to match `fullpage-desktop.png` / `sections-desktop/`. Do not design desktop-only and hope mobile works.
 - **Content from `content.json` verbatim.** If the screenshot shows copy that isn't in content.json, omit it — never paraphrase, never invent. If content.json has copy the screenshot also shows, you must include it.
 - **Semantic HTML5 only**: `<header>`, `<nav>`, `<main>`, `<section>`, `<article>`, `<aside>`, `<footer>`. No nav links inside `<header>` without `<nav>`.
-- **Tailwind via Play CDN** wrapped in WPCanAI preview markers (see skeleton).
+- **Tailwind via Play CDN** wrapped in CanAI preview markers (see skeleton).
 - **Alpine.js** only if real state is needed (dropdowns, tabs, accordions, modals, carousels listed in ux.json). Otherwise omit. When it is needed, match the closest recipe in `alpine-recipes.md` — instant-state only, no `x-transition`, no autoplay.
 - **Lucide icons** via `<i data-lucide="kebab-case-name" class="h-5 w-5"></i>` plus the `lucide.createIcons()` init.
 - **Section comments**: `<!-- Section: Hero -->`, `<!-- Section: Features -->`, etc. — these map to `{# Section: … #}` in Twig downstream. Comment titles may describe role; **visible** headings still must match `content.json`.
 - **Cross-page links**: emit relative filenames (`href="about.html"`, not `/about` or absolute URLs), unless the link is genuinely external.
 - **DESIGN.md tokens for look; section PNGs for structure.** Tokens govern color/type/radius; section screenshots govern composition and CTA placement. Do not let DESIGN.md “taste” override geometry.
 - **No frameworks** beyond Tailwind utilities + optional Alpine. No React, Vue, Svelte, bundlers, JSX.
-- **No `<title>` duplication concerns** — keep a real `<title>` for local preview; WPCanAI handles this on the live site.
+- **No `<title>` duplication concerns** — keep a real `<title>` for local preview; CanAI handles this on the live site.
 - **Never write a Twig call's real curly-brace syntax inside an HTML comment.** Twig parses delimiters wherever they appear — including comments. Describe includes in prose if needed; do not quote literal Twig call syntax in comments.
 
 ## Canonical skeleton (page-mode)
@@ -71,7 +71,7 @@ For **each** entry in `content.json:main` (and for header/footer):
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Page Title</title>
-  <!-- WPCanAI-PREVIEW-LIBS:START — local preview only; WPCanAI loads these via wp_head() on the live site -->
+  <!-- WPCanAI-PREVIEW-LIBS:START — local preview only; CanAI loads these via wp_head() on the live site -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.5/dist/cdn.min.js"></script>
   <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>

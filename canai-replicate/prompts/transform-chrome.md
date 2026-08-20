@@ -58,10 +58,10 @@ real WordPress menu, fixes both problems at the source.
 
 ## Navigation MUST come from a real WordPress menu, not hardcoded links
 
-This is the second thing this prompt exists to fix. WPCanAI registers two
+This is the second thing this prompt exists to fix. CanAI registers two
 theme-independent nav menu locations, `wpcanai_primary` and `wpcanai_footer`
 (confirmed in `wpcanai.php`'s `register_nav_menus()` call and documented in
-`ai/canai-mcp/references/REFERENCE.md`: *"WPCanAI registers `wpcanai_primary`
+`ai/canai-mcp/references/REFERENCE.md`: *"CanAI registers `wpcanai_primary`
 and `wpcanai_footer` nav locations itself; render them with
 `get_menu('wpcanai_primary')` rather than the theme's `get_menu('primary')`"*).
 The Twig function is registered in `src/Templating/TwigFactory.php` and
@@ -150,7 +150,7 @@ with no sub-items) — `children` is purely additive.
   `footer.html`).
 - Start `header.html`'s content with
   `<!-- wpcanai-template: template_type=header -->` and `footer.html`'s with
-  `<!-- wpcanai-template: template_type=footer -->` — WPCanAI pre-seeds
+  `<!-- wpcanai-template: template_type=footer -->` — CanAI pre-seeds
   `header`/`footer` (alongside `layout`/`component`) as `template_type`
   taxonomy terms for exactly this purpose; tag the two
   `wpcanai_template` posts with these terms when creating them in wp-admin.

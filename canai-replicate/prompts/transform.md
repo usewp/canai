@@ -1,6 +1,6 @@
 # Task: page → semantic single-HTML file (canai-prepare format)
 
-You are converting one captured web page into a **single self-contained HTML file** that conforms to the **canai-prepare** format. The result will be ingested by WPCanAI on the WordPress side.
+You are converting one captured web page into a **single self-contained HTML file** that conforms to the **canai-prepare** format. The result will be ingested by CanAI on the WordPress side.
 
 ## What you must do
 
@@ -28,8 +28,8 @@ You are converting one captured web page into a **single self-contained HTML fil
   was rendered, not a hypothetical risk.
 - **Site chrome (header/footer) is shared, never inlined.** Do not write your own `<header>`/`<footer>` element. Emit `{{ wpcanai_template('header') }}` immediately inside `<body>` and `{{ wpcanai_template('footer') }}` immediately before `</body>` instead — see the skeleton below. These two Twig partials are generated **once per site** (`output/templates/header.html` / `footer.html`, a separate pass — see `transform-chrome.md`) and shared by every one-off page and every page-type template. Writing your own copy here is exactly the drift bug this rule exists to prevent: on a real migration, two outputs for the same site independently inlined the header and **disagreed** with each other (different nav-link counts, different dropdown menus) — not a hypothetical, something that actually shipped. Navigation itself is WordPress-menu-driven (`get_menu('wpcanai_primary')` / `get_menu('wpcanai_footer')`, inside the shared partials) rather than hardcoded links — that is `transform-chrome.md`'s job, not yours; you only ever *include* the partials, never author nav links directly in a page.
 - **Semantic HTML5 only**: `<header>`, `<nav>`, `<main>`, `<section>`, `<article>`, `<aside>`, `<footer>`. No nav links inside `<header>` without `<nav>`.
-- **Tailwind utility classes inline**. **No `<style>` blocks** in prepared HTML (WPCanAI stores CSS in `_canai_css` separately).
-- **Tailwind via Play CDN** wrapped in WPCanAI preview markers (see skeleton).
+- **Tailwind utility classes inline**. **No `<style>` blocks** in prepared HTML (CanAI stores CSS in `_canai_css` separately).
+- **Tailwind via Play CDN** wrapped in CanAI preview markers (see skeleton).
 - **Alpine.js** only if real state is needed (dropdowns, tabs, accordions, modals). Otherwise omit. When it is needed, match the closest recipe in `alpine-recipes.md` rather than inventing new interaction code — instant-state only, no `x-transition`, no autoplay.
 - **Lucide icons** via `<i data-lucide="kebab-case-name" class="h-5 w-5"></i>` plus the `lucide.createIcons()` init.
 - **Section comments**: `<!-- Section: Hero -->`, `<!-- Section: Features -->`, etc. — these map to `{# Section: … #}` in Twig downstream.
@@ -37,7 +37,7 @@ You are converting one captured web page into a **single self-contained HTML fil
 - **DESIGN.md tokens > screenshot pixels**. The screenshot is for layout/structure; DESIGN.md governs the look.
 - **Content from content.json verbatim**. If the screenshot shows copy that isn't in content.json, omit it — never paraphrase, never invent.
 - **No frameworks** beyond Tailwind utilities + optional Alpine. No React, Vue, Svelte, bundlers, JSX.
-- **No `<title>` duplication concerns** — keep a real `<title>` for local preview; WPCanAI handles this on the live site.
+- **No `<title>` duplication concerns** — keep a real `<title>` for local preview; CanAI handles this on the live site.
 
 ## Canonical skeleton
 
@@ -48,7 +48,7 @@ You are converting one captured web page into a **single self-contained HTML fil
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Page Title</title>
-  <!-- WPCanAI-PREVIEW-LIBS:START — local preview only; WPCanAI loads these via wp_head() on the live site -->
+  <!-- WPCanAI-PREVIEW-LIBS:START — local preview only; CanAI loads these via wp_head() on the live site -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.5/dist/cdn.min.js"></script>
   <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>

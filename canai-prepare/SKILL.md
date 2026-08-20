@@ -1,9 +1,9 @@
 ---
 name: canai-prepare
 description: >
-  Prepares WPCanAI-friendly static sites as one self-contained HTML file per page: semantic HTML5,
+  Prepares CanAI-friendly static sites as one self-contained HTML file per page: semantic HTML5,
   Tailwind utility classes, vanilla JS or Alpine.js for interactivity, Lucide icon markup.
-  Use when the user asks to prepare HTML for WPCanAI, single-html pages, image/mockup to HTML,
+  Use when the user asks to prepare HTML for CanAI, single-html pages, image/mockup to HTML,
   screenshot to HTML, SPA or PWA to static pages, static site export, or "canai-prepare".
   Triggers on: "canai-prepare", "prepare html", "image to html", "mockup to html", "screenshot to html",
   "spa to html", "pwa to html", "static html", "single html", "per-page html", "convert design to html".
@@ -13,18 +13,18 @@ metadata:
 allowed-tools: Bash Read Write Edit Grep Glob
 ---
 
-# WPCanAI Prepare — single-HTML static pages
+# CanAI Prepare — single-HTML static pages
 
-Generate **recommended static markup** for later import into **WPCanAI**: one **complete HTML document per page** (no React/Vue/build tools). Styling is **Tailwind CSS** utilities only; behavior is **vanilla JS** or **Alpine.js**; icons are **Lucide** (`data-lucide`).
+Generate **recommended static markup** for later import into **CanAI**: one **complete HTML document per page** (no React/Vue/build tools). Styling is **Tailwind CSS** utilities only; behavior is **vanilla JS** or **Alpine.js**; icons are **Lucide** (`data-lucide`).
 
-**Assume the agent runs in the user’s own folder** (not necessarily the WordPress root). This skill focuses on **WPCanAI-compatible, integration-ready** single-HTML output only — no requirement for WP-CLI, `.env.wplocal`, or writing under `wp-content/`.
+**Assume the agent runs in the user’s own folder** (not necessarily the WordPress root). This skill focuses on **CanAI-compatible, integration-ready** single-HTML output only — no requirement for WP-CLI, `.env.wplocal`, or writing under `wp-content/`.
 
 See [references/BOILERPLATE.md](references/BOILERPLATE.md) for the canonical skeleton, Alpine/Lucide patterns, and `pages.json` format.
 
 ## Purpose
 
 - Output goes into the **current working directory** (or a user-specified output path). Files use **relative** asset paths so the project folder is self-contained and portable — it can later be copied into WordPress uploads, served locally, or handed off to `**canai-localwp`** / `**canai-mcp**` for import.
-- Files are **WPCanAI-shaped**: section comments, semantic regions, and class names that map cleanly to Twig + `_canai_css` / `_canai_js` later.
+- Files are **CanAI-shaped**: section comments, semantic regions, and class names that map cleanly to Twig + `_canai_css` / `_canai_js` later.
 
 ## Tech stack (strict)
 
@@ -32,7 +32,7 @@ See [references/BOILERPLATE.md](references/BOILERPLATE.md) for the canonical ske
 | Allowed        | Notes                                                                                         |
 | -------------- | --------------------------------------------------------------------------------------------- |
 | Semantic HTML5 | `<header>`, `<nav>`, `<main>`, `<section>`, `<article>`, `<aside>`, `<footer>`                |
-| Tailwind CSS   | Utility classes only; **no** `<style>` blocks in prepared HTML (WPCanAI stores CSS in `_canai_css`) |
+| Tailwind CSS   | Utility classes only; **no** `<style>` blocks in prepared HTML (CanAI stores CSS in `_canai_css`) |
 | Vanilla JS     | Small IIFE or `DOMContentLoaded` handlers at end of `<body>`                                  |
 | Alpine.js      | Use when stateful UI is simpler than hand-written JS (dropdowns, tabs, accordions)            |
 | Lucide         | `<i data-lucide="icon-name" class="h-5 w-5"></i>`                                             |
@@ -46,15 +46,15 @@ See [references/BOILERPLATE.md](references/BOILERPLATE.md) for the canonical ske
 | Heavy CSS frameworks besides Tailwind utilities               |
 
 
-## Library injection — WPCanAI handles it on the site
+## Library injection — CanAI handles it on the site
 
 CanAI outputs the same libraries through WordPress hooks when enabled in **WP Admin → CanAI → Settings** (`TailwindManager`, `LucideManager`, `AlpineManager`, `AssetManager`):
 
 
-| What the static preview file simulates                                                            | Where WPCanAI loads it                                                                                                                                                                          |
+| What the static preview file simulates                                                            | Where CanAI loads it                                                                                                                                                                          |
 | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `<title>…</title>`                                                                                | `**wp_head()`** — WordPress outputs the document title (page/post SEO title); do not duplicate a literal `<title>` inside `_canai_html` if the theme/layout already prints it via `wp_head()` |
-| `<script>` tags for Tailwind Play CDN, Alpine, Lucide UMD (inside `WPCanAI-PREVIEW-LIBS` in `<head>`) | `**wp_head()**` — enqueue/inject head scripts the theme/WPCanAI pipeline would print before `</head>`                                                                                           |
+| `<script>` tags for Tailwind Play CDN, Alpine, Lucide UMD (inside `WPCanAI-PREVIEW-LIBS` in `<head>`) | `**wp_head()**` — enqueue/inject head scripts the theme/CanAI pipeline would print before `</head>`                                                                                           |
 | `<script>lucide.createIcons();</script>` (inside `WPCanAI-PREVIEW-LIBS` before `</body>`)             | `**wp_footer()**` — footer scripts (icon init and similar)                                                                                                                                  |
 
 
@@ -68,11 +68,11 @@ Prepared `.html` files still include **preview-only** copies of those scripts so
 <!-- WPCanAI-PREVIEW-LIBS:END -->
 ```
 
-When importing into WPCanAI, **strip** the preview blocks from markup you paste into templates — WPCanAI will supply Tailwind/Lucide/Alpine via `**wp_head()`** / `**wp_footer()**` instead. Page-specific JS stays **outside** the preview markers (maps to `_canai_js`).
+When importing into CanAI, **strip** the preview blocks from markup you paste into templates — CanAI will supply Tailwind/Lucide/Alpine via `**wp_head()`** / `**wp_footer()**` instead. Page-specific JS stays **outside** the preview markers (maps to `_canai_js`).
 
 ## Layout mapping — header / footer vs main content
 
-In a **full static HTML** file, you may include `<header>` and `<footer>` for preview and for SPA splits. After import into WPCanAI, the usual split is:
+In a **full static HTML** file, you may include `<header>` and `<footer>` for preview and for SPA splits. After import into CanAI, the usual split is:
 
 - `**<header>...</header>`** → a **header**-type template component (site navigation shell), conventionally the **site header** component used by the main **layout** template.
 - `**<footer>...</footer>`** → a **footer**-type template component, conventionally the **site footer** component used by the main layout.
@@ -115,7 +115,7 @@ Default: write under `**./<project-slug>/**` in the **current working directory*
 4. Downgrade framework components to semantic HTML + Tailwind + Alpine/vanilla behavior.
 5. Write `**pages.json**` — array of `{ "slug", "title", "file" }` for traceability.
 
-## WPCanAI compatibility checklist
+## CanAI compatibility checklist
 
 - Section comments use a consistent `<!-- Section: Name -->` pattern.
 - No `<style>` in body content; no inline `style=""` unless unavoidable (prefer utilities).
@@ -124,13 +124,13 @@ Default: write under `**./<project-slug>/**` in the **current working directory*
 - Lucide: decorative icons `aria-hidden="true"`; controls have `aria-label`.
 - Links: readable link text; avoid `href="#"` for real navigation.
 
-## Handoff to WPCanAI
+## Handoff to CanAI
 
-1. **Settings:** Enable Tailwind, Lucide, and Alpine (if used) in WPCanAI settings so scripts load via `**wp_head()`** / `**wp_footer()**` as above.
+1. **Settings:** Enable Tailwind, Lucide, and Alpine (if used) in **CanAI → Settings** so scripts load via `**wp_head()`** / `**wp_footer()**` as above.
 2. **Document title:** Set the WordPress page/post title (and SEO plugin fields if used); `**wp_head()`** outputs `<title>` on the live site — omit a duplicate `<title>` from imported template fragments when the layout already includes `{{ wp_head() }}`.
 3. **Layout:** Move header markup into the **site header** component template; footer into the **site footer** component; wire them from the main **layout** template (`{{ wpcanai_template('site-header') }}`, `{{ wpcanai_template('site-footer') }}` — use the project’s actual slugs).
-4. **Import:** Use `**canai-localwp`** (convert HTML → Twig, write `_canai_html` / `_canai_css` / `_canai_js`) or `**canai-mcp**` for remote sites — follow those skills for storage rules (e.g. no `post_content` for WPCanAI bodies).
-5. **Strip** `WPCanAI-PREVIEW-LIBS` blocks when pasting into templates (avoid duplicating what WPCanAI already injects).
+4. **Import:** Use `**canai-localwp`** (convert HTML → Twig, write `_canai_html` / `_canai_css` / `_canai_js`) or `**canai-mcp**` for remote sites — follow those skills for storage rules (e.g. no `post_content` for CanAI bodies).
+5. **Strip** `WPCanAI-PREVIEW-LIBS` blocks when pasting into templates (avoid duplicating what CanAI already injects).
 6. **Images become ID-based helpers at import, not here.** Prepared `.html` keeps **relative** `src="assets/…"` so the folder previews in a plain browser. On import, `canai-mcp` / `canai-localwp` sideloads each asset and rewrites `<img>` → `{{ image_attrs(id, 'src,alt') }}` (and other surfaces → `{{ media_url(id, size) }}`) by media **id** — so keep the prepared markup clean and swappable: one `<img>` per asset, a descriptive `alt`, `width`/`height` when known, and no inline `style` that would fight the helper output.
 7. **Section comments map 1:1 on import:** every `<!-- Section: X -->` you emit is converted to `{# Section: X #}` Twig (HTML nav comments are never carried into `_canai_html`). Keep the `Section:` prefix and one comment per top-level landmark so the editor's structure menu populates cleanly.
 8. **Keep copy translation-ready.** On native-i18n target sites, downstream import turns every user-facing string into a `{{ t('…') }}` translation source. Write copy so each string is a clean, self-contained phrase with **no markup inside it** — `<strong>Best seller</strong>` (wrap the text, not the tag), never a string that bakes in HTML. This mirrors the image → `image_attrs()` and section-comment handoffs.

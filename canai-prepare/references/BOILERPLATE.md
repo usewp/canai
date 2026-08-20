@@ -12,7 +12,7 @@ Use this as the canonical structure for every generated page. Adjust `lang`, `ti
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <!-- Local preview only: <title> is also emitted by WordPress via wp_head() on the live site -->
   <title>Page Title</title>
-  <!-- WPCanAI-PREVIEW-LIBS:START — local preview only; in WordPress these load via wp_head() when enabled in WPCanAI settings -->
+  <!-- WPCanAI-PREVIEW-LIBS:START — local preview only; in WordPress these load via wp_head() when enabled in CanAI settings -->
   <!-- Live default enables the Tailwind forms + container-queries plugins; mirror them in preview -->
   <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.9/dist/cdn.min.js"></script>
@@ -47,26 +47,26 @@ Use this as the canonical structure for every generated page. Adjust `lang`, `ti
     </div>
   </footer>
 
-  <!-- WPCanAI-PREVIEW-LIBS:START — local preview only; in WordPress icon init runs via wp_footer() when WPCanAI handles Lucide -->
+  <!-- WPCanAI-PREVIEW-LIBS:START — local preview only; in WordPress icon init runs via wp_footer() when CanAI handles Lucide -->
   <script>lucide.createIcons();</script>
   <!-- WPCanAI-PREVIEW-LIBS:END -->
 </body>
 </html>
 ```
 
-## Preview libs vs WPCanAI runtime
+## Preview libs vs CanAI runtime
 
 - `**<title>`:** Keep a real `<title>` in static files for local preview and tab labels. On the WordPress site, the document title is output through `**wp_head()`** (along with meta the theme adds); avoid duplicating `<title>` inside imported `_canai_html` when the layout/theme already prints it.
-- `**<head>` preview block:** Tailwind, Alpine, Lucide script tags mirror what WPCanAI enqueues through `**wp_head()`** (enable libraries in **WPCanAI** settings). Strip `WPCanAI-PREVIEW-LIBS` when importing so hooks do not duplicate them.
+- `**<head>` preview block:** Tailwind, Alpine, Lucide script tags mirror what CanAI enqueues through `**wp_head()`** (enable libraries in **CanAI** settings). Strip `WPCanAI-PREVIEW-LIBS` when importing so hooks do not duplicate them.
 - **Before `</body>` preview block:** `lucide.createIcons()` mirrors footer-side init from `**wp_footer()`**. Strip on import for the same reason.
 - **Opening the `.html` file locally** still needs `<title>`, charset/viewport, and both preview blocks so the page is usable outside WordPress.
 
 ## Header / footer vs layout
 
-For static multi-page exports, keep `<header>` and `<footer>` in every file for linked previews. After WPCanAI import, extract each once into reusable templates:
+For static multi-page exports, keep `<header>` and `<footer>` in every file for linked previews. After CanAI import, extract each once into reusable templates:
 
 
-| Static region        | WPCanAI role                                                          |
+| Static region        | CanAI role                                                          |
 | -------------------- | ----------------------------------------------------------------- |
 | `<header>…</header>` | **Site header** header-type component (included from main layout) |
 | `<main>…</main>`     | Page body `_canai_html`                                             |
@@ -96,7 +96,7 @@ Inside a `<script>` **outside** the preview block (or in a separate inline scrip
 </script>
 ```
 
-In WPCanAI, equivalent tokens often live in the **layout** template’s Tailwind config comment block — align class names with site brand tokens when known.
+In CanAI, equivalent tokens often live in the **layout** template’s Tailwind config comment block — align class names with site brand tokens when known.
 
 ## Alpine.js — common patterns
 
@@ -116,7 +116,7 @@ Use Alpine only when interactivity needs state (menus, tabs, accordions). Prefer
 </div>
 ```
 
-For `x-cloak`, **do not** add a `<style>` block in prepared HTML (WPCanAI convention: no stray styles in markup). After import, add to `**_canai_css`** on the layout:
+For `x-cloak`, **do not** add a `<style>` block in prepared HTML (CanAI convention: no stray styles in markup). After import, add to `**_canai_css`** on the layout:
 
 ```css
 [x-cloak] { display: none !important; }
@@ -139,7 +139,7 @@ Or avoid `x-cloak` and use Alpine `class` / `x-show` with Tailwind utilities onl
 
 ## Lucide Icons
 
-Markup (icons render after `lucide.createIcons()` in preview, or after WPCanAI’s `**wp_footer()**` / frontend pipeline initializes Lucide):
+Markup (icons render after `lucide.createIcons()` in preview, or after CanAI’s `**wp_footer()**` / frontend pipeline initializes Lucide):
 
 ```html
 <i data-lucide="menu" class="h-5 w-5" aria-hidden="true"></i>
@@ -159,7 +159,7 @@ Place user-supplied images, video, and audio under `assets/` next to the HTML fi
 <img src="assets/hero.webp" alt="Descriptive alt text" class="h-auto w-full rounded-lg object-cover" width="1200" height="630" loading="lazy">
 ```
 
-Use **relative URLs** so pages keep working when moved. After upload to the Media Library, replace with `image_attrs()` in Twig during WPCanAI conversion.
+Use **relative URLs** so pages keep working when moved. After upload to the Media Library, replace with `image_attrs()` in Twig during CanAI conversion.
 
 ## pages.json manifest (multi-page / SPA split)
 

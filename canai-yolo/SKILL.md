@@ -19,7 +19,7 @@ allowed-tools: "Read Grep Glob"
 
 For templates, pages, i18n, media, settings, and Tailwind — use **`canai-mcp`** instead. Do not blend YOLO workflows into a normal `/canai-mcp` content session unless the user asked for this skill.
 
-Transport is the same WPCanAI MCP server (`{site}/wp-json/mcp/wpcanai`) and API key as `canai-mcp`. Ability IDs use slashes; MCP tool names use **hyphens**.
+Transport is the same CanAI MCP server (`{site}/wp-json/mcp/wpcanai`) and API key as `canai-mcp`. Ability IDs use slashes; MCP tool names use **hyphens**.
 
 ---
 
@@ -42,7 +42,7 @@ Key rules the schemas alone don't make obvious:
 1. **Tools only appear when FluentSnippets is active.** If `easy-code-manager` is inactive the five snippet tools are not registered at all — you won't see them in the tool list.
 2. **No leading `<?php` in PHP `code`.** FluentSnippets rejects a PHP snippet whose body starts with `<?php` (`invalid_code`, "Please remove <?php from the beginning of the code"). Write the function/hook body directly, no opening tag. This is passed through, not auto-corrected.
 3. **Create always yields a draft.** `wpcanai-create-snippet` never publishes (unless the site's own FluentSnippets `auto_publish` is on). Publish as a **separate** step: `wpcanai-set-snippet-status { "file_name": "…", "status": "published" }`.
-4. **Writes only succeed for allowlisted groups.** An administrator lists agent-writable snippet groups at **WPCanAI → AI Agent → Guardrails → FluentSnippets group allowlist**. An empty allowlist (the default) means **all** snippet writes are refused (`snippet_writes_disabled`). A write to a non-allowlisted group returns `snippet_group_not_allowed`. Prefer the group `AI` unless the user specifies otherwise. Reads (`list`/`get`) are always allowed regardless of the allowlist.
+4. **Writes only succeed for allowlisted groups.** An administrator lists agent-writable snippet groups at **CanAI → AI Agent → Guardrails → FluentSnippets group allowlist**. An empty allowlist (the default) means **all** snippet writes are refused (`snippet_writes_disabled`). A write to a non-allowlisted group returns `snippet_group_not_allowed`. Prefer the group `AI` unless the user specifies otherwise. Reads (`list`/`get`) are always allowed regardless of the allowlist.
 5. **Updates are sparse.** Send only the fields you want to change to `wpcanai-update-snippet`; the server reads the current snippet, merges your changes over its full metadata, and writes it back. Omitting a field keeps its current value — you cannot wipe `group`/`priority`/`run_at`/`created_at` by sending only `code`.
 6. **`run_at` is type-specific.** PHP → `all`|`backend`|`frontend`; `php_content` → `shortcode`|`wp_head`|`wp_body_open`|`wp_footer`|`before_content`|`after_content`; css → `wp_head`|`admin_head`|`everywhere`; js → `wp_head`|`wp_footer`|`admin_head`|`admin_footer`. An invalid pairing is rejected before FluentSnippets is called (`invalid_snippet_type` / `invalid_run_at`).
 7. **Upstream quirks (not fixed here).** CSS `everywhere` does not actually load in admin (a plugin typo, `everywehere`), and PHP `frontend` is not enforced (it runs everywhere) — both values are still accepted because they are what the FluentSnippets UI offers. Prefer `all` / `backend` / `wp_head` when unsure.
@@ -77,7 +77,7 @@ Agents often implement browser → WordPress relays as a FluentSnippets PHP rout
 
 - **Args:** `{ "file_name": string, "code"?: string, "name"?: string, "description"?: string, "tags"?: string, "group"?: string, "run_at"?: string, "priority"?: int, "reactivate"?: bool }` — `file_name` required; send only fields to change (**sparse** — the server merges over current metadata). The current group (and destination `group`, if moving) must be allowlisted. An errored snippet needs `reactivate: true`.
 - **Returns:** `{ "success": true, "file_name": string, "changed_fields": string[] }`.
-- **Published PHP code updates:** Updating `code` on a **published** PHP snippet used to fatal with `Cannot redeclare function` (FluentSnippets validates in the same request where the live snippet is already loaded). WPCanAI handles this transparently. If an older plugin build still returns that error, unpublish → update → republish via `wpcanai-set-snippet-status`.
+- **Published PHP code updates:** Updating `code` on a **published** PHP snippet used to fatal with `Cannot redeclare function` (FluentSnippets validates in the same request where the live snippet is already loaded). CanAI handles this transparently. If an older plugin build still returns that error, unpublish → update → republish via `wpcanai-set-snippet-status`.
 
 ### `wpcanai-set-snippet-status`
 

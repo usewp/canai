@@ -1,31 +1,33 @@
 ---
 name: canai-localwp
 description: >
-  Work with WPCanAI templates and WP Local CLI.
-  Use when user asks to create/edit/list WPCanAI templates, apply WooCommerce to pages,
-  convert HTML to WPCanAI Twig templates, or interact with the local WordPress instance.
-  Triggers on: "canai-localwp", "wpcanai local", "localwp", "local wpcanai", "wpcanai", "template", "twig",
-  "woocommerce template", "shop page", "create layout", "edit with wpcanai", "wp cli",
-  "scan wpcanai", "check wpcanai", "diagnose wpcanai".
+  Work with CanAI templates and WP Local CLI.
+  Use when user asks to create/edit/list CanAI templates, apply WooCommerce to pages,
+  convert HTML to CanAI Twig templates, or interact with the local WordPress instance.
+  Triggers on: "canai-localwp", "wpcanai local", "canai local", "localwp", "local wpcanai",
+  "local canai", "wpcanai", "canai", "template", "twig",
+  "woocommerce template", "shop page", "create layout", "edit with wpcanai", "edit with canai",
+  "wp cli", "scan wpcanai", "scan canai", "check wpcanai", "check canai",
+  "diagnose wpcanai", "diagnose canai".
 metadata:
   author: canai
   version: "1.10.0"
 allowed-tools: Bash Read Write Edit Grep Glob
 ---
 
-# WPCanAI Skill (local / WP‑CLI)
+# CanAI Skill (local / WP‑CLI)
 
-You are an expert at working with the WPCanAI WordPress plugin. WPCanAI uses **Twig templating** to render **semantic HTML** pages stored as WordPress custom post type `wpcanai_template`.
+You are an expert at working with the CanAI WordPress plugin. CanAI uses **Twig templating** to render **semantic HTML** pages stored as WordPress custom post type `wpcanai_template`.
 
-See [references/REFERENCE.md](references/REFERENCE.md) for WPCanAI-registered Twig functions (plus the vendored Twig version for built-ins), WooCommerce context variables, and the comment convention reference.
+See [references/REFERENCE.md](references/REFERENCE.md) for CanAI-registered Twig functions (plus the vendored Twig version for built-ins), WooCommerce context variables, and the comment convention reference.
 
 ## Same domain as `canai-mcp`, different transport
 
-**`canai-localwp`** and **`canai-mcp`** describe the same WPCanAI product behavior (Twig, `_canai_*` meta, WooCommerce resolution, comment conventions). **`canai-localwp`** is for **local shell access** — WP‑CLI, WP Local, SSH — plus workspace edits against that environment. **`canai-mcp`** is for the **MCP server** path (local or remote WordPress): read/write via MCP tools, not `wp` in the terminal. Install both skills if you use both workflows.
+**`canai-localwp`** and **`canai-mcp`** describe the same CanAI product behavior (Twig, `_canai_*` meta, WooCommerce resolution, comment conventions). **`canai-localwp`** is for **local shell access** — WP‑CLI, WP Local, SSH — plus workspace edits against that environment. **`canai-mcp`** is for the **MCP server** path (local or remote WordPress): read/write via MCP tools, not `wp` in the terminal. Install both skills if you use both workflows.
 
-## CRITICAL: WPCanAI Storage Model — Read This First
+## CRITICAL: CanAI Storage Model — Read This First
 
-**WPCanAI does NOT use `post_content`.** All template content is stored in **custom meta fields**:
+**CanAI does NOT use `post_content`.** All template content is stored in **custom meta fields**:
 
 | Meta Key | Purpose |
 |----------|---------|
@@ -37,23 +39,23 @@ See [references/REFERENCE.md](references/REFERENCE.md) for WPCanAI-registered Tw
 
 ### NEVER do this:
 ```bash
-# WRONG — This modifies WordPress post_content, which WPCanAI ignores
+# WRONG — This modifies WordPress post_content, which CanAI ignores
 wp post update <ID> --post_content="<html>..."
 wp post update <ID> --post_content="$(cat template.html)"
 ```
 
 ### ALWAYS do this:
 ```bash
-# CORRECT — Write to WPCanAI custom meta fields via temp file, wp_slash()'d (see below)
+# CORRECT — Write to CanAI custom meta fields via temp file, wp_slash()'d (see below)
 cat > /tmp/canai_html.twig << 'TWIG'
 <main>{{ page_content }}</main>
 TWIG
 wp eval 'update_post_meta(<ID>, "_canai_html", wp_slash(file_get_contents("/tmp/canai_html.twig")));'
 ```
 
-**Why:** WPCanAI's renderer reads `_canai_html` meta, not `post_content`. If you write to `post_content`, the page will appear unchanged (WPCanAI ignores it) or show stale content. The same applies to CSS (`_canai_css`), JS (`_canai_js`), and context (`_canai_context`).
+**Why:** CanAI's renderer reads `_canai_html` meta, not `post_content`. If you write to `post_content`, the page will appear unchanged (CanAI ignores it) or show stale content. The same applies to CSS (`_canai_css`), JS (`_canai_js`), and context (`_canai_context`).
 
-**This applies to ALL post types WPCanAI manages:** `wpcanai_template` posts AND regular `page`/`post` types that have WPCanAI enabled (i.e., have `_canai_html` meta set).
+**This applies to ALL post types CanAI manages:** `wpcanai_template` posts AND regular `page`/`post` types that have CanAI enabled (i.e., have `_canai_html` meta set).
 
 ### ⚠ The `wp_slash()` footgun — a raw `file_get_contents()` write silently corrupts backslashes
 
@@ -64,7 +66,7 @@ file used to show above (no `wp_slash()`), the stored value ended up
 containing `split("n")` — the backslash silently stripped — and every
 ingredient line got shredded into a separate `<li>` at every occurrence of
 the letter "n" in the rendered output. The page still returned HTTP 200 and
-looked plausible at a glance; nothing in WPCanAI's own output, logs, or
+looked plausible at a glance; nothing in CanAI's own output, logs, or
 this skill pointed at the cause. This isn't specific to that one filter —
 **any** Twig source with a literal backslash-letter sequence (`\n`/`\t` in a
 filter argument, a regex character class, a CSS content escape, `\"` inside
@@ -86,15 +88,15 @@ depends on how you push it.)
 
 ## CRITICAL: Content Resolution — Know Where Content Lives
 
-WPCanAI resolves content differently depending on the template type. Editing the wrong post is a silent bug — content saves but nothing changes on the frontend.
+CanAI resolves content differently depending on the template type. Editing the wrong post is a silent bug — content saves but nothing changes on the frontend.
 
-### How WPCanAI Resolves Content
+### How CanAI Resolves Content
 
-WPCanAI resolves content in this order:
+CanAI resolves content in this order:
 
 1. **Template delegate override** — If a `wpcanai_template` post exists with `_canai_delegate_page_id`, that takes priority over WC auto-resolve for *which page* is the delegate.
-2. **WC page types auto-resolve a delegate *page*** — For WooCommerce page types (shop, cart, checkout, my-account, product-category, order-received), WPCanAI automatically resolves a delegate page from WooCommerce settings (`wc_get_page_id()`). **No `wpcanai_template` post is needed** for these types to have a page to resolve to — but that does **not** mean content lives on that page. Whether it does depends on the **shape** currently in effect: in **delegate-body** shape the WC page's own `_canai_html`/`_canai_layout`/`_canai_css`/`_canai_js` are what render; in **template-body** shape the type's `wpcanai_template` (not tagged `layout`) renders the whole page instead and the WC page's own `_canai_html` is dead content. See [The two configuration shapes](#the-two-configuration-shapes) — do not assume delegate-body.
-3. **Template-rendered** — For non-WC types (product, 404, search, etc.), WPCanAI reads `_canai_html` from the `wpcanai_template` post directly.
+2. **WC page types auto-resolve a delegate *page*** — For WooCommerce page types (shop, cart, checkout, my-account, product-category, order-received), CanAI automatically resolves a delegate page from WooCommerce settings (`wc_get_page_id()`). **No `wpcanai_template` post is needed** for these types to have a page to resolve to — but that does **not** mean content lives on that page. Whether it does depends on the **shape** currently in effect: in **delegate-body** shape the WC page's own `_canai_html`/`_canai_layout`/`_canai_css`/`_canai_js` are what render; in **template-body** shape the type's `wpcanai_template` (not tagged `layout`) renders the whole page instead and the WC page's own `_canai_html` is dead content. See [The two configuration shapes](#the-two-configuration-shapes) — do not assume delegate-body.
+3. **Template-rendered** — For non-WC types (product, 404, search, etc.), CanAI reads `_canai_html` from the `wpcanai_template` post directly.
 
 ### WC Page Types (delegate page auto-resolves — body location depends on shape)
 
@@ -102,7 +104,7 @@ WPCanAI resolves content in this order:
 
 **Endpoint types (v1.47.0):** order-pay, add-payment-method, orders, view-order, downloads, edit-account, edit-address, payment-methods, lost-password — these resolve to their parent WC page (checkout or my-account). See **Endpoint template types** below.
 
-WPCanAI auto-resolves a delegate *page* for these from WooCommerce's "Page setup" settings — no `wpcanai_template` post is required for that resolution to succeed. But a template **can** exist for the same type, and if it does and isn't tagged `layout`, it renders the whole page and the WC page's own `_canai_html` never runs. **Which post to edit depends on the shape** — see [The two configuration shapes](#the-two-configuration-shapes):
+CanAI auto-resolves a delegate *page* for these from WooCommerce's "Page setup" settings — no `wpcanai_template` post is required for that resolution to succeed. But a template **can** exist for the same type, and if it does and isn't tagged `layout`, it renders the whole page and the WC page's own `_canai_html` never runs. **Which post to edit depends on the shape** — see [The two configuration shapes](#the-two-configuration-shapes):
 
 - **Delegate-body** (a `layout`-tagged post is in the layout slot) → edit `_canai_html`/`_canai_layout` on the **WC page**
 - **Template-body** (the type's `wpcanai_template` occupies the layout slot and isn't tagged `layout`) → edit `_canai_html` on the **template** instead
@@ -122,7 +124,7 @@ wp eval 'echo wc_get_page_id("shop");'         # Shop delegate page (same caveat
 
 **Types:** product, 404, search, archive, category, tag, author
 
-These have **no delegate page**. WPCanAI reads `_canai_html` from the `wpcanai_template` post directly. Layout is set via `_canai_layout` on the template post.
+These have **no delegate page**. CanAI reads `_canai_html` from the `wpcanai_template` post directly. Layout is set via `_canai_layout` on the template post.
 
 ### Quick Reference
 
@@ -141,7 +143,7 @@ These have **no delegate page**. WPCanAI reads `_canai_html` from the `wpcanai_t
 
 ### WC Auto-Resolve Map
 
-| WPCanAI Type | WC Setting | Shares Page With |
+| CanAI Type | WC Setting | Shares Page With |
 |----------|-----------|-----------------|
 | `shop` | `wc_get_page_id("shop")` | product-category |
 | `product-category` | `wc_get_page_id("shop")` | shop |
@@ -181,12 +183,12 @@ have no template type.
 
 ### Content Resolution Priority
 
-WPCanAI resolves content in this order (first match wins) — but **which post that resolves to depends on the shape currently in effect**, not just on whether a template or a delegate exists. See [The two configuration shapes](#the-two-configuration-shapes) for the full mechanics; the summary:
+CanAI resolves content in this order (first match wins) — but **which post that resolves to depends on the shape currently in effect**, not just on whether a template or a delegate exists. See [The two configuration shapes](#the-two-configuration-shapes) for the full mechanics; the summary:
 
 1. **Broken layout** — the layout slot points at a template post that no longer exists → the delegate page falls back to rendering its own `_canai_html` **unwrapped** (no layout chrome); the pointer should still be fixed or cleared.
 2. **Template-body** — the type's `wpcanai_template` occupies the layout slot (the default, unless the delegate page's own `_canai_layout` displaces it) and is **not** tagged `layout` → that template's own `_canai_html` renders the whole page. This wins even when a `_canai_delegate_page_id` or a WC delegate page also resolves — an explicit delegate or an auto-resolved WC page is **not** a guarantee that the delegate page's content is what renders.
 3. **Delegate-body** — the layout slot resolves to a genuine `layout`-tagged post (via the delegate page's own `_canai_layout`, an explicit `_canai_delegate_page_id`, or WC auto-resolve) → the delegate page's `_canai_html` supplies the body, wrapped by that layout.
-4. **None** — no template, no delegate content, and no site default layout → WPCanAI does not take over the request.
+4. **None** — no template, no delegate content, and no site default layout → CanAI does not take over the request.
 
 Don't assume which rule applies — run `wpcanai-resolve-content-id` or the diagnostic script in [SCAN Check 1](#8-scan--diagnose-wpcanai-configuration-problems) to get the actual `content_post_id` before editing.
 
@@ -225,20 +227,24 @@ This means WC page types can be **overridden** by creating a `wpcanai_template` 
 
 ### Shop, archives, and pagination
 
-- **WooCommerce shop / product-category:** WPCanAI injects `products` and a `pagination` object (`current_page`, `total_pages`, `per_page`, `total_products`, and `total_posts` as an alias). Prefer looping `products` and output `{{ wc_pagination()|raw }}` or `{{ wpcanai_pagination()|raw }}` so URLs follow the main catalog query (including `/page/N/` under pretty permalinks). Avoid replacing the loop with `wpcanai_get_posts_enriched` unless you pass `paged` and match catalog visibility.
-- **WordPress archives** (`category`, `tag`, `author`, `search`, `archive` including CPT archives): WPCanAI injects `posts` and the same `pagination` shape (`total_posts` is the post count). Use `{{ the_posts_pagination()|raw }}`, `{{ wpcanai_paginate_links()|raw }}`, or `{{ wpcanai_pagination()|raw }}` (dispatches to WC on shop/category only).
+- **WooCommerce shop / product-category:** CanAI injects `products` and a `pagination` object (`current_page`, `total_pages`, `per_page`, `total_products`, and `total_posts` as an alias). Prefer looping `products` and output `{{ wc_pagination()|raw }}` or `{{ wpcanai_pagination()|raw }}` so URLs follow the main catalog query (including `/page/N/` under pretty permalinks). Avoid replacing the loop with `wpcanai_get_posts_enriched` unless you pass `paged` and match catalog visibility.
+- **WordPress archives** (`category`, `tag`, `author`, `search`, `archive` including CPT archives): CanAI injects `posts` and the same `pagination` shape (`total_posts` is the post count). Use `{{ the_posts_pagination()|raw }}`, `{{ wpcanai_paginate_links()|raw }}`, or `{{ wpcanai_pagination()|raw }}` (dispatches to WC on shop/category only).
 - **Permalinks:** Use the Twig helpers above instead of hard-coding query strings. WC **`[products]`** shortcodes use the `product-page` argument; the **main shop** does not.
 
 ---
 
 ## Multi-language — determine the model FIRST
 
-WPCanAI sites are multilingual in one of **two mutually exclusive models**. Detect which before doing any translation work; do NOT assume Polylang.
+CanAI sites are multilingual in one of **two mutually exclusive models**. Detect which before doing any translation work; do NOT assume Polylang.
 
 - **Native string translation (single-post i18n, plugin 1.22+)** — ONE post per page. A site-wide string table translates `{{ t('…') }}` sources, and per-language **content overrides** translate a post's title/content/excerpt/custom-fields and term name/description. Detect: `wp option get wpcanai_i18n_settings` returns configured `languages`. **Never clone posts per language in this model.**
-  - Strings: the **WPCanAI → Translations** admin page, or `wp eval` against the `WPCanAI\I18n\StringStore` service; per-post content via override meta `_canai_i18n_{lang}` (a sparse `{title,content,excerpt,fields,seo_title,seo_description}` blob). The MCP twins are `wpcanai/i18n-*`; locally, edit via `wp eval` against the `WPCanAI\I18n\ContentOverrides` service or the **WPCanAI → Translations** admin page.
+  - Strings: the **CanAI → Tools → Translations** admin page, or `wp eval` against the `WPCanAI\I18n\StringStore` service; per-post content via override meta `_canai_i18n_{lang}` (a sparse `{title,content,excerpt,fields,seo_title,seo_description}` blob). The MCP twins are `wpcanai/i18n-*`; locally, edit via `wp eval` against the `WPCanAI\I18n\ContentOverrides` service or the **CanAI → Tools → Translations** admin page.
   - Twig helpers: `t()`, `tmedia()`, `current_lang()`, `languages()`, `lang_url()` (see REFERENCE → Internationalization).
-  - Site-level strings (site name, tagline, archive/search/404 SEO title+description) live in a per-language **global-string** store (option `wpcanai_i18n_global_strings`), separate from post/term overrides. Edit via `wp eval` against `WPCanAI\I18n\GlobalStrings`; the MCP twins are `wpcanai/i18n-get-global-strings` / `wpcanai/i18n-set-global-strings`, and the admin UI is the **Global** tab in WPCanAI → Translations. Example:
+  - Site-level strings (site name, tagline, archive/search/404 SEO title+description) live in a per-language **global-string** store (option `wpcanai_i18n_global_strings`), separate from post/term overrides. Edit via `wp eval` against `WPCanAI\I18n\GlobalStrings`; the MCP twins are `wpcanai/i18n-get-global-strings` / `wpcanai/i18n-set-global-strings`, and the admin UI is the **Global** tab in CanAI → Tools → Translations. Example:
+
+  > **Where the admin pages live (plugin v1.59.0+).** The visible CanAI submenu is Welcome ·
+  > All Templates · AI Agent · Settings · Tools. Editor, Image Sideloader, Export/Import,
+  > Starter Presets, Diagnostics and Translations are all reached through **CanAI → Tools**.
 
     ```bash
     wp eval '(new WPCanAI\I18n\GlobalStrings())->set("ms", ["site_name" => "…", "tagline" => "…", "archive" => ["search" => ["title" => "…", "description" => "…"], "404" => ["title" => "…"]]);'
@@ -246,7 +252,7 @@ WPCanAI sites are multilingual in one of **two mutually exclusive models**. Dete
     ```
 
     Archive contexts are `search`, `404`, `post_type:<slug>`. Category / tag titles are term overrides, not global strings. `set()` is a sparse upsert (a `null`/empty value removes a key) and rejects the default language.
-  - **Automatic SEO on non-default pages (plugin 1.30+):** missing `seo_title`/`seo_description` auto-derive from the translated title / excerpt / content (description ≤160 chars on a word boundary); canonical + `og:url` are `/<lang>/`-prefixed and WPCanAI's own canonical is suppressed when a SEO plugin is active; plugin redirects keep the `/<lang>/` prefix except WordPress system paths (`/wp-login.php`, `/wp-admin`, `/wp-json`, `/xmlrpc.php`, `/wp-cron.php`, `/wp-content`, `/wp-includes`); `Article.headline` JSON-LD translates and RankMath's sitemap declares `xmlns:xhtml`.
+  - **Automatic SEO on non-default pages (plugin 1.30+):** missing `seo_title`/`seo_description` auto-derive from the translated title / excerpt / content (description ≤160 chars on a word boundary); canonical + `og:url` are `/<lang>/`-prefixed and CanAI's own canonical is suppressed when a SEO plugin is active; plugin redirects keep the `/<lang>/` prefix except WordPress system paths (`/wp-login.php`, `/wp-admin`, `/wp-json`, `/xmlrpc.php`, `/wp-cron.php`, `/wp-content`, `/wp-includes`); `Article.headline` JSON-LD translates and RankMath's sitemap declares `xmlns:xhtml`.
 - **Polylang** — one post PER language, linked as translations. Detect: Polylang active (`pll_languages_list()` non-empty). Only in this model do you use the `pll_*` workflows below.
 
 If neither is active and the user wants multilingual, prefer **native string translation** (no extra plugin).
@@ -255,7 +261,7 @@ If neither is active and the user wants multilingual, prefer **native string tra
 
 **Applies only when Polylang is active** (see the model router above). For the native model, use content overrides, not per-language post copies.
 
-WPCanAI integrates with **Polylang** automatically (no-op when Polylang is inactive — see the plugin's `src/I18n/PolylangIntegration.php`). When Polylang is active, every storage rule above gains a **per-language axis**: editing the wrong-language post is a new silent-bug class.
+CanAI integrates with **Polylang** automatically (no-op when Polylang is inactive — see the plugin's `src/I18n/PolylangIntegration.php`). When Polylang is active, every storage rule above gains a **per-language axis**: editing the wrong-language post is a new silent-bug class.
 
 ### Translation model
 
@@ -270,7 +276,7 @@ WPCanAI integrates with **Polylang** automatically (no-op when Polylang is inact
 ### Resolution behavior
 
 - `TemplateResolver` runs the resolved page ID through `pll_get_post()` for the current language before reading `_canai_html`. Editing must target the **right-language** delegate page.
-- For a non-default-language URL with **no** template/delegate in that language, WPCanAI forces a **404** rather than falling back to the default language.
+- For a non-default-language URL with **no** template/delegate in that language, CanAI forces a **404** rather than falling back to the default language.
 
 ### Workflows
 
@@ -325,7 +331,7 @@ foreach (get_posts(["post_type" => "wpcanai_template", "posts_per_page" => -1, "
 '
 ```
 
-**Twig helpers** for language-aware markup — three families: native WPCanAI i18n (`t()`, `tmedia()`, `current_lang()`, `languages()`, `lang_url()`, plugin 1.22+), Polylang-only (`current_language()`, `language_switcher()`), and the WordPress gettext family (`__()`, `_x()`, `_n()`) — see [references/REFERENCE.md](references/REFERENCE.md#internationalization-i18n).
+**Twig helpers** for language-aware markup — three families: native CanAI i18n (`t()`, `tmedia()`, `current_lang()`, `languages()`, `lang_url()`, plugin 1.22+), Polylang-only (`current_language()`, `language_switcher()`), and the WordPress gettext family (`__()`, `_x()`, `_n()`) — see [references/REFERENCE.md](references/REFERENCE.md#internationalization-i18n).
 
 ---
 
@@ -352,11 +358,11 @@ foreach (get_posts(["post_type" => "wpcanai_template", "posts_per_page" => -1, "
    source .env.wplocal && wp --path="$WP_PATH" --info
    ```
 
-5. **Confirm** to the user that WPCanAI CLI is ready.
+5. **Confirm** to the user that CanAI CLI is ready.
 
 ---
 
-## Running WPCanAI Commands
+## Running CanAI Commands
 
 Before any `wp` command:
 1. Check that `.env.wplocal` exists. If not, tell the user to run init first and stop.
@@ -374,20 +380,20 @@ The user only sees high-level actions — never the sourcing mechanics.
 
 ## Action Router
 
-### 1. LIST — Show existing WPCanAI templates and pages
+### 1. LIST — Show existing CanAI templates and pages
 
 ```bash
-# List all WPCanAI templates with their types
+# List all CanAI templates with their types
 wp post list --post_type=wpcanai_template --fields=ID,post_title,post_name,post_status --format=table
 
 # Get template_type for each
 wp post term list <ID> template_type --fields=name --format=csv
 
-# List all WPCanAI-enabled pages (pages with _canai_html meta)
+# List all CanAI-enabled pages (pages with _canai_html meta)
 wp eval 'global $wpdb; $r = $wpdb->get_results("SELECT p.ID, p.post_title, p.post_type, COALESCE((SELECT meta_value FROM wp_postmeta WHERE post_id = p.ID AND meta_key=\"_canai_layout\" LIMIT 1),\"none\") as layout_id FROM wp_posts p INNER JOIN wp_postmeta pm ON p.ID = pm.post_id WHERE pm.meta_key=\"_canai_html\" AND p.post_status=\"publish\" GROUP BY p.ID ORDER BY p.post_type, p.ID"); foreach($r as $row) echo "$row->ID\t$row->post_title\t$row->post_type\tlayout=$row->layout_id\n";'
 ```
 
-### 2. READ — Pull template content from a WPCanAI template or page
+### 2. READ — Pull template content from a CanAI template or page
 
 **First: determine the correct ID** (see [Content Resolution](#critical-content-resolution--know-where-content-lives)):
 - For WC page types (cart/checkout/my-account/shop/product-category) → **do not assume the delegate page.** The correct ID is the delegate page only in **delegate-body** shape; in **template-body** shape it's the `wpcanai_template` post instead (see [The two configuration shapes](#the-two-configuration-shapes)). Run `wpcanai-resolve-content-id` (its `content_post_id` is the post that actually renders) or the SCAN Check 1 script before reading.
@@ -402,7 +408,7 @@ wp post meta get <ID> _canai_layout    # Assigned layout
 wp post term list <ID> template_type --fields=name --format=csv  # Template type (wpcanai_template only)
 ```
 
-### 3. CREATE — Create a new WPCanAI template
+### 3. CREATE — Create a new CanAI template
 
 ```bash
 # Step 1: Create the wpcanai_template post
@@ -447,7 +453,7 @@ wp post meta update $CART_PAGE _canai_layout <layout_id>
 wp eval "update_post_meta($CART_PAGE, '_canai_html', wp_slash(file_get_contents('/tmp/canai_html.twig')));"
 ```
 
-### 4. UPDATE — Edit an existing WPCanAI template or page
+### 4. UPDATE — Edit an existing CanAI template or page
 
 **First: determine the correct ID** (see [Content Resolution](#critical-content-resolution--know-where-content-lives)):
 - For WC page types (cart/checkout/my-account/shop/product-category) → **do not assume the delegate page.** Update the delegate page only in **delegate-body** shape; in **template-body** shape update the `wpcanai_template` post instead (see [The two configuration shapes](#the-two-configuration-shapes)). Run `wpcanai-resolve-content-id` (its `content_post_id` is the post that actually renders) or the SCAN Check 1 script before writing — writing to the wrong post saves successfully but changes nothing on the frontend.
@@ -481,7 +487,7 @@ wp eval 'update_post_meta(<ID>, "_canai_html", wp_slash(file_get_contents("/tmp/
 
 Quick detection: if a `<!-- -->` comment is a short label on its own line (not wrapping disabled code), it's a section comment and should be converted.
 
-### 7. CONVERT HTML — Transform semantic HTML into WPCanAI templates
+### 7. CONVERT HTML — Transform semantic HTML into CanAI templates
 
 **Source is a canai-replicate migration kit? Don't hand-convert it — run
 `pushprep` first.** `"$HOME/.claude/skills/canai-replicate/bin/replica"
@@ -489,11 +495,11 @@ pushprep <site>` already does steps 1–2 below deterministically for every
 `output/pages/*.html` / `output/templates/*.html` file, writing one
 `runs/<site>/output/push/<slug>.json` (`{ title, slug, template_type, html,
 css, js, warnings }`) per file. Writing a kit file's raw content verbatim
-into `_canai_html` instead doubles WPCanAI's own document shell around it
+into `_canai_html` instead doubles CanAI's own document shell around it
 (dogfood A2, Defect #1 — CRITICAL, reproduced live: 2×`<!DOCTYPE html>`,
 2×`<html>`, 2×`<head>`, 2×`<body>`) — a kit file is always a full standalone
 document (canai-prepare's format, deliberate — it opens via `file://` for
-preview), and WPCanAI's own no-layout render path wraps `_canai_html` in
+preview), and CanAI's own no-layout render path wraps `_canai_html` in
 **its own** shell too. Take `html`/`css`/`js` from the `pushprep` JSON
 (already `wp_slash()`-safe to write per the footgun note above — that's a
 separate concern from the document-shape fix, still your responsibility at
@@ -525,12 +531,12 @@ from canai-replicate.
 5. **Use Tailwind CSS** for styling
 6. **Head / scripts / JS storage**:
    - **Do NOT** put a literal `<title>` in layout `_canai_html` — `{{ wp_head() }}` outputs the document title
-   - Put page-level JavaScript (`lucide.createIcons()`, Alpine init, custom handlers) in **`_canai_js`**, not inline `<script>` in `_canai_html`. WPCanAI outputs `_canai_js` at `wp_footer()`. The only inline `<script>` in layout `_canai_html` should be `tailwind.config = { ... }` after `{{ wp_head() }}`
+   - Put page-level JavaScript (`lucide.createIcons()`, Alpine init, custom handlers) in **`_canai_js`**, not inline `<script>` in `_canai_html`. CanAI outputs `_canai_js` at `wp_footer()`. The only inline `<script>` in layout `_canai_html` should be `tailwind.config = { ... }` after `{{ wp_head() }}`
 7. **Save each template** via WP CLI
 
-### 8. SCAN — Diagnose WPCanAI configuration problems
+### 8. SCAN — Diagnose CanAI configuration problems
 
-When user asks to scan, check, or diagnose WPCanAI issues, run these checks and report findings.
+When user asks to scan, check, or diagnose CanAI issues, run these checks and report findings.
 
 #### Check 1: WooCommerce structural types — which shape, and is it healthy
 
@@ -565,7 +571,7 @@ foreach ($base_types as $label) {
   switch ($d["shape"]) {
     case "none":
       echo $d["delegate_page_id"] > 0
-        ? "ℹ [$label]: No WPCanAI content; page {$d['delegate_page_id']} has none either\n"
+        ? "ℹ [$label]: No CanAI content; page {$d['delegate_page_id']} has none either\n"
         : "ℹ [$label]: No WC page\n";
       break;
     case "broken-layout":
@@ -574,7 +580,7 @@ foreach ($base_types as $label) {
       // own _canai_html unwrapped (no layout chrome) — not blank.
       echo $d["content_post_id"] > 0
         ? "🟡 BROKEN LAYOUT [$label]: layout template {$d['layout_post_id']} no longer exists; page {$d['content_post_id']} falls back to rendering its own content unwrapped (no layout chrome)\n"
-        : "🟡 BROKEN LAYOUT [$label]: layout template {$d['layout_post_id']} no longer exists, and the delegate page has no _canai_html of its own, so nothing WPCanAI-specific renders\n";
+        : "🟡 BROKEN LAYOUT [$label]: layout template {$d['layout_post_id']} no longer exists, and the delegate page has no _canai_html of its own, so nothing CanAI-specific renders\n";
       break;
     case "template-body":
       // Valid shape: the type template is not a layout wrapper, so its own
@@ -686,13 +692,13 @@ See [Presets & bundles (WP-CLI)](#presets--bundles-wp-cli) below for full comman
 ## Presets & bundles (WP-CLI)
 
 - `wp wpcanai preset list` — available packs.
-- `wp wpcanai preset install <slug> [--no-front-page] [--clean-slate]` — installs a pack (templates/pages, sideloaded images, translation-ready `t()`-wrapped copy + `languages()` switcher, real nav menus in Appearance → Menus, and any Forminator forms). The pack's front page is set as the site front page by default; pass `--no-front-page` to skip that. **`--clean-slate` is destructive: it trashes ALL existing WPCanAI templates/pages before installing — confirm with the user first.**
+- `wp wpcanai preset install <slug> [--no-front-page] [--clean-slate]` — installs a pack (templates/pages, sideloaded images, translation-ready `t()`-wrapped copy + `languages()` switcher, real nav menus in Appearance → Menus, and any Forminator forms). The pack's front page is set as the site front page by default; pass `--no-front-page` to skip that. **`--clean-slate` is destructive: it trashes ALL existing CanAI templates/pages before installing — confirm with the user first.**
 - `wp wpcanai preset uninstall <slug>` — removes the pack's content and its menus.
 - `wp wpcanai export bundle.json` / `wp wpcanai import bundle.json [--dry-run]` — round-trips templates + pages, including `_canai_i18n_{lang}` content-override blobs (`i18n_meta`) and (v1.39.0) any precompiled Tailwind build cache (`_canai_tailwind_build` / `_hash` / `_built_at`; only non-empty builds), so an imported layout renders with its inline CSS instead of the Play CDN. Both take a file path argument (not stdin/stdout redirection). Media binaries are not included (attachment IDs re-sideload).
 
 ---
 
-## WPCanAI Template Architecture
+## CanAI Template Architecture
 
 ### Template Storage
 

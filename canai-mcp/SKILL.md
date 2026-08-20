@@ -1,10 +1,11 @@
 ---
 name: canai-mcp
 description: >
-  Strictly use the WPCanAI MCP server as the only way to interact with the user’s WordPress site for WPCanAI content work (templates, pages, settings, setup, diagnostics, i18n, media).
+  Strictly use the CanAI MCP server as the only way to interact with the user’s WordPress site for CanAI content work (templates, pages, settings, setup, diagnostics, i18n, media).
   Do not use WP-CLI, REST/curl, or workspace edits under wp-content for live site data — only MCP tools (e.g. wpcanai-read-meta, wpcanai-write-meta) via the configured server (often canai-mcp).
   Does NOT cover FluentSnippets — that is in the separate opt-in canai-yolo skill.
-  Triggers on: "/canai-mcp", "wpcanai mcp", "canai-mcp", "wpcanai remote", "remote wpcanai", "staging", "production", "remote site",
+  Triggers on: "/canai-mcp", "wpcanai mcp", "canai mcp", "canai-mcp", "wpcanai remote",
+  "canai remote", "remote wpcanai", "remote canai", "staging", "production", "remote site",
   "mcp", "api key", "deploy template",
   "translate", "translation", "translate the site", "i18n", "multilingual", "string translation", "native translation", "/canai-mcp translate",
   "translate content", "translate cpt", "content translation",
@@ -16,30 +17,30 @@ metadata:
 allowed-tools: "Read Grep Glob"
 ---
 
-# WPCanAI MCP Skill
+# CanAI MCP Skill
 
-You are an expert at working with **WPCanAI** through the **WPCanAI MCP server** only (WordPress Abilities API + mcp-adapter). The WordPress site may be remote **or** local; the **only** supported way to read or change that site’s WPCanAI-related data from this skill is `**WP_API_URL` in the user’s MCP config** pointing at the **full** MCP endpoint for that site (`{site}/wp-json/mcp/wpcanai`).
+You are an expert at working with **CanAI** through the **CanAI MCP server** only (WordPress Abilities API + mcp-adapter). The WordPress site may be remote **or** local; the **only** supported way to read or change that site’s CanAI-related data from this skill is `**WP_API_URL` in the user’s MCP config** pointing at the **full** MCP endpoint for that site (`{site}/wp-json/mcp/wpcanai`).
 
-See [references/REFERENCE.md](references/REFERENCE.md) for WPCanAI-registered Twig functions (plus the vendored Twig version for built-ins), WooCommerce context, and comment conventions (same as local WPCanAI).
+See [references/REFERENCE.md](references/REFERENCE.md) for CanAI-registered Twig functions (plus the vendored Twig version for built-ins), WooCommerce context, and comment conventions (same as local CanAI).
 
 ## Same domain as `canai-localwp`, different transport
 
-`**canai-mcp`** and `**canai-localwp`** cover the same WPCanAI concepts (Twig, meta fields, content resolution). `**canai-localwp**` is the **WP‑CLI / local workspace** skill; `**canai-mcp`** is this one: **only** the **WPCanAI MCP server** and its tools. When this skill applies, **never** substitute terminal `wp`, `curl`, raw REST, or repo edits for interacting with the user’s WordPress.
+`**canai-mcp`** and `**canai-localwp`** cover the same CanAI concepts (Twig, meta fields, content resolution). `**canai-localwp**` is the **WP‑CLI / local workspace** skill; `**canai-mcp`** is this one: **only** the **CanAI MCP server** and its tools. When this skill applies, **never** substitute terminal `wp`, `curl`, raw REST, or repo edits for interacting with the user’s WordPress.
 
 **FluentSnippets** lives in the separate opt-in skill **`canai-yolo`**. This skill stays content-focused (templates, pages, settings, i18n, media, Tailwind). If the user needs snippet authoring, install/use `canai-yolo` — do not improvise those workflows from this skill. There is **no eval escape hatch**: the `wpcanai/eval` ability was **removed in plugin v1.59.0**, so every capability must be a real `wpcanai/*` ability.
 
 ---
 
-## CRITICAL — WPCanAI MCP server only (strict)
+## CRITICAL — CanAI MCP server only (strict)
 
-**Every interaction with the user’s WordPress** for WPCanAI content work (list/read/write templates and pages, settings, bootstrap setup, scan, WooCommerce page IDs, i18n, media, etc.) **MUST** go through the **WPCanAI MCP server** using the tools your host exposes (hyphenated names like `wpcanai-read-meta`, `wpcanai-write-meta`, `wpcanai-setup`, … — see the tool list for the configured server, often `canai-mcp` or `user-canai-mcp`). Do not use WP-CLI, `wp eval`, direct SQL, browser automation against wp-admin, or editing files under `wp-content/` in the workspace to change live site data.
+**Every interaction with the user’s WordPress** for CanAI content work (list/read/write templates and pages, settings, bootstrap setup, scan, WooCommerce page IDs, i18n, media, etc.) **MUST** go through the **CanAI MCP server** using the tools your host exposes (hyphenated names like `wpcanai-read-meta`, `wpcanai-write-meta`, `wpcanai-setup`, … — see the tool list for the configured server, often `canai-mcp` or `user-canai-mcp`). Do not use WP-CLI, `wp eval`, direct SQL, browser automation against wp-admin, or editing files under `wp-content/` in the workspace to change live site data.
 
-**One documented exception — binary uploads.** MCP isn't a good carrier for files (size + base64 overhead), so media goes via the **WPCanAI sideload REST route** `POST {site}/wp-json/wpcanai/v1/sideload` using the **same** API key the MCP transport uses. See **"Uploading media (binary files)"** below for the exact recipe. This is the **only** sanctioned use of `curl` against the site; everything else still goes through MCP.
+**One documented exception — binary uploads.** MCP isn't a good carrier for files (size + base64 overhead), so media goes via the **CanAI sideload REST route** `POST {site}/wp-json/wpcanai/v1/sideload` using the **same** API key the MCP transport uses. See **"Uploading media (binary files)"** below for the exact recipe. This is the **only** sanctioned use of `curl` against the site; everything else still goes through MCP.
 
 **This skill is NOT the `canai-localwp` / WP-CLI workflow.** If the user needs shell-based WP, they must use or install `**canai-localwp`** separately; do not blend that workflow here.
 
-1. **Do not use `Edit`, `Write`, or apply patches** to paths under `wp-content/` (or anywhere in the repo) to change **WPCanAI template HTML/CSS/JS/context** for the site served by MCP. Those files are not the live WPCanAI storage model for MCP-driven work.
-2. **All reads and writes of WPCanAI content** (`_canai_html`, `_canai_css`, `_canai_js`, `_canai_context`, `_canai_layout`) MUST go through **WPCanAI MCP tools** only.
+1. **Do not use `Edit`, `Write`, or apply patches** to paths under `wp-content/` (or anywhere in the repo) to change **CanAI template HTML/CSS/JS/context** for the site served by MCP. Those files are not the live CanAI storage model for MCP-driven work.
+2. **All reads and writes of CanAI content** (`_canai_html`, `_canai_css`, `_canai_js`, `_canai_context`, `_canai_layout`) MUST go through **CanAI MCP tools** only.
 3. **Use your host’s MCP integration** to call those tools. Do not substitute shell `wp`, Python, raw HTTP, or local file edits for MCP operations when the user invoked this skill or `/canai-mcp`. (The single `curl` exception is the documented sideload route — see "Uploading media" below.)
 4. `**Read` / `Grep` / `Glob`** in the workspace are only for **reading this skill, plugin source, or docs** — not for “fixing” the live my-account / privacy / template output. For live content, use `**wpcanai-read-meta`** then `**wpcanai-write-meta`** after resolving the correct `post_id` with `**wpcanai-resolve-content-id**` or `**wpcanai-list-pages**`.
 
@@ -51,10 +52,10 @@ If MCP tools are unavailable or fail, **tell the user** to check MCP client sett
 
 This applies to **any** MCP-capable host (IDEs, CLIs, agents): Cursor, Claude Desktop, Windsurf, Cline, VS Code extensions, etc.
 
-- Call WPCanAI tools through **your host’s MCP tool-calling mechanism** (exact API name varies: e.g. `CallMcpTool`, `use_mcp_tool`, native MCP tool list in the client). The MCP server name the user configured is often `**canai-mcp`**; some hosts **prefix** server names (e.g. `user-canai-mcp`). Use **whatever server identifier your host lists** for the WPCanAI MCP connection.
+- Call CanAI tools through **your host’s MCP tool-calling mechanism** (exact API name varies: e.g. `CallMcpTool`, `use_mcp_tool`, native MCP tool list in the client). The MCP server name the user configured is often `**canai-mcp`**; some hosts **prefix** server names (e.g. `user-canai-mcp`). Use **whatever server identifier your host lists** for the CanAI MCP connection.
 - The MCP client handles **sessions**, **transport**, and **authentication** — **never** reimplement MCP over Shell, Python, curl, or raw HTTP to `{site}/wp-json/mcp/wpcanai`. A **large payload is not an exception**: passing a full `_canai_html` through `wpcanai-write-meta` works at any size, and hand-rolled HTTP to the MCP endpoint will only 403 (no session/auth). If a write feels too big to be worth resending whole, use **`wpcanai-replace-in-meta`** for the targeted change instead — never drop to raw HTTP.
 - **Do not** open tool-descriptor JSON files or probe REST routes to discover parameters — use the **inline tool reference** below.
-- If tool calls fail, ask the user to verify **WPCanAI → AI Agent** in WordPress (endpoint URL, API key) and their MCP client config — do not improvise workarounds.
+- If tool calls fail, ask the user to verify **CanAI → AI Agent** in WordPress (endpoint URL, API key) and their MCP client config — do not improvise workarounds.
 
 ---
 
@@ -66,8 +67,8 @@ When a step genuinely needs local glue — sha256 hashing, assembling a temp fil
 
 ## Prerequisites (short)
 
-- WordPress with WPCanAI, `wordpress/abilities-api`, and `wordpress/mcp-adapter`.
-- **MCP endpoint:** `{site}/wp-json/mcp/wpcanai` (copy from **WP Admin → WPCanAI → AI Agent → Connections**).
+- WordPress with CanAI, `wordpress/abilities-api`, and `wordpress/mcp-adapter`.
+- **MCP endpoint:** `{site}/wp-json/mcp/wpcanai` (copy from **WP Admin → CanAI → AI Agent → Connections**).
 - **API key** as `JWT_TOKEN` for `@automattic/mcp-wordpress-remote` (or your client’s env).
 
 Add to your **MCP client’s server configuration** (example; keys may differ by client):
@@ -89,16 +90,16 @@ Add to your **MCP client’s server configuration** (example; keys may differ by
 
 **Important:** `WP_API_URL` must be the **full** path `…/wp-json/mcp/wpcanai`, not only the site home URL — use the value from **AI Agent → Connections**.
 
-Verify with `**wpcanai-list-templates`** (or your client’s tool list for the WPCanAI server).
+Verify with `**wpcanai-list-templates`** (or your client’s tool list for the CanAI server).
 
-## WPCanAI Prerequisite Setup (on the site)
+## CanAI Prerequisite Setup (on the site)
 
-Before relying on WPCanAI for full-page output, the site should have:
+Before relying on CanAI for full-page output, the site should have:
 
 1. **Minimum templates** — at least **one layout** (`template_type` `layout`), **one header** (`header`), and **one footer** (`footer`). Layouts wrap `{{ page_content }}`; header/footer are included with `{{ wpcanai_template('slug') }}`.
-2. **WPCanAi Starter** (theme slug `wpcanai-empty`) — install and activate the minimal WPCanAI theme. It is **bundled** with the plugin at `wpcanai/theme/wpcanai-empty/` and can also be installed from **WP Admin → WPCanAI** (welcome page).
-3. **Bundled libraries** — in **WPCanAI → Settings**, set **Load Tailwind CSS Play CDN** to **Yes** and **Resource Source** to **Internal** (bundled script) when you are not using **`wpcanai-setup`** (recommended setup enables this automatically). Enable Lucide and Alpine as needed.
-4. **Tailwind config in the layout** — in the layout’s `_canai_html`, output `**tailwind.config = { ... }` in a `<script>` after `{{ wp_head() }}`** so it runs after the Tailwind script WPCanAI injects on `wp_head`.
+2. **CanAI Starter** (theme slug `wpcanai-empty`) — install and activate the minimal CanAI theme. It is **bundled** with the plugin at `canai/theme/wpcanai-empty/` and can also be installed from **WP Admin → CanAI** (welcome page).
+3. **Bundled libraries** — in **CanAI → Settings**, confirm **Load Tailwind CSS Play CDN** is **Yes** and **Resource Source** is **Internal** (bundled script — the default since plugin v1.58.2) when you are not using **`wpcanai-setup`** (recommended setup enables this automatically). Enable Lucide and Alpine as needed.
+4. **Tailwind config in the layout** — in the layout’s `_canai_html`, output `**tailwind.config = { ... }` in a `<script>` after `{{ wp_head() }}`** so it runs after the Tailwind script CanAI injects on `wp_head`.
 
 ```twig
 <head>
@@ -125,17 +126,17 @@ Before relying on WPCanAI for full-page output, the site should have:
 
 If prerequisites are missing or the user asks to **“proceed all recommended setup”**, call `**wpcanai-setup`** `{ }` first. It installs/activates **WPCanAi Starter** (`wpcanai-empty`), creates the default layout (via the plugin’s default-layout helper), adds basic header/footer templates, creates a Home page, sets the static front page, sets `**wpcanai_default_layout**`, and enables **Tailwind CSS** (`wpcanai_tailwind_settings`: `load_tailwind` = `yes`, `source` = `plugin` / internal bundled Play CDN).
 
-For **WordPress / WooCommerce / WPCanAI options** (e.g. static front page, `users_can_register`, checkout/account registration, Tailwind settings), use `**wpcanai-read-settings`** / `**wpcanai-update-settings`**. For **other plugin options** stored in `wp_options`, use `**wpcanai-get-option`** / `**wpcanai-update-options`** after the site owner configures allowlists under **WPCanAI → AI Agent → Guardrails** (read list, auto-apply list, and optional approval list). For a new **page** with optional WPCanAI meta, use `**wpcanai-create-page`**.
+For **WordPress / WooCommerce / CanAI options** (e.g. static front page, `users_can_register`, checkout/account registration, Tailwind settings), use `**wpcanai-read-settings`** / `**wpcanai-update-settings`**. For **other plugin options** stored in `wp_options`, use `**wpcanai-get-option`** / `**wpcanai-update-options`** after the site owner configures allowlists under **CanAI → AI Agent → Guardrails** (read list, auto-apply list, and optional approval list). For a new **page** with optional CanAI meta, use `**wpcanai-create-page`**.
 
-### Implement HTML → WPCanAI (agent workflows)
+### Implement HTML → CanAI (agent workflows)
 
-When converting a static HTML file (e.g. `index.html`) into WPCanAI via MCP tools:
+When converting a static HTML file (e.g. `index.html`) into CanAI via MCP tools:
 
 > **Source is a canai-replicate migration kit? Push its `output/push/*.json`
 > artifacts, never a raw `output/pages/*.html` / `output/templates/*.html`
 > file.** Every canai-replicate output file is a full standalone HTML
 > document (`<!DOCTYPE>`/`<html>`/`<head>`/`<body>`, by design — it opens
-> via `file://` for local preview). WPCanAI's own render path ALSO wraps
+> via `file://` for local preview). CanAI's own render path ALSO wraps
 > `_canai_html` in its own document shell, so writing a kit file's raw
 > content verbatim into `_canai_html` produces doubled, invalid markup:
 > 2×`<!DOCTYPE html>`, 2×`<html>`, 2×`<head>`/`</head>`, 2×`<body>` —
@@ -161,7 +162,7 @@ When converting a static HTML file (e.g. `index.html`) into WPCanAI via MCP tool
 > string before moving on. **Push these two before anything that includes
 > them.**
 
-> **Prefer WPCanAI template functions — don't hardcode what a helper provides.** When writing `_canai_html` / `_canai_css` / `_canai_js`, use a registered WPCanAI Twig function wherever one applies instead of hardcoding the value or markup. Hardcoded asset URLs, internal links, and user-facing strings all break on the live site (wrong base path, moved slugs, non-permalink URLs, no translation) the same way a relative `./images/hero.jpg` 404s. Map source values to helpers:
+> **Prefer CanAI template functions — don't hardcode what a helper provides.** When writing `_canai_html` / `_canai_css` / `_canai_js`, use a registered CanAI Twig function wherever one applies instead of hardcoding the value or markup. Hardcoded asset URLs, internal links, and user-facing strings all break on the live site (wrong base path, moved slugs, non-permalink URLs, no translation) the same way a relative `./images/hero.jpg` 404s. Map source values to helpers:
 >
 > | Hardcoded in source | Use instead |
 > |---|---|
@@ -174,17 +175,17 @@ When converting a static HTML file (e.g. `index.html`) into WPCanAI via MCP tool
 > Keep a value hardcoded **only** when no helper applies or an absolute external URL is genuinely required (e.g. OG/Twitter meta, web-manifest icons, third-party origins). Images (step 5 + the sideload pre-pass) and internal links (step 6) are concrete instances of this rule. See [references/REFERENCE.md](references/REFERENCE.md) → **Media & Links** and **Internationalization (i18n)**.
 
 1. **Do NOT** include a literal `<title>` in layout `_canai_html` — `{{ wp_head() }}` outputs the document title (WordPress / SEO plugins).
-2. Put page-level JavaScript (e.g. `lucide.createIcons()`, Alpine init, custom handlers) in **`_canai_js`**, not as inline `<script>` in `_canai_html`. WPCanAI injects `_canai_js` at `wp_footer()`. **`_canai_js` is Twig-rendered** (same engine as `_canai_html`) — `{# #}` comments are valid there and stripped before the script is emitted; prefer them over `/* */` for anything that names internals. The only `<script>` allowed inline in layout `_canai_html` is `tailwind.config = { ... }` (after `{{ wp_head() }}`, so it runs after the Tailwind script WPCanAI injects).
+2. Put page-level JavaScript (e.g. `lucide.createIcons()`, Alpine init, custom handlers) in **`_canai_js`**, not as inline `<script>` in `_canai_html`. CanAI injects `_canai_js` at `wp_footer()`. **`_canai_js` is Twig-rendered** (same engine as `_canai_html`) — `{# #}` comments are valid there and stripped before the script is emitted; prefer them over `/* */` for anything that names internals. The only `<script>` allowed inline in layout `_canai_html` is `tailwind.config = { ... }` (after `{{ wp_head() }}`, so it runs after the Tailwind script CanAI injects).
 3. **Reuse layouts:** call `wpcanai-list-templates` first. If a **layout** already exists, reuse its `id` for `_canai_layout` / references — do not create a duplicate layout template unless the user asks for a second shell.
 4. **Page body vs layout:** put `<main>` / primary page markup in a **`page`** created with `wpcanai-create-page` (set `layout` to the layout template ID) — not as a `wpcanai_template` of type `layout`. Layout templates are the document shell (`{{ page_content }}`, header/footer includes); page bodies are not `template_type` `layout`.
 5. **Auto-detect and sideload local media BEFORE writing HTML.** Static site folders almost always reference local assets (`./images/hero.jpg`, `assets/logo.svg`, `videos/intro.mp4`, favicons, OG images, CSS `url(...)` backgrounds). If you push the HTML/CSS as-is, every one of those references 404s on the live site. Run the **Static-site asset sideload pre-pass** (next subsection) before any `wpcanai-create-page` / `wpcanai-write-meta` call so the HTML you write resolves media **by ID** through `{{ image_attrs(...) }}` / `{{ media_url(...) }}`, not relative paths or pinned upload URLs.
-6. **Rewrite internal links to WPCanAI helpers** (instance of the principle above). Static sources keep `<a href="about.html">` / `href="/about">`; these break on the live site (wrong base path, non-permalink, moved slugs). Rewrite each internal link to the matching helper: cross-page links → `{{ slug_url('<slug>') }}` (or `{{ id_url(<id>) }}` when the target page id is known from `wpcanai-create-page`); term / archive links → `{{ term_url(<term_id>) }}`. **Leave untouched:** external / absolute (`https://other.com`), protocol-relative (`//cdn…`), and anchor-only (`#section`) links. Report the rewrites in the manifest.
+6. **Rewrite internal links to CanAI helpers** (instance of the principle above). Static sources keep `<a href="about.html">` / `href="/about">`; these break on the live site (wrong base path, non-permalink, moved slugs). Rewrite each internal link to the matching helper: cross-page links → `{{ slug_url('<slug>') }}` (or `{{ id_url(<id>) }}` when the target page id is known from `wpcanai-create-page`); term / archive links → `{{ term_url(<term_id>) }}`. **Leave untouched:** external / absolute (`https://other.com`), protocol-relative (`//cdn…`), and anchor-only (`#section`) links. Report the rewrites in the manifest.
 7. **Normalize section comments to Twig.** Convert every `<!-- Section: X -->` (and any nav-label HTML comment `canai-prepare` emitted) into a `{# Section: X #}` Twig comment — **never** carry HTML nav comments into `_canai_html` (they pollute rendered output and are view-source reconnaissance). Then **guarantee** every top-level landmark — `<section>` / `<main>` / `<header>` / `<footer>` / `<nav>` / `<aside>` — carries a `{# Section: … #}` comment even when the source lacked one; these feed the editor's structure/outline menu. See the comment convention in [references/REFERENCE.md](references/REFERENCE.md) (**Twig Comment Convention**). A canai-replicate `pushprep` artifact already has this conversion applied — spot-check it, don't redo it from scratch.
 8. **After any meta write, run `wpcanai-scan` and clear leak findings before claiming done.** Treat `leaky_comment` / `leaky_secret` like broken layouts: convert HTML/`/* */` comments to `{# #}`, remove secret-shaped literals from meta. For a full-site pass, use the **Comment / secret security sweep** recipe below.
 
 ### Static-site asset sideload pre-pass
 
-Triggered when the user runs `/canai-mcp implement <folder>`, asks you to import a static site, **or pushes a canai-replicate migration kit's `output/push/*.json` artifacts** (a `pushprep` artifact's `html` still contains the source site's original absolute/hotlinked image URLs — canai-replicate does not sideload; that's this skill's job, same as any other static-site import). Left un-sideloaded, an image can 404 or render broken the moment the source site's own hotlink protection kicks in (confirmed live: dogfood A2 Defect #6). Runs **once, up front**, before any HTML/CSS is written to WPCanAI meta.
+Triggered when the user runs `/canai-mcp implement <folder>`, asks you to import a static site, **or pushes a canai-replicate migration kit's `output/push/*.json` artifacts** (a `pushprep` artifact's `html` still contains the source site's original absolute/hotlinked image URLs — canai-replicate does not sideload; that's this skill's job, same as any other static-site import). Left un-sideloaded, an image can 404 or render broken the moment the source site's own hotlink protection kicks in (confirmed live: dogfood A2 Defect #6). Runs **once, up front**, before any HTML/CSS is written to CanAI meta.
 
 1. **Enumerate referenced assets.** Use `Read` / `Grep` / `Glob` over the folder to extract every reference that resolves to a file **inside the provided folder**. Cover at minimum:
    - HTML attributes: `src`, `srcset` (each candidate), `href` for `<link rel="icon">` / `apple-touch-icon` / `manifest`, `<video poster>`, `<source src>`, `<object data>`, `<embed src>`, OG / Twitter meta (`og:image`, `twitter:image`).
@@ -195,7 +196,7 @@ Triggered when the user runs `/canai-mcp implement <folder>`, asks you to import
 
 2. **Sideload each unique file** via `POST {site}/wp-json/wpcanai/v1/sideload` (see **Uploading media** for the exact `curl`). Run uploads **one at a time** so you can capture each `id` / `source_url`. Pass a sensible `alt` when the source HTML provides one (`<img alt="…">`); otherwise omit it. Re-uploading the same bytes is fine — WordPress dedupes on filename, but the API returns a fresh attachment each call, so cache hits in your map matter.
 
-3. **Build a rewrite map keyed on the media `id`** — `{ <original-reference-string>: <media id> }`, **not** the raw `source_url`. Key on the **exact string as it appears in the source** (e.g. `./images/hero.jpg`, `images/hero.jpg`, `/images/hero.jpg` — all three map to the same upload `id`). WPCanAI resolves the live URL at render time from the id, so the page survives the media being regenerated or the site moving; a pinned `source_url` does not. (Only the OG/manifest exception in step 4 keeps the absolute `source_url`.)
+3. **Build a rewrite map keyed on the media `id`** — `{ <original-reference-string>: <media id> }`, **not** the raw `source_url`. Key on the **exact string as it appears in the source** (e.g. `./images/hero.jpg`, `images/hero.jpg`, `/images/hero.jpg` — all three map to the same upload `id`). CanAI resolves the live URL at render time from the id, so the page survives the media being regenerated or the site moving; a pinned `source_url` does not. (Only the OG/manifest exception in step 4 keeps the absolute `source_url`.)
 
 4. **Rewrite HTML / CSS / JS in memory to ID-based helpers** before any `wpcanai-write-meta` call. Apply to the same content surfaces you scanned in step 1, using the right form per surface:
    - **`<img>`** → strip the hardcoded `src` / `alt` and splat `{{ image_attrs(<id>, 'src,alt') }}` (use `'src,alt,width,height'` when dimensions are known). **Preserve** existing `class` / other attributes; keep or append `loading="lazy"` below the fold.
@@ -216,7 +217,7 @@ When writing `_canai_html` for the **shop** or **product-category** delegate (or
 
 ### Styling WooCommerce blocks (cart / checkout / order-received / my-account)
 
-WPCanAI's `wc_*` Twig helpers (`wc_checkout_form()`, `wc_cart_totals()`, the my-account endpoints) echo raw WooCommerce output whose HTML structure is otherwise invisible until a live page renders — and the order-received/order-pay pages additionally hide their details behind WooCommerce's guest email-verification gate, so you cannot simply view them. **Do not guess selectors.** Before styling any of these blocks:
+CanAI's `wc_*` Twig helpers (`wc_checkout_form()`, `wc_cart_totals()`, the my-account endpoints) echo raw WooCommerce output whose HTML structure is otherwise invisible until a live page renders — and the order-received/order-pay pages additionally hide their details behind WooCommerce's guest email-verification gate, so you cannot simply view them. **Do not guess selectors.** Before styling any of these blocks:
 
 1. Call `wpcanai-get-wc-css-reference` with the context you are styling (e.g. `{ "context": "order-received" }`).
 2. Read `css_reference` — WooCommerce's own default rules for that context's selectors. **It is raw SCSS source, not compiled CSS**: Sass variables, mixins and `&` parent-refs arrive unresolved (e.g. `darken($secondary, 10%)`, `@include …`), so paraphrase the rules into real CSS rather than pasting them into `_canai_css`. Extracted from four stylesheets of the *installed* WooCommerce (`woocommerce.scss`, `woocommerce-layout.scss`, `woocommerce-smallscreen.scss`, `forms.scss`), so it stays correct across WooCommerce updates — re-call the tool rather than relying on remembered class names. Rules arrive wrapped in their true ancestor selector chain (e.g. `.woocommerce { table.shop_table { … } }`), so match the full chain for specificity. A rule wrapped in `@media only screen and (max-width: 768px)` came from `woocommerce-smallscreen.scss` and is mobile-only — WooCommerce applies that breakpoint in the enqueue, not the file, so don't treat it as unconditional.
@@ -274,7 +275,7 @@ Ability IDs use slashes; MCP tool names use **hyphens** (`wpcanai/read-meta` →
 
 - **Args:** `{ "title": string, "type": string, "html"?: string, "css"?: string, "js"?: string, "layout"?: int, "lang"?: string, "translation_of"?: int }` — `title` and `type` (template_type slug) required. `lang` sets the new post's Polylang language. `translation_of` is the source post id; when provided, the new template is merged into the source's translation group via `pll_save_post_translations` (preserves existing translations on the source).
 - **Returns:** `{ "post_id": int, "slug": string, "lang": string|null }`.
-- **Typed CPT templates (v1.24+).** A published `wpcanai_template` whose `template_type` term is `single-<post_type>` or `archive-<post_type>` claims that CPT's singular / archive rendering on the frontend — e.g. create one with type `single-service` to own the `service` detail page, `archive-service` for its archive. Existence-gated: with no such template, WPCanAI falls through byte-identically to the theme. Pages keep their own meta path; WooCommerce products keep the WC block.
+- **Typed CPT templates (v1.24+).** A published `wpcanai_template` whose `template_type` term is `single-<post_type>` or `archive-<post_type>` claims that CPT's singular / archive rendering on the frontend — e.g. create one with type `single-service` to own the `service` detail page, `archive-service` for its archive. Existence-gated: with no such template, CanAI falls through byte-identically to the theme. Pages keep their own meta path; WooCommerce products keep the WC block.
 
 ### `wpcanai-resolve-content-id`
 
@@ -282,7 +283,7 @@ Ability IDs use slashes; MCP tool names use **hyphens** (`wpcanai/read-meta` →
 - **Registered-type caveat.** The enum is built when the ability registers, on `wp_abilities_api_init` (fired from `init` priority 1). A `wpcanai_template_types` filter added at **file scope** — the documented way, and what the resolver's own docs show — is live by then and its types are accepted. One added *inside* an `init` callback at the default priority 10 is not yet registered, so the schema rejects the type even though the resolver would resolve it fine. Register at file scope.
 - **Returns:** `{ "content_post_id": int, "content_post_type": string, "rendering_mode": string, "template_post_id": int|null, "unreachable_post_id": int, "resolution_reason": string, "lang": string|null }`.
 - **(v1.50.0) `content_post_id` is the post that actually renders.** *Delegate-body*: a layout wrapper is in effect, so the WooCommerce page supplies the body — `content_post_id` is that page, `rendering_mode` is `page-rendered`. *Template-body*: the type's template is not a layout wrapper, so it renders the whole page itself — `content_post_id` is the **template**, `rendering_mode` is `template-rendered`, and the delegate page's `_canai_html` (if any) is dead content reported as `unreachable_post_id`. `resolution_reason` states which applied. Edit `content_post_id`; before v1.50.0 this returned the delegate page even when the template rendered, so edits could land on meta that never renders.
-- **`rendering_mode` has five values** — `page-rendered` (delegate-body), `template-rendered` (template-body), **(v1.50.1)** `blank` and `none`, and **(v1.58.0)** `page-rendered-unwrapped`. *Blank* = the layout pointer names a post that no longer exists **and** the delegate page has no `_canai_html` of its own, so nothing WPCanAI-specific renders; fix the dangling pointer (`wpcanai-scan` reports it as `broken_layout`, warning). *Page-rendered-unwrapped* (v1.58.0) = the layout pointer is dangling, but the delegate page DOES carry its own `_canai_html` — WPCanAI falls back to rendering that content directly, without the layout's wrapper/chrome, rather than losing it; `content_post_id`/`content_post_type` name the delegate page just like `page-rendered` does, and the dangling pointer is still worth fixing (`wpcanai-scan` reports the same `broken_layout`, warning). *None* = WPCanAI does not render this type at all. `blank` and `none` both carry `content_post_id: 0` and `content_post_type: ""`, and `resolution_reason` says which. Before v1.50.1 both reported `template-rendered` / `wpcanai_template`, naming a renderer that did not exist — do not treat those two fields as meaningful unless `content_post_id` is non-zero. Before v1.58.0, a dangling layout pointer was always reported as `blank` even when the delegate page's own content in fact rendered unwrapped.
+- **`rendering_mode` has five values** — `page-rendered` (delegate-body), `template-rendered` (template-body), **(v1.50.1)** `blank` and `none`, and **(v1.58.0)** `page-rendered-unwrapped`. *Blank* = the layout pointer names a post that no longer exists **and** the delegate page has no `_canai_html` of its own, so nothing CanAI-specific renders; fix the dangling pointer (`wpcanai-scan` reports it as `broken_layout`, warning). *Page-rendered-unwrapped* (v1.58.0) = the layout pointer is dangling, but the delegate page DOES carry its own `_canai_html` — CanAI falls back to rendering that content directly, without the layout's wrapper/chrome, rather than losing it; `content_post_id`/`content_post_type` name the delegate page just like `page-rendered` does, and the dangling pointer is still worth fixing (`wpcanai-scan` reports the same `broken_layout`, warning). *None* = CanAI does not render this type at all. `blank` and `none` both carry `content_post_id: 0` and `content_post_type: ""`, and `resolution_reason` says which. Before v1.50.1 both reported `template-rendered` / `wpcanai_template`, naming a renderer that did not exist — do not treat those two fields as meaningful unless `content_post_id` is non-zero. Before v1.58.0, a dangling layout pointer was always reported as `blank` even when the delegate page's own content in fact rendered unwrapped.
 - **(v1.50.1) Endpoint types inherit their parent's template.** A WooCommerce endpoint claims a request only when a published template of that type exists; otherwise the request renders through the parent type (`checkout` for `order-received`/`order-pay`, `my-account` for the other eight). `resolve-content-id` mirrors that, so an endpoint with no template of its own reports the **parent's** template under template-body rather than a delegate page that can never render. Before v1.50.1 it reported that page, contradicting `wpcanai-scan`'s own `unreachable_content` warning about the same post.
 
 ### `wpcanai-scan`
@@ -294,7 +295,7 @@ Ability IDs use slashes; MCP tool names use **hyphens** (`wpcanai/read-meta` →
   | Severity | Type | Meaning |
   |---|---|---|
   | warning | `unreachable_content` | Authored `_canai_html` that can never render, in either direction. *Template-body*: the WooCommerce page still carries a body while the template renders. *(v1.50.1)* *Delegate-body*: the type template was displaced by the page's own `_canai_layout` and still carries a body. Names both the dead post and the post that wins. |
-  | warning | `broken_layout` | **(v1.58.0)** A layout pointer references a post that no longer exists. WPCanAI resolves that as "no layout" and falls back to rendering the delegate page's own `_canai_html` directly, unwrapped (no layout chrome) — not blank when the delegate has a body; if it doesn't, nothing WPCanAI-specific renders. Either way, fix or clear the dangling pointer. Before v1.58.0 this was `critical`, on the (now-fixed) assumption that the page always rendered blank. |
+  | warning | `broken_layout` | **(v1.58.0)** A layout pointer references a post that no longer exists. CanAI resolves that as "no layout" and falls back to rendering the delegate page's own `_canai_html` directly, unwrapped (no layout chrome) — not blank when the delegate has a body; if it doesn't, nothing CanAI-specific renders. Either way, fix or clear the dangling pointer. Before v1.58.0 this was `critical`, on the (now-fixed) assumption that the page always rendered blank. |
   | warning | `delegate_mismatch` | The template's **declared** `_canai_delegate_page_id` is itself broken — the post no longer exists, isn't a `page`, or (Polylang) has no translation for the requested language. Checked independently of shape: a broken declared override can itself be why the resolved shape isn't delegate-body. Fix the declared override; do not repoint it at whatever id currently resolves — that id is *derived from* the same declared value and comparing the two never finds a real defect. |
   | warning | `empty_delegate_page` | *Delegate-body*, **and a `wpcanai_template` exists for this type**: the page that should hold the body has no `_canai_html`. Someone deliberately configured this type, so an empty page is a real gap. |
   | warning | `duplicate_type_template` | More than one published template carries the same `template_type` term — only the first renders, the rest are inert. |
@@ -322,7 +323,7 @@ Ability IDs use slashes; MCP tool names use **hyphens** (`wpcanai/read-meta` →
 ### `wpcanai-get-wc-css-reference`
 
 - **Args:** `{ "context": string, "include_core"?: boolean }` — `context` is one of `cart`, `checkout`, `order-received`, `order-pay`, `myaccount-dashboard`, `myaccount-orders`, `myaccount-view-order`, `myaccount-downloads`, `myaccount-edit-account`, `myaccount-edit-address`, `myaccount-payment-methods`, `myaccount-add-payment-method`, `myaccount-lost-password`. `include_core` (default `false`) widens `third_party_hooks` to every registered callback on the context's hooks (WooCommerce core included), each still carrying its `is_third_party` flag. No `lang` parameter.
-- **Returns:** `css_reference` (string — **raw SCSS source, not compiled CSS**; Sass variables/mixins arrive unresolved, so paraphrase rather than paste. WooCommerce's default rules for the context, drawn from `woocommerce.scss`, `woocommerce-layout.scss`, `woocommerce-smallscreen.scss`, and `forms.scss` of the *installed* WooCommerce, emitted with their full ancestor selector chain so you can match specificity; smallscreen rules arrive wrapped in `@media only screen and (max-width: 768px)`), `css_fallback` (`null`, or `"full-file"` when selector extraction found no match and the whole concatenated stylesheet was returned instead), `template_files` (string[], ABSPATH-relative — authoritative markup paths, theme override wins), `templates_missing` (string[], context-relative paths of expected-but-unreadable templates — not set-comparable with `template_files`; non-empty means the context map has drifted from the installed WooCommerce), `hooks_found` (string[] — actions the templates fire), `third_party_hooks` (objects `{hook, priority, callback, file, is_third_party}` — non-core/theme/WPCanAI callbacks only, or all of them when `include_core` is true), `context_echo` (`{context, include_core}`).
+- **Returns:** `css_reference` (string — **raw SCSS source, not compiled CSS**; Sass variables/mixins arrive unresolved, so paraphrase rather than paste. WooCommerce's default rules for the context, drawn from `woocommerce.scss`, `woocommerce-layout.scss`, `woocommerce-smallscreen.scss`, and `forms.scss` of the *installed* WooCommerce, emitted with their full ancestor selector chain so you can match specificity; smallscreen rules arrive wrapped in `@media only screen and (max-width: 768px)`), `css_fallback` (`null`, or `"full-file"` when selector extraction found no match and the whole concatenated stylesheet was returned instead), `template_files` (string[], ABSPATH-relative — authoritative markup paths, theme override wins), `templates_missing` (string[], context-relative paths of expected-but-unreadable templates — not set-comparable with `template_files`; non-empty means the context map has drifted from the installed WooCommerce), `hooks_found` (string[] — actions the templates fire), `third_party_hooks` (objects `{hook, priority, callback, file, is_third_party}` — non-core/theme/CanAI callbacks only, or all of them when `include_core` is true), `context_echo` (`{context, include_core}`).
 - **Read-only; static analysis only.** Nothing is rendered; no order/cart/customer data is read. See the "Styling WooCommerce blocks" workflow section above for how to use the output.
 
 ### `wpcanai-create-page`
@@ -351,13 +352,13 @@ Ability IDs use slashes; MCP tool names use **hyphens** (`wpcanai/read-meta` →
 
 - **Args:** `{ "name": string }` — `wp_options.option_name`.
 - **Returns:** `{ "name": string, "value": mixed }`.
-- **Policy:** The name must be on the **read allowlist** in **WP Admin → WPCanAI → AI Agent → Guardrails**. A denylist blocks dangerous keys (e.g. `active_plugins`, `cron`). Names starting with `wpcanai_mcp_` are always blocked (MCP internals). If **`WPCANAI_MCP_OPTIONS_UNRESTRICTED`** is defined in `wp-config.php`, any other non-denied name may be read.
+- **Policy:** The name must be on the **read allowlist** in **WP Admin → CanAI → AI Agent → Guardrails**. A denylist blocks dangerous keys (e.g. `active_plugins`, `cron`). Names starting with `wpcanai_mcp_` are always blocked (MCP internals). If **`WPCANAI_MCP_OPTIONS_UNRESTRICTED`** is defined in `wp-config.php`, any other non-denied name may be read.
 
 ### `wpcanai-update-options`
 
 - **Args:** `{ "options": { "<option_name>": <value>, ... } }` — JSON-safe scalars and arrays only.
 - **Returns (applied):** `{ "success": true, "status": "applied", "updated": string[], "pending_id": null }`.
-- **Returns (queued):** `{ "success": true, "status": "pending_approval", "pending_id": string, "option_keys": string[], "message": string }` — no DB write until an administrator clicks **Approve** on **WP Admin → WPCanAI → AI Agent → Guardrails → Pending MCP option updates**.
+- **Returns (queued):** `{ "success": true, "status": "pending_approval", "pending_id": string, "option_keys": string[], "message": string }` — no DB write until an administrator clicks **Approve** on **WP Admin → CanAI → AI Agent → Guardrails → Pending MCP option updates**.
 - **Policy:** Configure **auto-apply** and **requires approval** allowlists on the **Guardrails** tab. If a name appears on both lists, **approval wins**. If **any** key in the request requires approval, the **entire** `options` object is queued as one pending request. Names must be on at least one write list (unless unrestricted mode). Same denylist as `get-option`.
 
 ### `wpcanai-get-pending`
@@ -449,15 +450,15 @@ Site name, tagline, and archive/search/404 SEO title+description live in a per-l
 
 - **`wpcanai-list-presets`** → `{ presets: [{ slug, title, description }] }`. The bundled packs (e.g. `cpt-corporate`, `single-freelancer`) build a full template stack (layout/header/footer + typed `single-*`/`archive-*` templates).
 - **`wpcanai-install-preset`** — `{ "slug": string, "set_front_page"?: bool, "clean_slate"?: bool, "adopt_woo_pages"?: bool, "trash_woo_pages"?: bool }`. Installs a pack's templates + pages, sideloads its images, and (v1.26+) wraps user-facing copy in `{{ t('…') }}` + adds a `languages()` switcher; the native-i18n StringIndex is warmed so `wpcanai-i18n-list-strings` shows the pack's strings immediately, even if languages are configured after install. Pack templates may reference `{{preset.image_id.<key>}}` to get a sideloaded attachment ID for `tmedia()`.
-  - **⚠ `clean_slate: true` is destructive.** It **trashes ALL existing WPCanAI templates and pages** (recoverable from Trash) and clears preset bookkeeping **before** installing — and it runs even if the subsequent install fails. Never pass it without explicit user confirmation. MCP hosts expose this boolean in the tool schema with no built-in guard.
-  - **`adopt_woo_pages` (default `true`, v1.47.0).** A pack with `settings.woo_pages` writes its content onto the store's **existing** WooCommerce pages instead of creating duplicates (`checkout-2`, …), preserving their IDs and permalinks so order-received URLs in already-sent emails keep working. Each adopted page's prior WPCanAI meta is snapshotted and restored by `wpcanai-uninstall-preset` — the page itself is never deleted. Pass `false` to force new pages (pre-v1.47.0 behavior; breaks previously issued order links).
+  - **⚠ `clean_slate: true` is destructive.** It **trashes ALL existing CanAI templates and pages** (recoverable from Trash) and clears preset bookkeeping **before** installing — and it runs even if the subsequent install fails. Never pass it without explicit user confirmation. MCP hosts expose this boolean in the tool schema with no built-in guard.
+  - **`adopt_woo_pages` (default `true`, v1.47.0).** A pack with `settings.woo_pages` writes its content onto the store's **existing** WooCommerce pages instead of creating duplicates (`checkout-2`, …), preserving their IDs and permalinks so order-received URLs in already-sent emails keep working. Each adopted page's prior CanAI meta is snapshotted and restored by `wpcanai-uninstall-preset` — the page itself is never deleted. Pass `false` to force new pages (pre-v1.47.0 behavior; breaks previously issued order links).
   - **`trash_woo_pages` (default `false`).** Trashes the existing shop/cart/checkout/my-account pages (recoverable from Trash) so the pack's own store pages take those slugs. It runs **before** adoption, so it wins: the slots are empty by the time adoption looks, and fresh pages are created.
 - **`wpcanai-uninstall-preset`** — `{ "slug": string }`. Removes a pack's templates/pages and tears down any nav menus it created.
 
 ### `wpcanai-export` / `wpcanai-import`
 
-- **`wpcanai-export`** → a JSON bundle of WPCanAI templates + pages (meta `_canai_html/css/js/context/layout`), and a per-row `i18n_meta` key round-tripping every `_canai_i18n_{lang}` content-override blob. **(v1.39.0)** rows that have a compiled build also carry the precompiled Tailwind cache (`_canai_tailwind_build` / `_hash` / `_built_at`; only non-empty builds export, and the source-relative `_canai_tailwind_epoch` stamp is excluded) so an imported layout renders inline instead of falling back to the Play CDN. **Media binaries are NOT included** — attachment IDs are flagged for re-sideload, never remapped automatically.
-- **`wpcanai-import`** — `{ "data": object | "json": string, "dry_run"?: bool }`. `dry_run: true` reports what would change without writing. Override blobs are re-sanitized on import. **Auth gate:** import performs `unfiltered_html`-level writes and returns a 403 `forbidden` unless the caller has the `unfiltered_html` capability (administrators do on single-site) or the request carries a valid WPCanAI API key (Bearer / `X-WPCanAI-API-Key`).
+- **`wpcanai-export`** → a JSON bundle of CanAI templates + pages (meta `_canai_html/css/js/context/layout`), and a per-row `i18n_meta` key round-tripping every `_canai_i18n_{lang}` content-override blob. **(v1.39.0)** rows that have a compiled build also carry the precompiled Tailwind cache (`_canai_tailwind_build` / `_hash` / `_built_at`; only non-empty builds export, and the source-relative `_canai_tailwind_epoch` stamp is excluded) so an imported layout renders inline instead of falling back to the Play CDN. **Media binaries are NOT included** — attachment IDs are flagged for re-sideload, never remapped automatically.
+- **`wpcanai-import`** — `{ "data": object | "json": string, "dry_run"?: bool }`. `dry_run: true` reports what would change without writing. Override blobs are re-sanitized on import. **Auth gate:** import performs `unfiltered_html`-level writes and returns a 403 `forbidden` unless the caller has the `unfiltered_html` capability (administrators do on single-site) or the request carries a valid CanAI API key (Bearer / `X-WPCanAI-API-Key`).
 
 ### `wpcanai-diagnostics`
 
@@ -486,11 +487,11 @@ wpcanai-sideload-url {
   "attach_to": 0                      // optional parent post id
 }
 ```
-Optional: `filename`, `title`, `caption`, `description`. Returns `{ id, source_url, mime_type, filename, attached_to }`. When writing `_canai_html`, prefer the returned **`id`** via `{{ image_attrs(id, 'src,alt') }}` / `{{ media_url(id, 'full') }}` (resolved at render time — see the **Prefer WPCanAI template functions** principle); only keep the absolute `source_url` where an absolute URL is required (OG/Twitter meta, web manifest). This is the right tool for replica/import flows where assets are hotlinked URLs.
+Optional: `filename`, `title`, `caption`, `description`. Returns `{ id, source_url, mime_type, filename, attached_to }`. When writing `_canai_html`, prefer the returned **`id`** via `{{ image_attrs(id, 'src,alt') }}` / `{{ media_url(id, 'full') }}` (resolved at render time — see the **Prefer CanAI template functions** principle); only keep the absolute `source_url` where an absolute URL is required (OG/Twitter meta, web manifest). This is the right tool for replica/import flows where assets are hotlinked URLs.
 
 ### Local binary files → sideload REST endpoint
 
-MCP messages aren't a good carrier for binary payloads (size + base64 overhead). Use the **sideload REST endpoint** instead. It accepts the **same** WPCanAI API key the MCP transport uses — no separate credential.
+MCP messages aren't a good carrier for binary payloads (size + base64 overhead). Use the **sideload REST endpoint** instead. It accepts the **same** CanAI API key the MCP transport uses — no separate credential.
 
 - **Endpoint:** `POST {site}/wp-json/wpcanai/v1/sideload`
 - **Auth:** `Authorization: Bearer <wpcanai_…API key>` (or `X-WPCanAI-API-Key:`).
@@ -500,7 +501,7 @@ MCP messages aren't a good carrier for binary payloads (size + base64 overhead).
 
 ### Workflow (one image at a time)
 
-For **static-site imports** (user ran `/canai-mcp implement <folder>` or similar), don't ask — auto-detect referenced assets and sideload them as a pre-pass. See **Static-site asset sideload pre-pass** under "Implement HTML → WPCanAI". The steps below cover ad-hoc single-file uploads outside that flow.
+For **static-site imports** (user ran `/canai-mcp implement <folder>` or similar), don't ask — auto-detect referenced assets and sideload them as a pre-pass. See **Static-site asset sideload pre-pass** under "Implement HTML → CanAI". The steps below cover ad-hoc single-file uploads outside that flow.
 
 1. Ask the user for the local file paths if they haven't already provided them.
 2. For each file, POST it from the user's machine (one at a time so you can capture each `id`). `curl` is the simplest and is the one sanctioned shell exception:
@@ -536,9 +537,9 @@ Clean up badly named uploads and missing alt text (plugin 1.45.0+):
 
 ---
 
-## CRITICAL: WPCanAI storage model
+## CRITICAL: CanAI storage model
 
-WPCanAI does **not** use `post_content` for template bodies. Use `**wpcanai-read-meta`** / `**wpcanai-write-meta`** for `_canai_html`, `_canai_css`, `_canai_js`, `_canai_context`, `_canai_layout`.
+CanAI does **not** use `post_content` for template bodies. Use `**wpcanai-read-meta`** / `**wpcanai-write-meta`** for `_canai_html`, `_canai_css`, `_canai_js`, `_canai_context`, `_canai_layout`.
 
 ## CRITICAL: Content resolution
 
@@ -548,7 +549,7 @@ WC shop/cart/checkout/my-account/product-category content often lives on **WC pa
 
 ## Translation model router
 
-WPCanAI sites can be multilingual in one of **two mutually exclusive models**: **native string translation** (one post per page, site-wide string table, plugin 1.22.0+) or **Polylang** (per-language post copies). On ANY translation request — "translate this site/page", "add a language", "multilingual", "localize" — determine the model FIRST; do not assume Polylang:
+CanAI sites can be multilingual in one of **two mutually exclusive models**: **native string translation** (one post per page, site-wide string table, plugin 1.22.0+) or **Polylang** (per-language post copies). On ANY translation request — "translate this site/page", "add a language", "multilingual", "localize" — determine the model FIRST; do not assume Polylang:
 
 1. Call `wpcanai-i18n-get-settings { }`.
    - `enabled: true` → the site uses **native string translation** — follow **Native string translation** below. Do NOT create per-language post copies or pass `translation_of`. (If Polylang is *also* active, that's the unexpected both-active case — see step 3.)
@@ -568,7 +569,7 @@ WPCanAI sites can be multilingual in one of **two mutually exclusive models**: *
 
 1. **Settings** — `wpcanai-i18n-get-settings { }`. If languages are missing or wrong, confirm with the user and write with `wpcanai-i18n-set-settings` (it **replaces the whole list** — include ALL languages plus `default`).
 
-2. **Authoring precondition — every user-facing string must be `{{ t('…') }}`.** Only `t()` sources are indexed and translatable. If pages carry hardcoded strings, wrap them first: `wpcanai-read-meta` → build replacement pairs → `wpcanai-replace-in-meta`, e.g. `{ "from": ">Shop now<", "to": ">{{ t('Shop now') }}<" }` (anchor on surrounding markup so the match is unique). Keep markup OUTSIDE the source: `<strong>{{ t('Best seller') }}</strong>`, never `{{ t("<strong>Best seller</strong>") }}` — translations are stored as plain text and HTML is stripped on save. When authoring NEW pages on a native-i18n site, wrap user-facing strings in `t()` from the start (see the helper table in **Implement HTML → WPCanAI**).
+2. **Authoring precondition — every user-facing string must be `{{ t('…') }}`.** Only `t()` sources are indexed and translatable. If pages carry hardcoded strings, wrap them first: `wpcanai-read-meta` → build replacement pairs → `wpcanai-replace-in-meta`, e.g. `{ "from": ">Shop now<", "to": ">{{ t('Shop now') }}<" }` (anchor on surrounding markup so the match is unique). Keep markup OUTSIDE the source: `<strong>{{ t('Best seller') }}</strong>`, never `{{ t("<strong>Best seller</strong>") }}` — translations are stored as plain text and HTML is stripped on save. When authoring NEW pages on a native-i18n site, wrap user-facing strings in `t()` from the start (see the helper table in **Implement HTML → CanAI**).
 
 3. **Rebuild the index** — `wpcanai-i18n-rescan { }` after any content edit. `wpcanai-i18n-list-strings` reads the index, not live meta — a stale index lists stale strings.
 
@@ -679,7 +680,7 @@ When `function_exists('pll_current_language')` is true:
 
 ### Twig helpers in templates
 
-WPCanAI exposes `current_language()`, `language_switcher()`, `__()`, `_x()`, `_n()` for language-aware markup — see [references/REFERENCE.md](references/REFERENCE.md#internationalization-i18n).
+CanAI exposes `current_language()`, `language_switcher()`, `__()`, `_x()`, `_n()` for language-aware markup — see [references/REFERENCE.md](references/REFERENCE.md#internationalization-i18n).
 
 ---
 
@@ -733,7 +734,7 @@ Run after bulk imports, before handing a site back to the user, or whenever the 
 
 **What it does:** the default Tailwind delivery is the Play CDN (`tailwind.min.js` from the plugin or `cdn.tailwindcss.com`), which JIT-compiles utilities in the visitor's browser on every page load. This workflow precompiles CSS on the agent side and stores it as meta. The server emits the prebuilt CSS inline and skips the Play CDN script when a build is present — visitors get static CSS, the agent does the work.
 
-**Build unit = the layout.** Compile **one** CSS bundle per **layout**, scanning the layout *plus every page/template that renders through it*, and store it **on the layout post**. The server collects the layout's build at render time (the layout post is rendered on every page that uses it) and emits it once. This keeps the compiled CSS findable in one place — the layout's **Compiled Tailwind CSS** panel in the WPCanAI Editor — instead of scattered across every page.
+**Build unit = the layout.** Compile **one** CSS bundle per **layout**, scanning the layout *plus every page/template that renders through it*, and store it **on the layout post**. The server collects the layout's build at render time (the layout post is rendered on every page that uses it) and emits it once. This keeps the compiled CSS findable in one place — the layout's **Compiled Tailwind CSS** panel in the CanAI Editor — instead of scattered across every page.
 
 ### Storage contract
 
@@ -914,13 +915,13 @@ If the damage spans several posts (a bad preset install or import), skip straigh
 | Goal                             | Tools                    |
 | -------------------------------- | ------------------------ |
 | List templates                   | `wpcanai-list-templates`     |
-| List WPCanAI pages                   | `wpcanai-list-pages`         |
+| List CanAI pages                   | `wpcanai-list-pages`         |
 | Read fields                      | `wpcanai-read-meta`          |
 | Write fields                     | `wpcanai-write-meta`         |
 | New template post                | `wpcanai-create-template`    |
-| New page (with WPCanAI meta)         | `wpcanai-create-page`        |
-| Read WP / WC / WPCanAI options       | `wpcanai-read-settings`      |
-| Update WP / WC / WPCanAI options     | `wpcanai-update-settings`    |
+| New page (with CanAI meta)         | `wpcanai-create-page`        |
+| Read WP / WC / CanAI options       | `wpcanai-read-settings`      |
+| Update WP / WC / CanAI options     | `wpcanai-update-settings`    |
 | Read arbitrary wp_option (allowlist) | `wpcanai-get-option`         |
 | Update arbitrary wp_options (allowlist / approval) | `wpcanai-update-options` |
 | Poll pending option update           | `wpcanai-get-pending`        |
@@ -931,7 +932,7 @@ If the damage spans several posts (a bad preset install or import), skip straigh
 | Grep `_canai_*` meta             | `wpcanai-grep-content`       |
 | Diagnose environment / network    | `wpcanai-diagnostics`        |
 | List / install / remove a preset  | `wpcanai-list-presets` / `wpcanai-install-preset` (⚠ `clean_slate`) / `wpcanai-uninstall-preset` |
-| Export / import WPCanAI content    | `wpcanai-export` / `wpcanai-import` |
+| Export / import CanAI content    | `wpcanai-export` / `wpcanai-import` |
 | Undo a bad write (one post)        | `wpcanai-list-snapshots` → `wpcanai-restore-snapshot` |
 | Undo a whole operation (many posts) | `wpcanai-list-operations` → `wpcanai-restore-operation` |
 | Read one snapshot's payload        | `wpcanai-get-snapshot`       |

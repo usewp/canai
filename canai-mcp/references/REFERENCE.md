@@ -1,10 +1,10 @@
-# WPCanAI Twig & WooCommerce Reference
+# CanAI Twig & WooCommerce Reference
 
 ## Twig Functions Reference
 
-**Scope:** This section documents WPCanAI-registered Twig functions (WordPress/WooCommerce helpers added by WPCanAI). It does not attempt to list all Twig core built-ins.
+**Scope:** This section documents CanAI-registered Twig functions (WordPress/WooCommerce helpers added by CanAI). It does not attempt to list all Twig core built-ins.
 
-**Twig version:** WPCanAI vendors Twig 3.x (`twig/twig`). For the exact patch, check `vendor/twig/twig/src/Environment.php` (`Environment::VERSION`). Consult the Twig 3.x docs for built-in tags/filters/functions.
+**Twig version:** CanAI vendors Twig 3.x (`twig/twig`). For the exact patch, check `vendor/twig/twig/src/Environment.php` (`Environment::VERSION`). Consult the Twig 3.x docs for built-in tags/filters/functions.
 
 ### WordPress Core
 ```twig
@@ -30,7 +30,7 @@
 {% endfor %}
 ```
 
-- **Theme-independent locations (v1.25+).** WPCanAI registers `wpcanai_primary` and `wpcanai_footer` nav locations itself; render them with `get_menu('wpcanai_primary')` rather than the theme's `get_menu('primary')`. Presets create/tear these down via `settings.menus`.
+- **Theme-independent locations (v1.25+).** CanAI registers `wpcanai_primary` and `wpcanai_footer` nav locations itself; render them with `get_menu('wpcanai_primary')` rather than the theme's `get_menu('primary')`. Presets create/tear these down via `settings.menus`.
 
 ### Archive pagination (WordPress + WooCommerce)
 
@@ -52,7 +52,7 @@ Use these for **main-query** archives so URLs respect **pretty permalinks**, CPT
 
 **WooCommerce URL shapes:** The main shop and product taxonomies use **permalink-style** pagination (same idea as `the_posts_pagination`). Product **shortcodes** such as `[products]` use the `product-page` query argument instead — do not assume shop Twig behaves like a shortcode loop.
 
-**Context variables:** Prefer injected `posts` / `products` plus the `pagination` object (see below) instead of `wpcanai_get_posts_enriched` for the primary archive loop, unless you also pass `paged` and mirror core query rules. WPCanAI resolves the current index from both `paged` and `page` (the WooCommerce **shop Page** often receives `/shop/page/2/` via the `page` query var).
+**Context variables:** Prefer injected `posts` / `products` plus the `pagination` object (see below) instead of `wpcanai_get_posts_enriched` for the primary archive loop, unless you also pass `paged` and mirror core query rules. CanAI resolves the current index from both `paged` and `page` (the WooCommerce **shop Page** often receives `/shop/page/2/` via the `page` query var).
 
 **Template variables:** If you mark `products` or `posts` as *required* in template settings, an **empty list** is still valid. Required means the variable is **present**, not that the array is non-empty.
 
@@ -74,10 +74,10 @@ Use these for **main-query** archives so URLs respect **pretty permalinks**, CPT
 {# Execute a shortcode string #}
 {{ shortcode('[woocommerce_cart]')|raw }}
 
-{# Include another WPCanAI template (no args) #}
+{# Include another CanAI template (no args) #}
 {{ wpcanai_template('template-slug') }}
 
-{# Include another WPCanAI template and pass variables (component-style) #}
+{# Include another CanAI template and pass variables (component-style) #}
 {{ wpcanai_template('product-card', {'product': product}) }}
 ```
 
@@ -94,7 +94,7 @@ Use these for **main-query** archives so URLs respect **pretty permalinks**, CPT
 
 ### Internationalization (i18n)
 
-Three families: **Polylang-only** helpers (`current_language()`, `language_switcher()`), the **WordPress gettext** family (`__`, `_x`, `_n`), and **WPCanAI native i18n** helpers (`t()`, `tmedia()`, `current_lang()`, `languages()`, `lang_url()`, plugin 1.22.0+) which need no extra plugin once languages are configured (WPCanAI → Translations, or `wpcanai-i18n-set-settings` over MCP). On native-i18n sites use `t()` for user-facing strings and `current_lang()` / `languages()` for switchers; `current_language()` falls back to `get_locale()` and `language_switcher()` returns `[]` without Polylang. Gettext strings without an explicit domain default to `wpcanai`.
+Three families: **Polylang-only** helpers (`current_language()`, `language_switcher()`), the **WordPress gettext** family (`__`, `_x`, `_n`), and **CanAI native i18n** helpers (`t()`, `tmedia()`, `current_lang()`, `languages()`, `lang_url()`, plugin 1.22.0+) which need no extra plugin once languages are configured (CanAI → Translations, or `wpcanai-i18n-set-settings` over MCP). On native-i18n sites use `t()` for user-facing strings and `current_lang()` / `languages()` for switchers; `current_language()` falls back to `get_locale()` and `language_switcher()` returns `[]` without Polylang. Gettext strings without an explicit domain default to `wpcanai`.
 
 ```twig
 {# Current language code — Polylang slug ('en','ms','...') or get_locale() fallback #}
@@ -116,7 +116,7 @@ Three families: **Polylang-only** helpers (`current_language()`, `language_switc
 ```
 
 ```twig
-{# --- WPCanAI native i18n (single-post string translation, plugin 1.22.0+) --- #}
+{# --- CanAI native i18n (single-post string translation, plugin 1.22.0+) --- #}
 {{ t('Shop now') }}                 {# translated via the site string table; passes through for the default language or unknown strings #}
 {{ tmedia(123) }}                   {# attachment URL with per-language swap via the media map; falls back to the original id #}
 {{ tmedia(123, 'large') }}          {# second arg = image size, default 'full' #}
@@ -128,7 +128,7 @@ Three families: **Polylang-only** helpers (`current_language()`, `language_switc
 {{ lang_url('ms') }}                {# current URL localized to the given language (prefix added/stripped) #}
 ```
 
-**Native vs Polylang:** `t()` reads the WPCanAI string table (managed on the Translations admin page / `wpcanai-i18n-*` MCP tools); `__()/_x()/_n()` are gettext. `current_language()` / `language_switcher()` are **Polylang-only** — on native-i18n sites use `current_lang()` / `languages()`. See SKILL.md → **Native string translation** for the full workflow.
+**Native vs Polylang:** `t()` reads the CanAI string table (managed on the Translations admin page / `wpcanai-i18n-*` MCP tools); `__()/_x()/_n()` are gettext. `current_language()` / `language_switcher()` are **Polylang-only** — on native-i18n sites use `current_lang()` / `languages()`. See SKILL.md → **Native string translation** for the full workflow.
 
 **Polylang storage rules** (see SKILL.md → Multi-language section): `wpcanai_template` posts are translatable; `_canai_html/css/js/context/context_mode` are **copied** on translation; `_canai_layout` and `_canai_delegate_page_id` are **translated** (per-language IDs); the `template_type` taxonomy is **not** translatable.
 
@@ -138,7 +138,7 @@ Three families: **Polylang-only** helpers (`current_language()`, `language_switc
 
 **Automatic SEO behaviors (native i18n, plugin 1.30.0+):** on non-default-language pages the bridge handles several things with no override:
 - **Auto-derive** — when a post/term has no `seo_title`/`seo_description` override, `<title>` falls back to the translated `title` (post) / `name` (term) and the meta description to the translated `excerpt` (or, if empty, stripped `content`; term `description`), truncated to ≤160 chars on a word boundary. So set `seo_title`/`seo_description` only when the SEO copy must differ from the visible title/body.
-- **Canonical + `og:url`** are rewritten to the current language's `/<lang>/`-prefixed URL, and WPCanAI suppresses emitting its own canonical when Slim SEO / RankMath is active (no duplicate canonical tags).
+- **Canonical + `og:url`** are rewritten to the current language's `/<lang>/`-prefixed URL, and CanAI suppresses emitting its own canonical when Slim SEO / RankMath is active (no duplicate canonical tags).
 - **Redirects** keep the `/<lang>/` prefix, except WordPress system paths — `/wp-login.php`, `/wp-admin`, `/wp-json`, `/xmlrpc.php`, `/wp-cron.php`, `/wp-content`, `/wp-includes` — which are never prefixed.
 - **`Article.headline`** in JSON-LD (Slim SEO `schema_graph`, RankMath `json_ld`) translates automatically, and on RankMath the plugin patches the sitemap `<urlset>` to declare `xmlns:xhtml` so the injected `<xhtml:link rel="alternate" hreflang="…">` alternates are valid XML (a RankMath-specific fix; Slim SEO needs no such patch).
 
@@ -171,7 +171,7 @@ Three families: **Polylang-only** helpers (`current_language()`, `language_switc
 
 **Block Cart/Checkout (opt-in):** `wc_cart_block()` / `wc_checkout_block()` embed WooCommerce's modern block Cart/Checkout via `do_blocks`. The classic `wc_cart_totals()` / `wc_checkout_form()` remain the default. **Layout contract:** the helper output MUST appear **above** `wp_footer()` in the layout Twig — hydration data and JIT script enqueues print on `wp_print_footer_scripts`, so a block placed after `wp_footer()` will not hydrate. They render only on a real cart-bearing frontend request (not admin, REST, or `?wpcanai_preview=1`); on inert paths visitors get nothing and editors get a `wpcanai-notice`. Use these only on `cart` / `checkout` template types (styles are pre-enqueued and emoji scripts stripped for those types).
 
-**`wc_hook($hook)`** lets allowlisted WooCommerce display hooks fire inside a custom page (WPCanAI renders outside the loop, so they otherwise never run). It is already safe HTML — do **not** add `|raw`. Default allowlist (all `woocommerce_`-prefixed): `before/after_single_product`, `before/after_single_product_summary`, `single_product_summary`, `product_meta_start/end`, `share`, `before/after_shop_loop`, `shop_loop`, `before/after_cart`, `checkout_before_customer_details`, `review_order_before_payment`. Product/loop globals are primed automatically; the hook name is the only argument. Mutation/lifecycle hooks (e.g. `woocommerce_checkout_order_processed`) are denied by default; extend with the `wpcanai_wc_hook_allowlist` PHP filter.
+**`wc_hook($hook)`** lets allowlisted WooCommerce display hooks fire inside a custom page (CanAI renders outside the loop, so they otherwise never run). It is already safe HTML — do **not** add `|raw`. Default allowlist (all `woocommerce_`-prefixed): `before/after_single_product`, `before/after_single_product_summary`, `single_product_summary`, `product_meta_start/end`, `share`, `before/after_shop_loop`, `shop_loop`, `before/after_cart`, `checkout_before_customer_details`, `review_order_before_payment`. Product/loop globals are primed automatically; the hook name is the only argument. Mutation/lifecycle hooks (e.g. `woocommerce_checkout_order_processed`) are denied by default; extend with the `wpcanai_wc_hook_allowlist` PHP filter.
 
 ---
 
@@ -209,8 +209,8 @@ item.variation_label
 </a>
 ```
 
-### Notes from real-world WPCanAI usage
-- **Tailwind config placement**: if you’re using WPCanAI’s Tailwind injection on `wp_head`, set `tailwind.config = {...}` *after* `{{ wp_head() }}` in the layout `<head>` so Tailwind is present before configuration runs.
+### Notes from real-world CanAI usage
+- **Tailwind config placement**: if you’re using CanAI’s Tailwind injection on `wp_head`, set `tailwind.config = {...}` *after* `{{ wp_head() }}` in the layout `<head>` so Tailwind is present before configuration runs.
 - **Design tokens**: a common pattern is defining CSS variables in layout `_canai_css` and mirroring them in `tailwind.config` (`colors.brand.*`, `fontFamily.*`) so template markup can stay purely utility-based.
 - **Lucide icons**: calling `lucide.createIcons()` in layout `_canai_js` is a good default; if a component injects new Lucide markup at runtime (e.g. mobile menu), call `lucide.createIcons()` again after DOM changes.
 
@@ -248,7 +248,7 @@ product.wc.allergen               {# shorthand for pa_allergen (pa_ prefix strip
 
 ### Single-product `post.wc` (since 1.35.0)
 
-On a single-product page taken over by WPCanAI (`wpcanai_render_full_page_frontend()`), the queried
+On a single-product page taken over by CanAI (`wpcanai_render_full_page_frontend()`), the queried
 `post` gets the **same** structured `wc` surface as loop-context `product.wc` above (built by the same
 `PostEnricher::enrich_post()`), plus single-context-only fields. The bare `product` variable
 (`WooCommerceContext`) is unchanged — `post.wc` is an additional, structured view of the same product,
@@ -314,7 +314,7 @@ customer.billing_postcode, customer.billing_country, customer.billing_state
 Injected on template types **`shop`** and **`product-category`** (content resolves from the WooCommerce shop page; see SKILL).
 
 ```twig
-products              {# Array of enriched product posts (main query or WPCanAI fallback) #}
+products              {# Array of enriched product posts (main query or CanAI fallback) #}
 current_category      {# Current term object on taxonomy archives; may be null on main shop #}
 term                  {# Queried object (term or other) #}
 attribute_filters     {# Layered nav attribute metadata #}
@@ -354,7 +354,7 @@ term
 
 ## Twig Comment Convention
 
-**CRITICAL**: Always use Twig comments `{# #}` for section navigation in WPCanAI templates. Twig comments are stripped during rendering (zero output bloat) and serve purely as developer navigation aids in lengthy template code.
+**CRITICAL**: Always use Twig comments `{# #}` for section navigation in CanAI templates. Twig comments are stripped during rendering (zero output bloat) and serve purely as developer navigation aids in lengthy template code.
 
 `_canai_html`, `_canai_css`, and `_canai_js` are all rendered through the same Twig engine before output. `{# #}` is equally valid in page-level JavaScript (`_canai_js`) and is stripped before the script reaches `wp_footer()`. Prefer `{# #}` over `/* */` for any comment naming internal services, snippet names, hook names, or architecture details.
 

@@ -105,7 +105,7 @@ yours; every template in this prompt only ever *includes* the two partials.
 
 ## template_type mapping — get this right or the template renders blank
 
-WPCanAI binds a `wpcanai_template` post to real pages **purely by its
+CanAI binds a `wpcanai_template` post to real pages **purely by its
 `template_type` taxonomy term** — there is no separate "which CPT"/"which
 Woo page" field anywhere. The term you tag the template with in wp-admin
 must be **exactly** what `TemplateResolver::resolve_current_template_type()`
@@ -139,7 +139,7 @@ used elsewhere in this prompt, Woo is special-cased and most of its terms do
 | `single:<cpt>` | `single-<post_type_slug>` | Generic CPT single, existence-gated (only claims the URL once a published template with this term exists). `<post_type_slug>` comes from CONTENT-MODEL.md's "Post type" table — may differ from the classify-stage type name (`case_study` vs `case-study`). |
 | `archive:<cpt>` | `archive-<post_type_slug>` | Generic CPT archive, same existence-gating. |
 | `woo:product` | **`product`** | **NOT `single-product`.** `is_product()` is checked inside the WC block above, which returns *before* the generic `single-{post_type}` branch is ever reached — a template tagged `single-product` is unreachable dead weight; the resolver never emits that string on a WooCommerce build. Also confirmed by `ai/canai-mcp/SKILL.md`'s `get-wc-page-ids` tool doc, which lists `product` (not `single-product`) as a valid `type`. |
-| `woo:shop` | `shop` | Covers BOTH the dedicated WooCommerce "Shop" page (`is_shop()`) AND the generic product post-type archive (`is_post_type_archive('product')`) — WPCanAI treats them as the exact same page/term. There is no `archive-product` term; **never** build a separate archive bundle for `woo:product` — if this site also has a `woo:shop` type, that capture already covers the product archive (you should never even be handed both — see "Fix 4" dedup in `src/transform.mjs` if you are). |
+| `woo:shop` | `shop` | Covers BOTH the dedicated WooCommerce "Shop" page (`is_shop()`) AND the generic product post-type archive (`is_post_type_archive('product')`) — CanAI treats them as the exact same page/term. There is no `archive-product` term; **never** build a separate archive bundle for `woo:product` — if this site also has a `woo:shop` type, that capture already covers the product archive (you should never even be handed both — see "Fix 4" dedup in `src/transform.mjs` if you are). |
 | `woo:product-category` | `product-category` | Covers BOTH product-category AND product-tag taxonomy archives (`is_product_category() \|\| is_product_tag() \|\| is_tax('product_cat') \|\| is_tax('product_tag')`) — ONE template serves every category and tag on the site, not one per term. |
 | `woo:product-loop` | `product-loop` | Not resolved by the router directly — it's the per-product card partial a `shop`/`product-category` template includes once per product (`{{ wpcanai_template('product-loop', {'product': p}) }}` — no leading context argument, Twig injects that itself). |
 | `woo:cart` | `cart` | |
@@ -160,14 +160,14 @@ Put the resolved term on the file's leading comment (see below) — e.g.
 - Start the `<body>` content with a machine-readable header comment:
   `<!-- wpcanai-template: template_type=<term from the mapping table above> -->`.
   This comment is documentation for the human/agent doing the WordPress-side
-  setup, not something WPCanAI parses — the value that actually matters is
+  setup, not something CanAI parses — the value that actually matters is
   the `template_type` **taxonomy term** you put on the `wpcanai_template`
   post once it's created in wp-admin.
 - Immediately after that comment, `{{ wpcanai_template('header') }}`; last
   thing before `</body>`, `{{ wpcanai_template('footer') }}`. No inlined
   `<header>`/`<footer>` anywhere in this file — see "Site chrome is shared,
   never inlined" above.
-- **`single:<cpt>`**: the `post` variable WPCanAI hands the template is a
+- **`single:<cpt>`**: the `post` variable CanAI hands the template is a
   **bare `WP_Post`** — only native columns resolve (`post.ID`,
   `post.post_title`, `post.post_content`, `post.post_excerpt`,
   `post.post_name`). Custom fields, the featured image, and taxonomy terms
@@ -195,9 +195,9 @@ Put the resolved term on the file's leading comment (see below) — e.g.
   - `{{ item.fields.<field_name> }}` — must match a CONTENT-MODEL.md field
     name exactly. Resolves whether the human implements CONTENT-MODEL.md's
     "Implementation option A" (Pods) or "option B" (Easy Code Manager /
-    plain `register_post_meta()`, no Pods active) — WPCanAI 1.43.1+ falls
+    plain `register_post_meta()`, no Pods active) — CanAI 1.43.1+ falls
     back to raw post meta per-field whenever Pods doesn't define the field
-    itself. Only on a destination site confirmed to run an older WPCanAI
+    itself. Only on a destination site confirmed to run an older CanAI
     does option B's `fields.*` fail to populate — call that out as a
     `<!-- FIELD GAP -->` in that case, right next to the CONTENT-MODEL.md
     gaps, so it doesn't fail silently.
@@ -213,7 +213,7 @@ Put the resolved term on the file's leading comment (see below) — e.g.
     loop it: `{% for t in item.taxonomy_items.<taxonomy_name> %}{{ t.name }}{% endfor %}`.
 - **`woo:product`**: the opposite of the CPT case above for every WooCommerce
   **native** property (price, SKU, stock, gallery, attributes, categories,
-  …) — do **NOT** self-enrich `post` to get those. WPCanAI's single-product
+  …) — do **NOT** self-enrich `post` to get those. CanAI's single-product
   takeover already calls `enrich_post($post, ['wc_context' => 'single'])`
   before your template ever renders (`wpcanai.php`, the single-product
   takeover block), so `post` arrives with a `post.wc.*` surface already
@@ -249,7 +249,7 @@ Put the resolved term on the file's leading comment (see below) — e.g.
 ### WooCommerce template variables
 
 The canonical, plugin-verified reference for every WooCommerce Twig function
-and context variable WPCanAI exposes is listed under "Inputs" below
+and context variable CanAI exposes is listed under "Inputs" below
 (`WooCommerce Twig variables reference`) — read it for the complete field
 list, exact shapes, and the `|raw` rules for pre-formatted HTML. It is
 already correct and kept in sync with the plugin source; don't re-derive
@@ -287,7 +287,7 @@ to get started:
   is exactly how a single/archive pair ends up disagreeing on nav (see "Site
   chrome is shared, never inlined" above).
 - **CPT archive** (`archive:<cpt>`): the item loop is
-  `{% for post in posts %} … {% endfor %}` around ONE item card; WPCanAI
+  `{% for post in posts %} … {% endfor %}` around ONE item card; CanAI
   injects `posts` pre-enriched with `.featured_image` only, so
   `{{ post.post_title }}`, `{{ post.post_excerpt }}`, and
   `{{ post.featured_image.src }}` work directly inside the loop. A card

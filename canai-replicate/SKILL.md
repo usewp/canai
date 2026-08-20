@@ -13,7 +13,7 @@ description: >
   each one-off page into a self-contained HTML file, all sharing one
   site-wide header/footer partial driven by real WordPress menus instead of
   N independently-drifting inlined copies → convert every generated file
-  into push-ready JSON artifacts (pushprep, avoiding WPCanAI's
+  into push-ready JSON artifacts (pushprep, avoiding CanAI's
   double-document-shell footgun) → verify by screenshotting every output
   (pixel scoring applies only to Twig-free files, so real verification
   happens after deploy — this skill has no PHP dependency). Also supports
@@ -34,7 +34,7 @@ metadata:
 allowed-tools: Bash Read Write Edit Grep Glob
 ---
 
-# canai-replicate — live site → WordPress/WPCanAI migration kit
+# canai-replicate — live site → WordPress/CanAI migration kit
 
 Take a **live website** and rebuild it as a **migration kit**: one
 self-contained HTML file per one-off page (the
@@ -63,7 +63,7 @@ If you need:
 
 - The HTML skeleton + `WPCanAI-PREVIEW-LIBS` markers → [canai-prepare/references/BOILERPLATE.md](../canai-prepare/references/BOILERPLATE.md)
 - Stack rules (Tailwind/Alpine/Lucide, semantic HTML5, no-`<style>`) → [canai-prepare/SKILL.md](../canai-prepare/SKILL.md#tech-stack-strict)
-- WPCanAI handoff (preview-libs stripping, layout split) → [canai-prepare/SKILL.md](../canai-prepare/SKILL.md#handoff-to-wpcanai)
+- CanAI handoff (preview-libs stripping, layout split) → [canai-prepare/SKILL.md](../canai-prepare/SKILL.md#handoff-to-wpcanai)
 
 …follow those. canai-replicate **does not redefine** any of the canai-prepare
 rules. It only adds the multi-page extraction, classification, and
@@ -327,7 +327,7 @@ non-WooCommerce site is `single:product`, not `woo:product`. This is more
 than a cosmetic label — `TemplateResolver` gates its entire WooCommerce
 branch on WooCommerce actually being active, so a wrongly-kept `woo:*` kind
 means the `template_type` term is never emitted and the page silently falls
-through to the theme with no WPCanAI template bound at all.
+through to the theme with no CanAI template bound at all.
 
 **3. capture** — for each page in the worklist, drive agent-browser to take:
 
@@ -509,7 +509,7 @@ shell around it.
 **Why this stage exists (CRITICAL — dogfood A2, Defect #1).** Every file
 under `output/pages/` and `output/templates/` is a **full standalone HTML
 document** (`<!DOCTYPE>`/`<html>`/`<head>`/`<body>` and all — deliberate, so
-it opens via `file://` for local preview). But WPCanAI's no-layout render
+it opens via `file://` for local preview). But CanAI's no-layout render
 path (`wpcanai_render_full_page_frontend()`) unconditionally wraps whatever
 is stored in `_canai_html` in **its own** `<!DOCTYPE>`/`<html>`/`<head>`/
 `<body>` shell. Pushing a `transform` output file **verbatim** into
@@ -532,10 +532,10 @@ output shape — every marker it looks for is one this same pipeline emits):
 - A file with **no** `<!DOCTYPE>`/`<html>` at all — `header.html`/
   `footer.html`, already the bare `<header>…</header>`/`<footer>…</footer>`
   fragment shape `transform-chrome.md` produces — passes through as-is.
-- Strips `WPCanAI-PREVIEW-LIBS` blocks (WPCanAI injects the equivalent
+- Strips `WPCanAI-PREVIEW-LIBS` blocks (CanAI injects the equivalent
   itself via `wp_head()`/`wp_footer()`).
 - Converts every `<!-- Section: X -->` HTML comment to `{# Section: X #}`
-  Twig (canai-prepare Handoff #7) so the WPCanAI editor's structure menu
+  Twig (canai-prepare Handoff #7) so the CanAI editor's structure menu
   populates correctly.
 - Reads `template_type` off the leading
   `<!-- wpcanai-template: template_type=X -->` comment (present on every
@@ -685,19 +685,19 @@ runs/<site>/
 
 1. **Materialize CONTENT-MODEL.md** on the destination site (user step):
    via the Pods plugin, or by installing the generated PHP snippet with
-   Easy Code Manager / FluentSnippets — both are fully supported. WPCanAI
+   Easy Code Manager / FluentSnippets — both are fully supported. CanAI
    1.43.1+ resolves `item.fields.<name>` (including `.url` on an image/file
    field) whether the field came from Pods or from a plain
    `register_post_meta()` snippet: `PostEnricher::get_post_fields()` falls
    back to raw post meta per-field whenever Pods doesn't define that field
-   itself. On a destination site running an older WPCanAI, the
+   itself. On a destination site running an older CanAI, the
    `register_post_meta()` path renders every field silently empty (no
-   error) — confirm the destination's WPCanAI version, or upgrade it first,
+   error) — confirm the destination's CanAI version, or upgrade it first,
    if you're not sure.
 2. **Run `pushprep` first, then push its output** via canai-mcp /
    canai-localwp — **never** write a raw `output/pages/*.html` or
    `output/templates/*.html` file into `_canai_html` (see step 7/pushprep
-   above: it's a full standalone document, and WPCanAI's own render path
+   above: it's a full standalone document, and CanAI's own render path
    wraps it in a second document shell — this is dogfood A2's CRITICAL
    Defect #1, reproduced live). Push the `runs/<site>/output/push/<slug>.json`
    artifacts instead: an entry with `template_type: null` is a canai-prepare
@@ -705,7 +705,7 @@ runs/<site>/
    `_canai_js` on a new `page` post); an entry with a `template_type` is a
    `wpcanai_template` post — assign that exact value as the `template_type`
    taxonomy term. **Push `header.json` and `footer.json` first**
-   (`template_type` `header`/`footer` — WPCanAI's own pre-seeded terms):
+   (`template_type` `header`/`footer` — CanAI's own pre-seeded terms):
    every other page/template calls `{{ wpcanai_template('header') }}` /
    `{{ wpcanai_template('footer') }}`, which resolves by the template
    post's exact **slug** — NOT by title, and NOT by the `template_type`
@@ -749,7 +749,7 @@ runs/<site>/
 - **[canai-mcp](../canai-mcp/SKILL.md)** — remote site (live / staging)
 - **[canai-localwp](../canai-localwp/SKILL.md)** — local WP via WP-CLI
 
-- **Native-i18n targets.** If the destination site uses WPCanAI native
+- **Native-i18n targets.** If the destination site uses CanAI native
   translation, the receiving skill (canai-mcp / canai-localwp) first routes
   on the site's translation model, then the import wraps user-facing strings
   in `{{ t('…') }}` and uses `tmedia()` for per-language media. Produce copy

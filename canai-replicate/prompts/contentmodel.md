@@ -1,7 +1,7 @@
 # Task: extract CONTENT-MODEL.md (WordPress content-model handoff)
 
 You are designing the WordPress content model for a site being migrated into
-WPCanAI. The replica pipeline detected repeating page types; your job is to
+CanAI. The replica pipeline detected repeating page types; your job is to
 define, for each type, the custom post type, custom fields, and taxonomies
 that hold its content — as a **handoff document a human implements**. This
 skill does NOT create CPTs or import content.
@@ -142,15 +142,15 @@ Per-cell rules:
 Then, ONCE at the end of the document:
 
 Open the implementation section with this note (verbatim, or close to it —
-substitute the destination site's actual WPCanAI version if it's known):
-"Both options below are fully supported: WPCanAI 1.43.1+ resolves
+substitute the destination site's actual CanAI version if it's known):
+"Both options below are fully supported: CanAI 1.43.1+ resolves
 `item.fields.<name>` (including an image/file field resolving to
 `item.fields.<name>.url`) whether the field was defined as a Pods field
 (option A) or registered via `register_post_meta()` (option B, no Pods
 required) — `PostEnricher::get_post_fields()` falls back to raw post meta
 per-field whenever Pods doesn't define that field itself. On a destination
-site running an older WPCanAI, option B's fields render silently empty (no
-error) — confirm the destination's WPCanAI version before relying on option
+site running an older CanAI, option B's fields render silently empty (no
+error) — confirm the destination's CanAI version before relying on option
 B, or upgrade first."
 
 ### Implementation option A — Pods (free plugin)
