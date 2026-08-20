@@ -821,6 +821,93 @@ When the rendered page's layout has a non-empty `_canai_tailwind_build`, `AssetM
 
 ---
 
+## History / undo (snapshots)
+
+Every CanAI content write is snapshotted **before** it lands, into a dedicated table (not
+postmeta). This is the undo path — reach for it the moment a write goes wrong, instead of
+trying to reconstruct the previous `_canai_html` by hand. **There is no admin UI for
+snapshots; these tools are the only surface.**
+
+**What is captured.** Exactly seven meta keys: `_canai_html`, `_canai_css`, `_canai_js`,
+`_canai_layout`, `_canai_delegate_page_id`, `_canai_context`, `_canai_context_mode`. Nothing
+else — not `post_title`, not `post_content`, not attachments.
+
+**When it is captured.** Automatically, pre-write, by `wpcanai-write-meta`,
+`wpcanai-replace-in-meta`, `wpcanai-create-template`, `wpcanai-create-page`, `wpcanai-setup`,
+`wpcanai-import`, preset install/uninstall, and media updates that rewrite content — plus every
+save from the wp-admin editor. You never call a "take a snapshot" tool for a normal write; the
+one time you *do* act explicitly is `wpcanai-pin-current`, below.
+
+**Retention.** A ring buffer of **10 unpinned snapshots per post** — the 11th write evicts the
+oldest. Pinned snapshots are exempt from eviction, capped at **10 pinned per post**.
+
+**Operations.** Snapshots taken as part of one logical write share an `operation_id` (e.g. a
+preset install touching 14 posts). Roll the whole thing back with `wpcanai-restore-operation`
+rather than restoring 14 snapshots one at a time.
+
+**Kill-switch.** Like every `wpcanai/*` ability, each of these can be disabled by the site owner
+under **CanAI → AI Agent → Tools**; a disabled tool simply won't be in your tool list.
+
+### `wpcanai-list-snapshots`
+
+- **Args:** `{ "post_id": int, "limit"?: int }` — `post_id` required; `limit` defaults to 50 and is clamped to 1–200.
+- **Returns:** `{ "snapshots": [{ "id": int, "post_id": int, "operation_id": string, "operation_type": string, "actor": string, "created_at": string, "pinned": bool, "label": string|null, "bytes": int }] }` — newest first, **metadata only**. The payload is deliberately excluded: ten rows at ~7KB each would burn your context to answer "which one do I want?".
+- **Errors:** `forbidden` when the caller can't `edit_post` that post.
+
+### `wpcanai-get-snapshot`
+
+- **Args:** `{ "snapshot_id": int }`.
+- **Returns:** the same summary fields **plus** `"payload"` — the captured `{ "_canai_html": …, "_canai_css": …, … }` map, with `null` meaning "no meta row existed". Read this before restoring if you need to diff.
+- **Errors:** `wpcanai_snapshot_not_found`, `forbidden`.
+
+### `wpcanai-restore-snapshot`
+
+- **Args:** `{ "snapshot_id": int }`.
+- **Returns:** `{ "success": true, "post_id": int }`.
+- **The current state is captured first**, so a restore is itself undoable — restoring the wrong snapshot is recoverable, not fatal.
+- **Errors:** `wpcanai_snapshot_not_found`, `forbidden`, `forbidden_unfiltered_html` — restore writes raw HTML/JS back onto the post, so it is gated on `unfiltered_html` exactly as the original write was. (API-key callers pass this gate; cookie-authed non-admins may not.)
+
+### `wpcanai-list-operations`
+
+- **Args:** `{ "limit"?: int }` — defaults to 20, clamped to 1–100.
+- **Returns:** `{ "operations": [{ "operation_id": string, "operation_type": string, "actor": string, "created_at": string, "posts": int }] }` — newest first, **site-wide** (not per-post). `posts` is how many posts that operation touched.
+
+### `wpcanai-restore-operation`
+
+- **Args:** `{ "operation_id": string }`.
+- **Returns:** `{ "success": bool, "restored": int, "failed": int, "post_ids": int[] }`.
+- **`success` is `failed === 0`, not `restored > 0`.** A partial rollback (14 of 15 posts) reports `success: false` — never treat a non-zero `restored` as "done". Report the partial state to the user.
+- Permissions are checked for **every** affected post up front, before anything is written: a rollback that stops half way is worse than one that never starts.
+- **Errors:** `wpcanai_operation_not_found`, `forbidden` (names the post you can't edit), `forbidden_unfiltered_html`.
+
+### `wpcanai-pin-snapshot`
+
+- **Args:** `{ "snapshot_id": int, "pinned": bool, "label"?: string }` — `snapshot_id` and `pinned` required; `label` is optional and only meaningful when pinning.
+- **Returns:** `{ "success": true, "snapshot_id": int, "pinned": bool }`.
+- Pinning exempts a snapshot from ring-buffer eviction (cap: 10 pinned per post). Unpinning is always allowed.
+- **Errors:** `wpcanai_snapshot_not_found`, `forbidden`, `wpcanai_snapshot_pin_failed`.
+
+### `wpcanai-pin-current`
+
+- **Args:** `{ "post_id": int, "label": string }` — **both required**; `label` must be non-empty and ≤ 191 characters, e.g. `"fix broken product page — verified in browser"`.
+- **Returns:** `{ "success": true, "snapshot_id": int, "pinned": true, "label": string, "created_at": string, "reused_existing": bool }`.
+- **Call this after you have verified your change in the browser.** Snapshots are otherwise only captured *pre-write*, so the state you just confirmed working has no row to pin until somebody edits the post again — by which point it is the *previous* state and may already be evicted.
+- If the live content already matches the newest snapshot, that snapshot is pinned instead of writing a duplicate (`reused_existing: true`).
+- **Errors:** `wpcanai_invalid_label` (missing or > 191 chars), `wpcanai_post_not_found`, `wpcanai_not_canai_post` (the post holds no CanAI content — pinning it would record "this post had nothing" as a verified state), `forbidden`, and a pin-cap failure at 10 pinned; unpin one with `wpcanai-pin-snapshot` first.
+
+### Recovery workflow
+
+1. `wpcanai-list-snapshots { "post_id": 123 }` → find the row from before your bad write (check `created_at` / `operation_type`).
+2. Optional: `wpcanai-get-snapshot { "snapshot_id": 456 }` → confirm the payload is the content you want.
+3. `wpcanai-restore-snapshot { "snapshot_id": 456 }`.
+4. Verify the page in the browser.
+5. `wpcanai-pin-current { "post_id": 123, "label": "known-good after rollback" }` so the recovered state can't be evicted.
+
+If the damage spans several posts (a bad preset install or import), skip straight to
+`wpcanai-list-operations` → `wpcanai-restore-operation`.
+
+---
+
 ## Action router (quick)
 
 
@@ -845,6 +932,10 @@ When the rendered page's layout has a non-empty `_canai_tailwind_build`, `AssetM
 | Diagnose environment / network    | `wpcanai-diagnostics`        |
 | List / install / remove a preset  | `wpcanai-list-presets` / `wpcanai-install-preset` (⚠ `clean_slate`) / `wpcanai-uninstall-preset` |
 | Export / import WPCanAI content    | `wpcanai-export` / `wpcanai-import` |
+| Undo a bad write (one post)        | `wpcanai-list-snapshots` → `wpcanai-restore-snapshot` |
+| Undo a whole operation (many posts) | `wpcanai-list-operations` → `wpcanai-restore-operation` |
+| Read one snapshot's payload        | `wpcanai-get-snapshot`       |
+| Checkpoint verified content        | `wpcanai-pin-current` (pin/unpin: `wpcanai-pin-snapshot`) |
 | FluentSnippets (opt-in) | **`canai-yolo`** skill — not documented here |
 | Precompile Tailwind for production | `wpcanai-write-meta` with `tailwind_build` + `tailwind_hash` (see **Compile Tailwind for Production**) |
 | Translate a site (native i18n)   | see **Native string translation** workflow |
