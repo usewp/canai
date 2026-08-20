@@ -3,7 +3,7 @@ name: canai-mcp
 description: >
   Strictly use the WPCanAI MCP server as the only way to interact with the user’s WordPress site for WPCanAI content work (templates, pages, settings, setup, diagnostics, i18n, media).
   Do not use WP-CLI, REST/curl, or workspace edits under wp-content for live site data — only MCP tools (e.g. wpcanai-read-meta, wpcanai-write-meta) via the configured server (often canai-mcp).
-  Does NOT cover FluentSnippets or wpcanai-eval — those are in the separate opt-in canai-yolo skill.
+  Does NOT cover FluentSnippets — that is in the separate opt-in canai-yolo skill.
   Triggers on: "/canai-mcp", "wpcanai mcp", "canai-mcp", "wpcanai remote", "remote wpcanai", "staging", "production", "remote site",
   "mcp", "api key", "deploy template",
   "translate", "translation", "translate the site", "i18n", "multilingual", "string translation", "native translation", "/canai-mcp translate",
@@ -26,7 +26,7 @@ See [references/REFERENCE.md](references/REFERENCE.md) for WPCanAI-registered Tw
 
 `**canai-mcp`** and `**canai-localwp`** cover the same WPCanAI concepts (Twig, meta fields, content resolution). `**canai-localwp**` is the **WP‑CLI / local workspace** skill; `**canai-mcp`** is this one: **only** the **WPCanAI MCP server** and its tools. When this skill applies, **never** substitute terminal `wp`, `curl`, raw REST, or repo edits for interacting with the user’s WordPress.
 
-**Code / eval / FluentSnippets** live in the separate opt-in skill **`canai-yolo`**. This skill stays content-focused (templates, pages, settings, i18n, media, Tailwind). If the user needs snippet authoring or `wpcanai-eval`, install/use `canai-yolo` — do not improvise those workflows from this skill.
+**FluentSnippets** lives in the separate opt-in skill **`canai-yolo`**. This skill stays content-focused (templates, pages, settings, i18n, media, Tailwind). If the user needs snippet authoring, install/use `canai-yolo` — do not improvise those workflows from this skill. There is **no eval escape hatch**: the `wpcanai/eval` ability was **removed in plugin v1.59.0**, so every capability must be a real `wpcanai/*` ability.
 
 ---
 
@@ -845,7 +845,7 @@ When the rendered page's layout has a non-empty `_canai_tailwind_build`, `AssetM
 | Diagnose environment / network    | `wpcanai-diagnostics`        |
 | List / install / remove a preset  | `wpcanai-list-presets` / `wpcanai-install-preset` (⚠ `clean_slate`) / `wpcanai-uninstall-preset` |
 | Export / import WPCanAI content    | `wpcanai-export` / `wpcanai-import` |
-| FluentSnippets / PHP eval (opt-in) | **`canai-yolo`** skill — not documented here |
+| FluentSnippets (opt-in) | **`canai-yolo`** skill — not documented here |
 | Precompile Tailwind for production | `wpcanai-write-meta` with `tailwind_build` + `tailwind_hash` (see **Compile Tailwind for Production**) |
 | Translate a site (native i18n)   | see **Native string translation** workflow |
 | Read / set native i18n languages | `wpcanai-i18n-get-settings` / `wpcanai-i18n-set-settings` |

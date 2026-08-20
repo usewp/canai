@@ -46,10 +46,10 @@ npx skills remove canai-localwp
 | Skill | Use case |
 |---|---|
 | `canai-localwp` | Drive a **local** WordPress over WP-CLI (`.env.wplocal`): create/edit templates and pages, apply WooCommerce templates, run diagnostics. |
-| `canai-mcp` | Drive **any** WordPress site over the WPCanAI MCP server (API key + endpoint): templates, pages, settings, media sideload, translations, Tailwind builds. **Content-focused** — no FluentSnippets / PHP eval docs. |
+| `canai-mcp` | Drive **any** WordPress site over the WPCanAI MCP server (API key + endpoint): templates, pages, settings, media sideload, translations, Tailwind builds. **Content-focused** — no FluentSnippets docs. |
 | `canai-prepare` | Produce **single self-contained HTML files** per page (semantic HTML5, Tailwind utilities, vanilla JS/Alpine, Lucide) for later WPCanAI import. Not tied to a WordPress install. |
 | `canai-replicate` | **Replicate a whole live site** into `canai-prepare` format: discover → classify → capture → `DESIGN.md` → transform to Twig templates + pages → verify by visual diff. Hands off to `canai-mcp` / `canai-localwp` to push. |
-| `canai-yolo` | **Opt-in / high risk.** FluentSnippets create/update/publish and `wpcanai-eval` via the same MCP server. Install only when you need site PHP/code workflows. |
+| `canai-yolo` | **Opt-in / high risk.** FluentSnippets create/update/publish via the same MCP server. Install only when you need site PHP/code workflows. |
 
 ## Companion skills
 
@@ -72,7 +72,7 @@ generate an API key, and copy the ready-made MCP client JSON shown there (the
 key rides in the endpoint URL). Then ask your agent to list your WPCanAI templates (`wpcanai-list-templates`) to
 confirm the connection works.
 
-**Snippets / eval:** install `canai-yolo` separately (`npx skills add usewp/canai --skill canai-yolo`). Enable the FluentSnippets group allowlist (and `WPCANAI_ENABLE_EVAL` if you need eval) on the site before using those tools.
+**Snippets:** install `canai-yolo` separately (`npx skills add usewp/canai --skill canai-yolo`). Enable the FluentSnippets group allowlist on the site before using those tools.
 
 ## License
 

@@ -1,21 +1,21 @@
 ---
 name: canai-yolo
 description: >
-  Opt-in WPCanAI MCP power tools that can run or publish site PHP: FluentSnippets
-  (create/update/publish PHP/CSS/JS snippets) and wpcanai-eval (sandboxed PHP with
-  DB rollback). Not for routine template/page/content work — use canai-mcp for that.
+  Opt-in CanAI MCP power tool that can publish site PHP: FluentSnippets
+  (create/update/publish PHP/CSS/JS snippets). Not for routine template/page/content
+  work — use canai-mcp for that.
   Triggers on: "/canai-yolo", "canai-yolo", "fluentsnippets", "fluent snippets",
-  "easy-code-manager", "code snippet", "php snippet", "wpcanai-eval", "wpcanai eval",
-  "eval php", "publish snippet", "create snippet".
+  "easy-code-manager", "code snippet", "php snippet", "publish snippet",
+  "create snippet".
 metadata:
   author: canai
   version: "1.1.0"
 allowed-tools: "Read Grep Glob"
 ---
 
-# CanAI YOLO — code / eval MCP tools
+# CanAI YOLO — FluentSnippets MCP tools
 
-**High risk. Opt-in.** This skill documents MCP tools that can **execute or permanently publish PHP** on the WordPress site. Install and invoke it only when the user explicitly wants snippet or eval work.
+**High risk. Opt-in.** This skill documents MCP tools that can **permanently publish PHP** on the WordPress site. Install and invoke it only when the user explicitly wants snippet work.
 
 For templates, pages, i18n, media, settings, and Tailwind — use **`canai-mcp`** instead. Do not blend YOLO workflows into a normal `/canai-mcp` content session unless the user asked for this skill.
 
@@ -28,9 +28,8 @@ Transport is the same WPCanAI MCP server (`{site}/wp-json/mcp/wpcanai`) and API 
 Use **`canai-yolo`** only for:
 
 1. **FluentSnippets** (`easy-code-manager`) — list/read/create/update/publish site PHP, CSS, or JS snippets via dedicated MCP tools.
-2. **`wpcanai-eval`** — temporary PHP inspection in a DB-rolled-back sandbox (filesystem/network side effects still persist).
 
-Do **not** use eval to create FluentSnippets (eval rolls back DB writes but not filesystem writes — you would leave a `.php` file with no index entry). Use the snippet tools below.
+> **There is no eval escape hatch.** The `wpcanai/eval` ability was **removed in plugin v1.59.0** — WP.org bans `eval()` outright — and `WPCANAI_ENABLE_EVAL` is no longer read. Every capability is a real ability; there is nothing to fall back on. If a workflow seems to need eval, the fix is to request the missing ability, not to improvise. An opt-in add-on plugin is planned (`specs/2026-08-20-canai-eval-addon-design.md`).
 
 ---
 
@@ -87,20 +86,6 @@ Agents often implement browser → WordPress relays as a FluentSnippets PHP rout
 
 ---
 
-## `wpcanai-eval` (sandboxed PHP)
-
-- **Args:** `{ "code": string }` — PHP to evaluate (no `<?php` tag). Full WordPress environment is available.
-- **Returns:** `{ "output": string, "return": mixed, "error": string|null }` — `output` is captured `echo`/`print`; `return` is the eval return value (objects are summarized for JSON); `error` is an exception message or `null`.
-- **Note:** A DB transaction wraps execution and is **always rolled back**, so SQL writes do not persist. This is for inspection and experiments only — use dedicated abilities (`wpcanai-write-meta`, `wpcanai-update-settings`, `wpcanai-update-options`, snippet tools, etc.) for real changes.
-- **Disabled by default.** Denial messages distinguish the gate that failed:
-  - `WPCANAI_ENABLE_EVAL is not defined true in wp-config.php` — site-level opt-in missing
-  - `MCP tool "eval" is disabled under WPCanAI → AI Agent → Tools` — Tools kill-switch
-  - `caller lacks permission to manage WPCanAI MCP` — capability / auth
-  It is an escape hatch, not a routine tool — every user-facing capability has a dedicated ability (e.g. read source content with `wpcanai-i18n-get-content`, not eval).
-- **Side effects that are NOT rolled back:** filesystem writes, network, `exec`, mail. Never use eval to create FluentSnippets files.
-
----
-
 ## Action router (quick)
 
 | Goal | Tools |
@@ -108,7 +93,6 @@ Agents often implement browser → WordPress relays as a FluentSnippets PHP rout
 | List / read FluentSnippets snippets | `wpcanai-list-snippets` / `wpcanai-get-snippet` |
 | Create / update a snippet (draft) | `wpcanai-create-snippet` / `wpcanai-update-snippet` |
 | Publish / unpublish a snippet | `wpcanai-set-snippet-status` |
-| Evaluate PHP (DB rolled back; FS side effects persist) | `wpcanai-eval` |
 
 ---
 
