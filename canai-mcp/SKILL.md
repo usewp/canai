@@ -13,7 +13,7 @@ description: >
   "sideload", "upload", "upload image", "upload media", "media library", "attach image", "attachment", "image to media".
 metadata:
   author: canai
-  version: "1.16.0"
+  version: "1.17.0"
 allowed-tools: "Read Grep Glob"
 ---
 

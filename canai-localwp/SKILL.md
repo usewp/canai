@@ -11,7 +11,7 @@ description: >
   "diagnose wpcanai", "diagnose canai".
 metadata:
   author: canai
-  version: "1.10.0"
+  version: "1.11.0"
 allowed-tools: Bash Read Write Edit Grep Glob
 ---
 

@@ -9,7 +9,7 @@ description: >
   "spa to html", "pwa to html", "static html", "single html", "per-page html", "convert design to html".
 metadata:
   author: canai
-  version: "1.2.2"
+  version: "1.3.0"
 allowed-tools: Bash Read Write Edit Grep Glob
 ---
 

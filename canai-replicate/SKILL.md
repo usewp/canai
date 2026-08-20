@@ -30,7 +30,7 @@ description: >
   "convert this site to wordpress", "replicate this page", "page mode".
 metadata:
   author: canai
-  version: "3.3.4"
+  version: "3.4.0"
 allowed-tools: Bash Read Write Edit Grep Glob
 ---
 
