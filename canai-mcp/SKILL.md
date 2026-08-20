@@ -335,7 +335,7 @@ Ability IDs use slashes; MCP tool names use **hyphens** (`wpcanai/read-meta` →
 
 - **Args:** `{ "keys"?: string[] }` — omit `keys` to read all whitelisted options.
 - **Returns:** object of option key → value.
-- **Whitelisted keys:** `show_on_front`, `page_on_front`, `page_for_posts`, `blogname`, `blogdescription`, `users_can_register`, `wpcanai_default_layout`, `wpcanai_tailwind_settings` (object: `load_tailwind` `yes`|`no`, `source` `cdn`|`plugin`, `plugins` string[]), `woocommerce_enable_signup_and_login_from_checkout`, `woocommerce_enable_myaccount_registration`, `woocommerce_cart_page_id`, `woocommerce_checkout_page_id`, `woocommerce_myaccount_page_id`, `woocommerce_shop_page_id`.
+- **Whitelisted keys:** `show_on_front`, `page_on_front`, `page_for_posts`, `blogname`, `blogdescription`, `users_can_register`, `wpcanai_default_layout`, `wpcanai_tailwind_settings` (object: `load_tailwind` `yes`|`no`, `source` `cdn`|`plugin` (default `plugin` since v1.58.2), `plugins` string[]), `woocommerce_enable_signup_and_login_from_checkout`, `woocommerce_enable_myaccount_registration`, `woocommerce_cart_page_id`, `woocommerce_checkout_page_id`, `woocommerce_myaccount_page_id`, `woocommerce_shop_page_id`.
 
 ### `wpcanai-update-settings`
 
@@ -770,7 +770,7 @@ Empty / missing → server falls back to Play CDN. **Dedup guard:** if a layout 
 
 5. **Hash the inputs** — sha256 over `union_content + "\n--\n" + plugins.sort().join(",") + "\n--\n" + tailwind_version`. Compare with the **layout's** existing `_canai_tailwind_hash`. Equal → skip this layout, count as "skipped (already current)". Use the actual **v3** version you compile with as `tailwind_version` so the hash is stable across machines (and so an accidental v4 build invalidates it rather than colliding). Hash with **Node, not Python** (see **Local scripting glue**) — e.g. `node -e "const c=require('crypto'),fs=require('fs');console.log(c.createHash('sha256').update(fs.readFileSync(process.argv[1])).digest('hex'))" hash-input.txt`.
 
-6. **Compile locally** (no server compilation), **with Tailwind v3 — not v4**. The runtime delivery is the Tailwind **v3** Play CDN (`cdn.tailwindcss.com`, plus the prebuilt bundles in `assets/lib/tailwind/`), so the precompiler MUST be v3 to match it. Two runners, both work without `npm run build`:
+6. **Compile locally** (no server compilation), **with Tailwind v3 — not v4**. The runtime delivery is the Tailwind **v3** Play CDN — since plugin v1.58.2 that means the prebuilt bundles in `assets/lib/tailwind/` by default (`Resource Source` = Internal), with `cdn.tailwindcss.com` only when the site owner switches the source to external. Either way it is **v3**, so the precompiler MUST be v3 to match it. Two runners, both work without `npm run build`:
    - `npx tailwindcss@^3 -i input.css -o /dev/stdout --content "<temp.html>"`. **Do not** use `npx @tailwindcss/cli` — that package is Tailwind **v4** and produces a broken build (see warning below).
    - The Tailwind standalone binary from a **v3** release (e.g. `tailwindcss-macos-arm64` from a `v3.4.x` tag — single executable, no Node). Pin v3 explicitly; the "latest" binary is v4.
    `input.css` is `@tailwind base; @tailwind components; @tailwind utilities;`. Plugins from step 1 enable via a temp `tailwind.config.js` (`plugins: [require('@tailwindcss/forms'), ...]`). Because it's one build per layout, **Preflight/base is compiled once**, not once-per-page.

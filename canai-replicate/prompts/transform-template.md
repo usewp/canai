@@ -215,7 +215,7 @@ Put the resolved term on the file's leading comment (see below) — e.g.
   **native** property (price, SKU, stock, gallery, attributes, categories,
   …) — do **NOT** self-enrich `post` to get those. CanAI's single-product
   takeover already calls `enrich_post($post, ['wc_context' => 'single'])`
-  before your template ever renders (`wpcanai.php`, the single-product
+  before your template ever renders (`canai.php`, the single-product
   takeover block), so `post` arrives with a `post.wc.*` surface already
   attached — see "WooCommerce template variables" below for the exact
   fields. A `wpcanai_get_posts_enriched({'p': post.ID, ...})` call here just

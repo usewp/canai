@@ -60,7 +60,7 @@ real WordPress menu, fixes both problems at the source.
 
 This is the second thing this prompt exists to fix. CanAI registers two
 theme-independent nav menu locations, `wpcanai_primary` and `wpcanai_footer`
-(confirmed in `wpcanai.php`'s `register_nav_menus()` call and documented in
+(confirmed in `canai.php`'s `register_nav_menus()` call and documented in
 `ai/canai-mcp/references/REFERENCE.md`: *"CanAI registers `wpcanai_primary`
 and `wpcanai_footer` nav locations itself; render them with
 `get_menu('wpcanai_primary')` rather than the theme's `get_menu('primary')`"*).
