@@ -23,7 +23,6 @@ npx skills add usewp/canai --skill '*'
 To install just one:
 
 ```bash
-npx skills add usewp/canai --skill canai-localwp
 npx skills add usewp/canai --skill canai-mcp
 npx skills add usewp/canai --skill canai-prepare
 npx skills add usewp/canai --skill canai-replicate
@@ -38,17 +37,16 @@ others — see the [skills CLI](https://github.com/vercel-labs/skills).
 To remove:
 
 ```bash
-npx skills remove canai-localwp
+npx skills remove canai-mcp
 ```
 
 ## Skills
 
 | Skill | Use case |
 |---|---|
-| `canai-localwp` | Drive a **local** WordPress over WP-CLI (`.env.wplocal`): create/edit templates and pages, apply WooCommerce templates, run diagnostics. |
 | `canai-mcp` | Drive **any** WordPress site over the CanAI MCP server (API key + endpoint): templates, pages, settings, media sideload, translations, Tailwind builds. **Content-focused** — no FluentSnippets docs. |
 | `canai-prepare` | Produce **single self-contained HTML files** per page (semantic HTML5, Tailwind utilities, vanilla JS/Alpine, Lucide) for later CanAI import. Not tied to a WordPress install. |
-| `canai-replicate` | **Replicate a whole live site** into `canai-prepare` format: discover → classify → capture → `DESIGN.md` → transform to Twig templates + pages → verify by visual diff. Hands off to `canai-mcp` / `canai-localwp` to push. |
+| `canai-replicate` | **Replicate a whole live site** into `canai-prepare` format: discover → classify → capture → `DESIGN.md` → transform to Twig templates + pages → verify by visual diff. Hands off to `canai-mcp` to push. |
 | `canai-yolo` | **Opt-in / high risk.** FluentSnippets create/update/publish via the same MCP server. Install only when you need site PHP/code workflows. |
 
 ## Companion skills
@@ -63,11 +61,7 @@ npx skills add vercel-labs/agent-browser --skill agent-browser
 
 ## After install
 
-**Local site (WP-CLI):** run `/canai-localwp init wplocal` in your agent. You'll
-be asked for your WP Local SSH entry script path (WP Local app → right-click the
-site → "Open Site Shell").
-
-**Remote site (MCP):** in WP Admin go to **CanAI → AI Agent → Connections**,
+**Any site (MCP):** in WP Admin go to **CanAI → AI Agent → Connections**,
 generate an API key, and copy the ready-made MCP client JSON shown there (the
 key rides in the endpoint URL). Then ask your agent to list your CanAI templates (`wpcanai-list-templates`) to
 confirm the connection works.

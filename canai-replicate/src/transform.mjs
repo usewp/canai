@@ -52,9 +52,9 @@ const CHROME_PROMPT_TEMPLATE = path.resolve(
   "prompts/transform-chrome.md",
 );
 // Canonical, plugin-verified Twig/WooCommerce variable reference — lives in
-// the sibling canai-mcp skill (kept in sync with canai-localwp's mirror; see
-// that file's own "parity" comment). Cited by name from transform-template.md
-// rather than duplicated there, so the two can't drift out of sync.
+// the sibling canai-mcp skill, the single source since the canai-localwp
+// mirror was removed. Cited by name from transform-template.md rather than
+// duplicated there, so the two can't drift out of sync.
 const WC_TWIG_REFERENCE = path.resolve(
   new URL("..", import.meta.url).pathname,
   "../canai-mcp/references/REFERENCE.md",

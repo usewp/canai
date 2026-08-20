@@ -9,7 +9,7 @@ description: >
   "spa to html", "pwa to html", "static html", "single html", "per-page html", "convert design to html".
 metadata:
   author: canai
-  version: "1.3.0"
+  version: "1.4.0"
 allowed-tools: Bash Read Write Edit Grep Glob
 ---
 
@@ -23,7 +23,7 @@ See [references/BOILERPLATE.md](references/BOILERPLATE.md) for the canonical ske
 
 ## Purpose
 
-- Output goes into the **current working directory** (or a user-specified output path). Files use **relative** asset paths so the project folder is self-contained and portable — it can later be copied into WordPress uploads, served locally, or handed off to `**canai-localwp`** / `**canai-mcp**` for import.
+- Output goes into the **current working directory** (or a user-specified output path). Files use **relative** asset paths so the project folder is self-contained and portable — it can later be copied into WordPress uploads, served locally, or handed off to `**canai-mcp**` for import.
 - Files are **CanAI-shaped**: section comments, semantic regions, and class names that map cleanly to Twig + `_canai_css` / `_canai_js` later.
 
 ## Tech stack (strict)
@@ -129,15 +129,14 @@ Default: write under `**./<project-slug>/**` in the **current working directory*
 1. **Settings:** Enable Tailwind, Lucide, and Alpine (if used) in **CanAI → Settings** so scripts load via `**wp_head()`** / `**wp_footer()**` as above.
 2. **Document title:** Set the WordPress page/post title (and SEO plugin fields if used); `**wp_head()`** outputs `<title>` on the live site — omit a duplicate `<title>` from imported template fragments when the layout already includes `{{ wp_head() }}`.
 3. **Layout:** Move header markup into the **site header** component template; footer into the **site footer** component; wire them from the main **layout** template (`{{ wpcanai_template('site-header') }}`, `{{ wpcanai_template('site-footer') }}` — use the project’s actual slugs).
-4. **Import:** Use `**canai-localwp`** (convert HTML → Twig, write `_canai_html` / `_canai_css` / `_canai_js`) or `**canai-mcp**` for remote sites — follow those skills for storage rules (e.g. no `post_content` for CanAI bodies).
+4. **Import:** Use `**canai-mcp**` (convert HTML → Twig, write `_canai_html` / `_canai_css` / `_canai_js`) — follow that skill for storage rules (e.g. no `post_content` for CanAI bodies).
 5. **Strip** `WPCanAI-PREVIEW-LIBS` blocks when pasting into templates (avoid duplicating what CanAI already injects).
-6. **Images become ID-based helpers at import, not here.** Prepared `.html` keeps **relative** `src="assets/…"` so the folder previews in a plain browser. On import, `canai-mcp` / `canai-localwp` sideloads each asset and rewrites `<img>` → `{{ image_attrs(id, 'src,alt') }}` (and other surfaces → `{{ media_url(id, size) }}`) by media **id** — so keep the prepared markup clean and swappable: one `<img>` per asset, a descriptive `alt`, `width`/`height` when known, and no inline `style` that would fight the helper output.
+6. **Images become ID-based helpers at import, not here.** Prepared `.html` keeps **relative** `src="assets/…"` so the folder previews in a plain browser. On import, `canai-mcp` sideloads each asset and rewrites `<img>` → `{{ image_attrs(id, 'src,alt') }}` (and other surfaces → `{{ media_url(id, size) }}`) by media **id** — so keep the prepared markup clean and swappable: one `<img>` per asset, a descriptive `alt`, `width`/`height` when known, and no inline `style` that would fight the helper output.
 7. **Section comments map 1:1 on import:** every `<!-- Section: X -->` you emit is converted to `{# Section: X #}` Twig (HTML nav comments are never carried into `_canai_html`). Keep the `Section:` prefix and one comment per top-level landmark so the editor's structure menu populates cleanly.
 8. **Keep copy translation-ready.** On native-i18n target sites, downstream import turns every user-facing string into a `{{ t('…') }}` translation source. Write copy so each string is a clean, self-contained phrase with **no markup inside it** — `<strong>Best seller</strong>` (wrap the text, not the tag), never a string that bakes in HTML. This mirrors the image → `image_attrs()` and section-comment handoffs.
-9. **WooCommerce pages** — for shop / cart / checkout pages, emit the cart/checkout region as a single clearly-commented placeholder section (e.g. `<!-- Section: Cart — replaced by wc_cart_block() on import -->`) rather than hand-building line items. Downstream (`canai-localwp` / `canai-mcp`) swaps in the `wc_*` Twig helpers; do not wire helper markup here.
+9. **WooCommerce pages** — for shop / cart / checkout pages, emit the cart/checkout region as a single clearly-commented placeholder section (e.g. `<!-- Section: Cart — replaced by wc_cart_block() on import -->`) rather than hand-building line items. Downstream (`canai-mcp`) swaps in the `wc_*` Twig helpers; do not wire helper markup here.
 
 ## Related skills
 
-- `**canai-localwp`** — WP-CLI, `.env.wplocal`, template meta fields (use when working inside a WordPress checkout).
 - `**canai-mcp**` — MCP tools for `_canai_*` on the configured server.
 

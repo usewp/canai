@@ -20,7 +20,7 @@ description: >
   page mode: high-fidelity single-URL capture/transform/verify-page/handoff
   with dual-width hard gates. --only (URL pathname, output slug,
   or page-type name) resumes any stage uniformly. Output is ready for
-  canai-mcp / canai-localwp to push into WordPress. Use when the user wants
+  canai-mcp to push into WordPress. Use when the user wants
   to rebuild, migrate, port, or clone a whole site (not just one URL) from a
   live source — or one page at high fidelity via page mode. Pairs with
   agent-browser for sourcing and verification.
@@ -30,7 +30,7 @@ description: >
   "convert this site to wordpress", "replicate this page", "page mode".
 metadata:
   author: canai
-  version: "3.4.0"
+  version: "3.5.0"
 allowed-tools: Bash Read Write Edit Grep Glob
 ---
 
@@ -42,8 +42,7 @@ self-contained HTML file per one-off page (the
 **Twig template per repeating page type**, a site-wide **DESIGN.md**, and a
 **CONTENT-MODEL.md** handoff describing the custom post types/fields a human
 implements on the destination site. Output drops directly into
-**[canai-mcp](../canai-mcp/SKILL.md)** / **[canai-localwp](../canai-localwp/SKILL.md)**
-for the WordPress side.
+**[canai-mcp](../canai-mcp/SKILL.md)** for the WordPress side.
 
 | | input | output |
 | --- | --- | --- |
@@ -694,8 +693,8 @@ runs/<site>/
    `register_post_meta()` path renders every field silently empty (no
    error) — confirm the destination's CanAI version, or upgrade it first,
    if you're not sure.
-2. **Run `pushprep` first, then push its output** via canai-mcp /
-   canai-localwp — **never** write a raw `output/pages/*.html` or
+2. **Run `pushprep` first, then push its output** via canai-mcp —
+   **never** write a raw `output/pages/*.html` or
    `output/templates/*.html` file into `_canai_html` (see step 7/pushprep
    above: it's a full standalone document, and CanAI's own render path
    wraps it in a second document shell — this is dogfood A2's CRITICAL
@@ -746,11 +745,10 @@ runs/<site>/
 5. **Content entry/import** is out of scope for this skill; once content
    exists, the templates render it.
 
-- **[canai-mcp](../canai-mcp/SKILL.md)** — remote site (live / staging)
-- **[canai-localwp](../canai-localwp/SKILL.md)** — local WP via WP-CLI
+- **[canai-mcp](../canai-mcp/SKILL.md)** — any site (local, staging or live) over MCP
 
 - **Native-i18n targets.** If the destination site uses CanAI native
-  translation, the receiving skill (canai-mcp / canai-localwp) first routes
+  translation, the receiving skill (canai-mcp) first routes
   on the site's translation model, then the import wraps user-facing strings
   in `{{ t('…') }}` and uses `tmedia()` for per-language media. Produce copy
   that stays cleanly wrappable (no markup inside translatable strings), same

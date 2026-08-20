@@ -13,7 +13,7 @@ description: >
   "sideload", "upload", "upload image", "upload media", "media library", "attach image", "attachment", "image to media".
 metadata:
   author: canai
-  version: "1.17.0"
+  version: "1.18.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -23,9 +23,9 @@ You are an expert at working with **CanAI** through the **CanAI MCP server** onl
 
 See [references/REFERENCE.md](references/REFERENCE.md) for CanAI-registered Twig functions (plus the vendored Twig version for built-ins), WooCommerce context, and comment conventions (same as local CanAI).
 
-## Same domain as `canai-localwp`, different transport
+## MCP is the transport — no shell, no file edits
 
-`**canai-mcp`** and `**canai-localwp`** cover the same CanAI concepts (Twig, meta fields, content resolution). `**canai-localwp**` is the **WP‑CLI / local workspace** skill; `**canai-mcp`** is this one: **only** the **CanAI MCP server** and its tools. When this skill applies, **never** substitute terminal `wp`, `curl`, raw REST, or repo edits for interacting with the user’s WordPress.
+This skill is **only** the **CanAI MCP server** and its tools. **Never** substitute terminal `wp`, `curl`, raw REST, or repo edits for interacting with the user’s WordPress. The site may be local or remote; either way it is reached over MCP.
 
 **FluentSnippets** lives in the separate opt-in skill **`canai-yolo`**. This skill stays content-focused (templates, pages, settings, i18n, media, Tailwind). If the user needs snippet authoring, install/use `canai-yolo` — do not improvise those workflows from this skill. There is **no eval escape hatch**: the `wpcanai/eval` ability was **removed in plugin v1.59.0**, so every capability must be a real `wpcanai/*` ability.
 
@@ -36,8 +36,6 @@ See [references/REFERENCE.md](references/REFERENCE.md) for CanAI-registered Twig
 **Every interaction with the user’s WordPress** for CanAI content work (list/read/write templates and pages, settings, bootstrap setup, scan, WooCommerce page IDs, i18n, media, etc.) **MUST** go through the **CanAI MCP server** using the tools your host exposes (hyphenated names like `wpcanai-read-meta`, `wpcanai-write-meta`, `wpcanai-setup`, … — see the tool list for the configured server, often `canai-mcp` or `user-canai-mcp`). Do not use WP-CLI, `wp eval`, direct SQL, browser automation against wp-admin, or editing files under `wp-content/` in the workspace to change live site data.
 
 **One documented exception — binary uploads.** MCP isn't a good carrier for files (size + base64 overhead), so media goes via the **CanAI sideload REST route** `POST {site}/wp-json/wpcanai/v1/sideload` using the **same** API key the MCP transport uses. See **"Uploading media (binary files)"** below for the exact recipe. This is the **only** sanctioned use of `curl` against the site; everything else still goes through MCP.
-
-**This skill is NOT the `canai-localwp` / WP-CLI workflow.** If the user needs shell-based WP, they must use or install `**canai-localwp`** separately; do not blend that workflow here.
 
 1. **Do not use `Edit`, `Write`, or apply patches** to paths under `wp-content/` (or anywhere in the repo) to change **CanAI template HTML/CSS/JS/context** for the site served by MCP. Those files are not the live CanAI storage model for MCP-driven work.
 2. **All reads and writes of CanAI content** (`_canai_html`, `_canai_css`, `_canai_js`, `_canai_context`, `_canai_layout`) MUST go through **CanAI MCP tools** only.
@@ -221,7 +219,7 @@ CanAI's `wc_*` Twig helpers (`wc_checkout_form()`, `wc_cart_totals()`, the my-ac
 
 1. Call `wpcanai-get-wc-css-reference` with the context you are styling (e.g. `{ "context": "order-received" }`).
 2. Read `css_reference` — WooCommerce's own default rules for that context's selectors. **It is raw SCSS source, not compiled CSS**: Sass variables, mixins and `&` parent-refs arrive unresolved (e.g. `darken($secondary, 10%)`, `@include …`), so paraphrase the rules into real CSS rather than pasting them into `_canai_css`. Extracted from four stylesheets of the *installed* WooCommerce (`woocommerce.scss`, `woocommerce-layout.scss`, `woocommerce-smallscreen.scss`, `forms.scss`), so it stays correct across WooCommerce updates — re-call the tool rather than relying on remembered class names. Rules arrive wrapped in their true ancestor selector chain (e.g. `.woocommerce { table.shop_table { … } }`), so match the full chain for specificity. A rule wrapped in `@media only screen and (max-width: 768px)` came from `woocommerce-smallscreen.scss` and is mobile-only — WooCommerce applies that breakpoint in the enqueue, not the file, so don't treat it as unconditional.
-3. Read the files in `template_files` (via `canai-localwp` shell access or any file read) — they are the authoritative markup, with a theme override winning over WooCommerce's bundled copy, and paths are ABSPATH-relative. They include classes core ships but never styles (e.g. `.woocommerce-order-overview__order`/`__date`/`__total` on the thank-you page). If `templates_missing` is non-empty, the context map has drifted from the installed WooCommerce — its paths are context-relative (e.g. `order/order-details.php`), a deliberately different format from `template_files`, so the two lists cannot be set-compared.
+3. Read the files in `template_files` (any file read, if you have filesystem access to the install) — they are the authoritative markup, with a theme override winning over WooCommerce's bundled copy, and paths are ABSPATH-relative. They include classes core ships but never styles (e.g. `.woocommerce-order-overview__order`/`__date`/`__total` on the thank-you page). If `templates_missing` is non-empty, the context map has drifted from the installed WooCommerce — its paths are context-relative (e.g. `order/order-details.php`), a deliberately different format from `template_files`, so the two lists cannot be set-compared.
 4. Check `third_party_hooks`. Each entry (`{hook, priority, callback, file, is_third_party}`) is a plugin adding its own markup on that context (e.g. a delivery-slot plugin appending a table to the thank-you page) — read its `file` to learn the classes it emits before styling. Pass `"include_core": true` to get *every* callback on those hooks instead, WooCommerce's own included, each still carrying its `is_third_party` flag — useful when you want the full picture of what renders into the region, not just the third-party additions.
 5. Write overrides scoped to those selectors into the page/template's `_canai_css` (via `wpcanai-write-meta`), matching the site's design system.
 
@@ -617,7 +615,7 @@ CanAI sites can be multilingual in one of **two mutually exclusive models**: **n
 
 When **Polylang** is active, every `_canai_*` post lives in **per-language copies** linked into a translation group. As of plugin **1.8.6**, the MCP enforces a `lang` parameter on every tool that touches a post — calls without `lang` are **rejected** with `WP_Error('lang_required')`, and calls with a `lang` that doesn't match the post's actual language are **rejected** with `WP_Error('lang_mismatch')`. No silent default-language fallback, no auto-translation.
 
-### Translation model (same as `canai-localwp`)
+### Translation model
 
 - **`wpcanai_template` posts are translatable** — each language has its own post.
 - **`template_type` taxonomy is NOT translatable** — EN and MS templates share the term `shop` (intentional; type markers are shared).
