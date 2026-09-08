@@ -12,11 +12,23 @@
 {{ wp_footer() }}                        {# Required before </body> #}
 {{ bloginfo('name') }}                   {# Site name #}
 {{ bloginfo('description') }}            {# Site tagline #}
-{{ language_attributes() }}              {# lang="en-US" #}
-{{ body_class() }}                       {# Body CSS classes #}
+{{ language_attributes() }}              {# lang="en-US" — a full attribute #}
+{{ body_class() }}                       {# class names only — NOT an attribute #}
 {{ current_url() }}                      {# Current page URL #}
 {{ is_current_url(menu_url) }}           {# Check if URL matches current page #}
 {{ wp_nonce_field('action','name') }}    {# Security nonce #}
+```
+
+**⚠ `body_class()` is not `language_attributes()`.** `language_attributes()` returns a whole
+attribute (`lang="en-US"`), so `<html {{ language_attributes() }}>` is right. `body_class()` returns
+bare class *names* (`logged-in admin-bar single postid-42`), so it must go **inside** a real
+attribute:
+
+```twig
+<body class="{{ body_class() }}">                    {# correct #}
+<body class="{{ body_class('my-own classes') }}">    {# correct — it takes extra classes #}
+<body {{ body_class() }}>                            {# WRONG: each class parses as a valueless
+                                                        attribute and is silently dropped #}
 ```
 
 ### Navigation
