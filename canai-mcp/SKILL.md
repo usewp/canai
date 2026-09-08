@@ -13,7 +13,7 @@ description: >
   "sideload", "upload", "upload image", "upload media", "media library", "attach image", "attachment", "image to media".
 metadata:
   author: canai
-  version: "1.18.0"
+  version: "1.19.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -181,6 +181,10 @@ When converting a static HTML file (e.g. `index.html`) into CanAI via MCP tools:
 7. **Normalize section comments to Twig.** Convert every `<!-- Section: X -->` (and any nav-label HTML comment `canai-prepare` emitted) into a `{# Section: X #}` Twig comment — **never** carry HTML nav comments into `_canai_html` (they pollute rendered output and are view-source reconnaissance). Then **guarantee** every top-level landmark — `<section>` / `<main>` / `<header>` / `<footer>` / `<nav>` / `<aside>` — carries a `{# Section: … #}` comment even when the source lacked one; these feed the editor's structure/outline menu. See the comment convention in [references/REFERENCE.md](references/REFERENCE.md) (**Twig Comment Convention**). A canai-replicate `pushprep` artifact already has this conversion applied — spot-check it, don't redo it from scratch.
 8. **After any meta write, run `wpcanai-scan` and clear leak findings before claiming done.** Treat `leaky_comment` / `leaky_secret` like broken layouts: convert HTML/`/* */` comments to `{# #}`, remove secret-shaped literals from meta. For a full-site pass, use the **Comment / secret security sweep** recipe below.
 
+### Blog posts (not CanAI pages)
+
+A blog post is ordinary WordPress content, not a CanAI-meta page. Write it with **`wpcanai-write-post`**, passing a structured block list — the body becomes native block markup the owner can edit in the block editor, and it renders through the blog kit's `blog-single-post` template with no extra work. Sideload any images first and reference them by attachment id. Do **not** reach for `wpcanai-create-page` or `wpcanai-write-meta` for posts.
+
 ### Static-site asset sideload pre-pass
 
 Triggered when the user runs `/canai-mcp implement <folder>`, asks you to import a static site, **or pushes a canai-replicate migration kit's `output/push/*.json` artifacts** (a `pushprep` artifact's `html` still contains the source site's original absolute/hotlinked image URLs — canai-replicate does not sideload; that's this skill's job, same as any other static-site import). Left un-sideloaded, an image can 404 or render broken the moment the source site's own hotlink protection kicks in (confirmed live: dogfood A2 Defect #6). Runs **once, up front**, before any HTML/CSS is written to CanAI meta.
@@ -233,7 +237,7 @@ This is read-only static analysis: nothing is rendered, and no order, cart, or c
 
 Ability IDs use slashes; MCP tool names use **hyphens** (`wpcanai/read-meta` → `wpcanai-read-meta`).
 
-**`lang` parameter (Polylang):** the 10 tools below that target a post or page (`list-templates`, `list-pages`, `read-meta`, `write-meta`, `replace-in-meta`, `create-template`, `resolve-content-id`, `scan`, `get-wc-page-ids`, `create-page`) accept an optional `"lang": string` (Polylang language slug). When Polylang is active, `lang` is **required** unless `WPCANAI_MCP_LANG_OPTIONAL` is defined in `wp-config.php`. Calls without `lang` return `WP_Error('lang_required')`; unknown slugs return `WP_Error('unknown_lang')`. See the **CRITICAL: Multi-language (Polylang)** section for details. Settings/options tools further down are unchanged.
+**`lang` parameter (Polylang):** the 11 tools below that target a post or page (`list-templates`, `list-pages`, `read-meta`, `write-meta`, `replace-in-meta`, `create-template`, `resolve-content-id`, `scan`, `get-wc-page-ids`, `create-page`, `write-post`) accept an optional `"lang": string` (Polylang language slug). When Polylang is active, `lang` is **required** unless `WPCANAI_MCP_LANG_OPTIONAL` is defined in `wp-config.php`. Calls without `lang` return `WP_Error('lang_required')`; unknown slugs return `WP_Error('unknown_lang')`. See the **CRITICAL: Multi-language (Polylang)** section for details. Settings/options tools further down are unchanged.
 
 ### `wpcanai-list-templates`
 
@@ -328,6 +332,34 @@ Ability IDs use slashes; MCP tool names use **hyphens** (`wpcanai/read-meta` →
 
 - **Args:** `{ "title": string, "slug"?: string, "status"?: string, "html"?: string, "css"?: string, "js"?: string, "layout"?: int, "lang"?: string, "translation_of"?: int }` — `title` required; creates a `page` post with optional `_canai_*` meta. `lang` sets the new page's Polylang language. `translation_of` is the source page id; when provided, the new page is merged into the source's translation group.
 - **Returns:** `{ "post_id": int, "slug": string, "lang": string|null }`.
+
+### `wpcanai-write-post`
+
+- **Args:** `{ "post_id"?: int, "title"?: string, "blocks"?: object[], "slug"?: string, "status"?: string, "excerpt"?: string, "date"?: string, "featured_image"?: int, "categories"?: string[], "tags"?: string[], "lang"?: string, "translation_of"?: int }`.
+  - **Create** (no `post_id`): `title` and `blocks` are required. **Update** (`post_id` given): only the fields you send change; the id must be a `post`, not a page — a page id returns `WP_Error('not_a_post')`.
+  - **Default status is `draft`**, not `publish` — unlike `wpcanai-create-page`. The owner is expected to read the prose in the editor first. Valid: `draft`, `publish`, `pending`, `private`, `future`.
+  - `blocks` **replaces the entire body**. There is no partial edit; re-send the whole list. WordPress revisions are the undo path.
+  - `categories` / `tags` take names or slugs, create anything missing, and replace the whole set on update.
+- **Returns:** `{ "post_id": int, "slug": string, "status": string, "url": string, "edit_url": string, "lang": string|null, "block_count": int, "warnings": string[] }`. `warnings` is non-fatal (unresolvable embed provider, image with no alt text, a classic-editor body that was converted). Fatal problems return `WP_Error` and write nothing.
+- **This is for blog posts only.** Pages stay on `wpcanai-create-page` + `wpcanai-write-meta` (CanAI HTML/CSS/JS meta). `write-post` writes native block markup into `post_content`; it does not touch CanAI meta.
+
+**Block types (v1).** Each item in `blocks` is `{ "type": …, …fields }`:
+
+| `type` | Fields |
+|---|---|
+| `paragraph` | `text` (required), `align` (`left`/`center`/`right`) |
+| `heading` | `text` (required), `level` 2–6 (default 2; **level 1 is rejected** — the post title is the h1) |
+| `list` | `items` string[] (required), `ordered` bool. Flat lists only |
+| `quote` | `text` **or** `paragraphs` string[] (one required), `cite` |
+| `image` | `id` int (required — an attachment id), `alt`, `caption`, `size` (default `large`), `link` (`none`/`media`/`attachment`) |
+| `code` | `code` (required). Escaped as literal text; no inline HTML |
+| `separator` | — |
+| `embed` | `url` (required, http/https) |
+| `table` | `rows` string[][] (required, rectangular), `header` string[] |
+
+**Images: sideload first, then pass the id.** `write-post` accepts attachment ids only — no URLs, no binaries. Call `wpcanai-sideload-url` (or find an existing one with `wpcanai-list-media`) and pass the returned `id`.
+
+**Inline HTML inside text fields** is limited to `<a href|title|rel|target>`, `<strong>`, `<em>`, `<b>`, `<i>`, `<code>`, `<br>`, `<s>`, `<sub>`, `<sup>`, `<kbd>`, `<mark>`. Anything else is stripped silently, not rejected — a `<script>` or `<iframe>` in a paragraph would be invalid block content anyway. Markdown is **not** accepted; there is no raw-block-HTML escape hatch.
 
 ### `wpcanai-read-settings`
 
