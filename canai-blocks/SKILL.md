@@ -1,58 +1,52 @@
 ---
 name: canai-blocks
 description: >
-  CanAI companion skill for authoring content as native WordPress blocks (Gutenberg) via the
-  CanAI MCP server: blog posts (wpcanai-write-post), block-authored pages
-  (wpcanai-create-page with format:"blocks" + wpcanai-write-page), and converting a page
-  between the Twig and blocks formats. Requires canai-mcp for MCP transport, setup, and every
-  non-block CanAI tool (templates, Twig pages, settings, media, i18n, Tailwind) — use canai-mcp
-  for those; this skill only adds the block-authoring tools on top.
-  Triggers on: "/canai-blocks", "canai-blocks", "write blocks", "block editor", "gutenberg",
-  "gutenberg blocks", "native blocks", "wpcanai-write-post", "wpcanai-write-page",
-  "block-authored page", "block page", "convert to blocks", "convert to twig",
-  "blog post", "write a blog post", "write post", "write a page in blocks".
+  Opt-in CanAI companion skill for deploying PAGES as native WordPress blocks (Gutenberg)
+  instead of Twig, via the CanAI MCP server: wpcanai-create-page with format:"blocks",
+  wpcanai-write-page, and converting a page between the Twig and blocks formats. Attach it
+  only when the user wants a page they can edit in the block editor. Requires canai-mcp for
+  MCP transport, setup, blog posts (wpcanai-write-post), and every other CanAI tool
+  (templates, Twig pages, settings, media, i18n, Tailwind).
+  Triggers on: "/canai-blocks", "canai-blocks", "block page", "block-authored page",
+  "page in blocks", "deploy as blocks", "gutenberg page", "block editor page",
+  "wpcanai-write-page", "convert to blocks", "convert to twig".
 metadata:
   author: canai
-  version: "1.0.0"
+  version: "1.1.0"
 allowed-tools: "Read Grep Glob"
 ---
 
 # CanAI Blocks Skill
 
-**Companion skill to `canai-mcp`.** This skill documents the CanAI MCP abilities that write
-**native WordPress block content** instead of Twig: blog posts, and pages the owner wants to
-edit themselves in Gutenberg. Same server, same API key, same transport as `canai-mcp`
-(`{site}/wp-json/mcp/wpcanai`) — this skill only adds the block-specific tools and the
-page-format concept on top of it.
+**Opt-in companion skill to `canai-mcp`.** Attaching this skill is the user's signal that they
+want a **page** deployed as native WordPress blocks — editable in Gutenberg — instead of Twig.
+Without it, pages are Twig; `canai-mcp` never steers toward blocks on its own. Same server, same
+API key, same transport as `canai-mcp` (`{site}/wp-json/mcp/wpcanai`) — this skill only adds
+the block-page tools and the page-format concept on top of it.
 
 **Install and configure `canai-mcp` first.** It covers MCP client setup, the API key, the
-"MCP only — no shell, no `curl`, no file edits" transport rule, and every non-block CanAI tool
-(templates, Twig pages and layouts, settings, media sideload, i18n, Tailwind builds). This skill
-assumes all of that already applies and does not repeat it. The one documented exception to
-"MCP only" — binary media uploads via the sideload REST route — is `canai-mcp`'s; this skill
-only tells you to sideload an image *before* referencing it by attachment id (see **Images**
-below).
+"MCP only — no shell, no `curl`, no file edits" transport rule, and every other CanAI tool
+(templates, Twig pages and layouts, blog posts via `wpcanai-write-post`, settings, media
+sideload, i18n, Tailwind builds). This skill assumes all of that already applies and does not
+repeat it. The one documented exception to "MCP only" — binary media uploads via the sideload
+REST route — is `canai-mcp`'s; this skill only tells you to sideload an image *before*
+referencing it by attachment id (see **Images** below).
+
+**Blog posts are not this skill.** A blog post is block content by nature — there is no Twig
+alternative — so `wpcanai-write-post` lives in `canai-mcp` and needs no opt-in. This skill is
+only about *pages*, where blocks are a choice against Twig.
 
 There is no eval escape hatch here either: the `wpcanai/eval` ability was removed in plugin
 v1.59.0. Every capability is a real `wpcanai/*` ability.
 
-**`lang` parameter (Polylang).** `wpcanai-write-post` and `wpcanai-write-page` both accept an
-optional `"lang": string`, enforced exactly like `canai-mcp`'s post/page tools — required when
-Polylang is active (unless `WPCANAI_MCP_LANG_OPTIONAL` is defined), `WP_Error('lang_required')`
-without it, `WP_Error('unknown_lang')` for an unrecognized slug, and `lang_mismatch` if the post
-is actually in a different language. See `canai-mcp`'s **CRITICAL: Multi-language (Polylang)**
-section for the full rule; it isn't repeated here.
+**`lang` parameter (Polylang).** `wpcanai-write-page` accepts an optional `"lang": string`,
+enforced exactly like `canai-mcp`'s post/page tools — required when Polylang is active (unless
+`WPCANAI_MCP_LANG_OPTIONAL` is defined), `WP_Error('lang_required')` without it,
+`WP_Error('unknown_lang')` for an unrecognized slug, and `lang_mismatch` if the page is actually
+in a different language. See `canai-mcp`'s **CRITICAL: Multi-language (Polylang)** section for
+the full rule; it isn't repeated here.
 
 ---
-
-## Blog posts (not CanAI pages)
-
-A blog post is ordinary WordPress content, not a CanAI-meta page. Write it with
-**`wpcanai-write-post`**, passing a structured block list — the body becomes native block markup
-the owner can edit in the block editor, and it renders through the blog kit's
-`blog-single-post` template with no extra work. Sideload any images first and reference them by
-attachment id. Do **not** reach for `wpcanai-create-page` or `wpcanai-write-meta` for posts —
-those are `canai-mcp` tools for Twig-authored CanAI content, not blog posts.
 
 ## Page format — Twig or blocks (plugin v1.65.0)
 
@@ -128,36 +122,13 @@ This is the same `wpcanai-create-page` tool `canai-mcp` documents for Twig pages
 - **Returns:** `{ "post_id": int, "slug": string, "lang": string|null, "format": string,
   "warnings": string[] }`.
 
-### `wpcanai-write-post`
-
-- **Args:** `{ "post_id"?: int, "title"?: string, "blocks"?: object[], "slug"?: string,
-  "status"?: string, "excerpt"?: string, "date"?: string, "featured_image"?: int,
-  "categories"?: string[], "tags"?: string[], "lang"?: string, "translation_of"?: int }`.
-  - **Create** (no `post_id`): `title` and `blocks` are required. **Update** (`post_id` given):
-    only the fields you send change; the id must be a `post`, not a page — a page id returns
-    `WP_Error('not_a_post')`.
-  - **Default status is `draft`**, not `publish` — unlike `wpcanai-create-page`. The owner is
-    expected to read the prose in the editor first. Valid: `draft`, `publish`, `pending`,
-    `private`, `future`.
-  - `blocks` **replaces the entire body**. There is no partial edit; re-send the whole list.
-    WordPress revisions are the undo path.
-  - `categories` / `tags` take names or slugs, create anything missing, and replace the whole
-    set on update.
-- **Returns:** `{ "post_id": int, "slug": string, "status": string, "url": string,
-  "edit_url": string, "lang": string|null, "block_count": int, "warnings": string[] }`.
-  `warnings` is non-fatal (unresolvable embed provider, image with no alt text, a
-  classic-editor body that was converted). Fatal problems return `WP_Error` and write nothing.
-- **This is for blog posts only.** Twig pages stay on `canai-mcp`'s `wpcanai-create-page` +
-  `wpcanai-write-meta`; block-authored pages use `wpcanai-create-page` with `format: "blocks"`
-  plus `wpcanai-write-page`. `write-post` writes native block markup into a post's
-  `post_content` and does not touch CanAI meta.
-
 ### `wpcanai-write-page`
 
 - **Args:** `{ "post_id": int, "blocks": object[], "title"?: string, "status"?: string,
   "layout"?: int, "convert"?: bool, "lang"?: string }` — `post_id` must be a `page`. `blocks`
-  replaces the whole body. Same block types as `write-post`; the `html` block is additionally
-  available here (and in `create-page` with `format: "blocks"`), and nowhere else.
+  replaces the whole body (WordPress revisions are the undo path). Block types are listed below;
+  the `html` block is available here (and in `create-page` with `format: "blocks"`), and nowhere
+  else.
 - **Returns:** `{ "post_id", "slug", "status", "url", "edit_url", "lang", "format": "blocks",
   "converted": bool, "block_count", "warnings": string[] }`.
 - **Format guard.** On a Twig page whose `_canai_html` is non-empty the call fails with
@@ -175,7 +146,9 @@ This is the same `wpcanai-create-page` tool `canai-mcp` documents for Twig pages
 
 ## Block types (v1)
 
-Each item in `blocks` is `{ "type": …, …fields }` — shared by `write-post` and `write-page`:
+Each item in `blocks` is `{ "type": …, …fields }` — accepted by `write-page` and by
+`create-page` with `format: "blocks"`. (`canai-mcp`'s `wpcanai-write-post` takes the same list
+minus `html`.)
 
 | `type` | Fields |
 |---|---|
@@ -194,24 +167,23 @@ Each item in `blocks` is `{ "type": …, …fields }` — shared by `write-post`
 | `cover` | `image` (required, attachment id), `overlay_opacity` (10–100 step 10, default 50), `blocks` (required), `className` |
 | `media_text` | `image` (required, attachment id), `side` (`left`/`right`), `blocks` (required), `className` |
 | `spacer` | `height` px (1–1000, default 100), `className` |
-| `html` | `html` (required, raw markup kept verbatim). **`write-page` and `create-page` with `format: "blocks"` only**, and it requires `unfiltered_html` on the user the write runs as; refused otherwise. `write-post` never accepts it |
+| `html` | `html` (required, raw markup kept verbatim). Requires `unfiltered_html` on the user the write runs as; refused otherwise |
 
 Every type except `embed` and `html` accepts `className` (Tailwind classes on the block's root
 element). `core/html` declares `supports.className: false`, so a class set there is dropped and
 reported as a warning — put it on your own markup instead; `embed` rewrites its own class list
 on first save. Nesting is capped at 4 levels. Nested errors report a dotted `path`.
 
-**Images: sideload first, then pass the id.** `write-post` and `write-page` accept attachment
-ids only — no URLs, no binaries (`write-page`'s `cover` and `media_text` blocks take the same id
-and return `invalid_attachment` if it doesn't resolve). Call `wpcanai-sideload-url` (`canai-mcp`
-tool — or find an existing one with `wpcanai-list-media`) and pass the returned `id`.
+**Images: sideload first, then pass the id.** `write-page` accepts attachment ids only — no
+URLs, no binaries (`cover` and `media_text` take the same id and return `invalid_attachment` if
+it doesn't resolve). Call `wpcanai-sideload-url` (`canai-mcp` tool — or find an existing one
+with `wpcanai-list-media`) and pass the returned `id`.
 
 **Inline HTML inside text fields** is limited to `<a href|title|rel|target>`, `<strong>`,
 `<em>`, `<b>`, `<i>`, `<code>`, `<br>`, `<s>`, `<sub>`, `<sup>`, `<kbd>`, `<mark>`. Anything else
 is stripped silently, not rejected — a `<script>` or `<iframe>` in a paragraph would be invalid
 block content anyway. Markdown is **not** accepted; there is no raw-HTML escape hatch inside
-text fields — raw markup goes in an `html` block, which `write-page` and blocks-format
-`create-page` accept and `write-post` does not.
+text fields — raw markup goes in an `html` block.
 
 ---
 
