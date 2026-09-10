@@ -39,11 +39,17 @@ one-to-one onto the v1 block types (see `html-to-blocks.md`). Apply these constr
 
 ## Not allowed
 
-- `<script>`, Alpine attributes (`x-data`, `@click`, …), `<svg>`, `<i data-lucide>`, icon fonts.
+- Page-logic `<script>` (anything that runs in the page — Alpine or otherwise), Alpine attributes
+  (`x-data`, `@click`, …), `<svg>`, `<i data-lucide>`, icon fonts.
 - Inline `style=""`.
 - Nested lists, definition lists, `<details>`, `<form>`, `<iframe>` other than an embed URL.
 - Text that mixes markup and copy beyond `<a>`, `<strong>`, `<em>`, `<br>`, `<code>`, `<s>`,
   `<sub>`, `<sup>`, `<kbd>`, `<mark>`; anything else is stripped silently at write time.
+
+**Exception: `WPCanAI-PREVIEW-LIBS`.** The `canai-prepare`-mandated preview-library `<script>`
+block inside the `WPCanAI-PREVIEW-LIBS` markers is exempt from the `<script>` ban above — it is
+what makes the file open correctly (styled, Tailwind-rendered) in a plain browser. It is
+preview-only: it is never mapped into any block and is discarded entirely at mapping time.
 
 ## Images
 

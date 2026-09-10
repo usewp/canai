@@ -13,7 +13,7 @@ description: >
 metadata:
   author: canai
   version: "1.2.0"
-allowed-tools: "Read Grep Glob"
+allowed-tools: "Read Write Edit Grep Glob"
 ---
 
 # CanAI Blocks Skill

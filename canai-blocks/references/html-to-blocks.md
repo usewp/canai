@@ -29,11 +29,12 @@ plus `title`/`slug` for `create-page`. Image blocks carry `"id": null` until sid
 | `<p>` | `paragraph` `{ "text", "align"?, "className" }` | inline `<a>`, `<strong>`, `<em>`, `<br>` survive |
 | `<ul>` / `<ol>` | `list` `{ "items": [...], "ordered", "className" }` | flat only; a nested list is flattened and reported |
 | `<blockquote>` | `quote` `{ "text" or "paragraphs", "cite"?, "className" }` | |
-| `<img>` | `image` `{ "id", "alt", "size": "large", "className" }` | `id` from `wpcanai-sideload-url` |
+| `<img>` | `image` `{ "id", "alt", "size": "large", "className" }` | `id` from the sideload step — see Deploy §1 |
 | `<pre><code>` | `code` `{ "code" }` | |
 | `<hr>` | `separator` | |
 | `<table>` | `table` `{ "header": [...], "rows": [[…]], "className" }` | rectangular |
-| grid container (`grid`, `flex` with N direct children) | `columns` `{ "className", "columns": [ { "width"?, "className", "blocks" } × N ] }` | widths from `md:w-1/2`-style classes when present, else equal |
+| grid container (`grid`, `flex` with N direct children, N ≤ 6) | `columns` `{ "className", "columns": [ { "width"?, "className", "blocks" } × N ] }` | widths from `md:w-1/2`-style classes when present, else equal |
+| grid container that wraps (N direct children, N > its Tailwind column count) | **one `columns` block per row**, chunked by the column count (e.g. `grid-cols-3` with 9 cards → three `columns` blocks of 3) | `columns` caps at 6 and never wraps on its own — see "Wrapping grids" below |
 | `<a>` CTAs grouped together | `buttons` `{ "className", "buttons": [ { "text", "url", "style": "fill" or "outline", "className"? } ] }` | `outline` when the class list has `border` and no `bg-` |
 | section with a background image and content on top | `cover` `{ "image", "overlay_opacity", "className", "blocks" }` | |
 | image beside a text column | `media_text` `{ "image", "side": "left" or "right", "className", "blocks" }` | |
@@ -50,11 +51,26 @@ Rules while mapping:
   field is stripped at write time, so move it out before mapping.
 - `pages/<slug>.css` is the prepared CSS file verbatim (inner-element rules only).
 
+**Wrapping grids.** `columns` accepts 1–6 columns and always renders as one non-wrapping row, so a
+grid whose child count exceeds its column count cannot be one `columns` block. The column count is
+the container's `grid-cols-N` (or the largest breakpoint variant that applies, e.g. `md:grid-cols-3`);
+for a wrapping `flex` row with no `grid-cols-N`, use the per-item width class instead (`w-1/3` /
+`md:w-1/3` → 3 per row). Chunk the children into groups of that count, in source order, and emit
+one `columns` block per chunk — `grid-cols-3` with nine cards becomes three `columns` blocks of
+three, wrapped together (in the containing `group`, or back-to-back at the same nesting level if
+the grid has no other wrapper). A final short chunk (fewer children than the column count) is fine
+as-is — that row just has fewer columns than the others.
+
 ## Deploy
 
-1. **Images:** for each `assets/…` file referenced by the JSON, `wpcanai-sideload-url` (or find it
-   with `wpcanai-list-media`) and put the returned `id` into the block. `cover` and `media_text`
-   take the same id.
+1. **Images:** pick the tool by source, same as `canai-mcp`'s "Uploading media" section:
+   - **`assets/…` file** — this is a local binary, not a public URL. Sideload it through the
+     **sideload REST route** (`canai-mcp`'s "Uploading media" → "Local binary files → sideload
+     REST endpoint" has the exact request); `wpcanai-sideload-url` cannot fetch a local path.
+   - **Image already at a public URL** — `wpcanai-sideload-url`.
+   - **Image already in the media library** — find it with `wpcanai-list-media`.
+
+   Put the returned `id` into the block. `cover` and `media_text` take the same id.
 2. **Page:** new page → `wpcanai-create-page { "title", "slug", "format": "blocks", "blocks",
    "layout"?, "status"? }`; existing page → `wpcanai-resolve-content-id` / `wpcanai-list-pages`
    for the id, then `wpcanai-write-page { "post_id", "blocks", "css", "layout"? }` (add
