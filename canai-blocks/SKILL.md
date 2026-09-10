@@ -108,7 +108,8 @@ the page's CSS slot.
    silently loses **all** of its CSS.
    So rewrite the plain CSS into the Twig CSS body (Twig-safe: no bare `{#`, `{{` or `{%`;
    rewrite `{#id` selectors, e.g. as `[id="hero"]`, or put a space after the brace) — or clear
-   it with `css: ""`. Never leave it untouched.
+   it with `css: ""`, adding `confirm_truncate: true` in the same call if the existing CSS is
+   non-trivial. Never leave it untouched.
 4. `wpcanai-write-meta` `{ post_id: 123, html: "...", css: "...", convert: true }` — this call is
    `canai-mcp`'s tool, but the `convert` flow on a blocks page is documented here since it's the
    reverse of the workflow above. The mark is removed; `post_content` is left in place but no
@@ -177,8 +178,10 @@ This is the same `wpcanai-create-page` tool `canai-mcp` documents for Twig pages
   Twig shell (header/footer included) exactly as it wraps Twig content — the plugin checks
   `_canai_layout` independently of the format mark, so the same layout mechanism serves both.
 - **Errors:** `invalid_input`, `invalid_status`, `lang_mismatch`, `not_a_page`, `invalid_blocks`
-  (with `path` like `"2.blocks.0"` for nested blocks), `invalid_attachment`, `format_mismatch`.
-  Fatal problems write nothing.
+  (with `path` like `"2.blocks.0"` for nested blocks), `invalid_attachment`, `format_mismatch`,
+  `forbidden` (writing `css` without the `unfiltered_html` capability; an authenticated MCP
+  API-key request runs as an administrator and bypasses this check). Fatal problems write
+  nothing.
 
 ## Block types (v1)
 
