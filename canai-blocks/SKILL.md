@@ -97,10 +97,19 @@ the page's CSS slot.
 4. Tell the owner to open the page in the block editor and check it.
 
 **Convert to Twig** (owner pastes `Convert post id 123 to twig. /canai-blocks`):
-1. `wpcanai-read-meta` `{ post_id: 123, fields: ["blocks", "layout"] }`.
+1. `wpcanai-read-meta` `{ post_id: 123, fields: ["blocks", "css", "layout"] }` — read the CSS slot
+   too; step 3 has to rewrite or clear it.
 2. Rewrite the block markup as Twig HTML (drop the `<!-- wp:… -->` delimiters, keep the elements
    and classes).
-3. `wpcanai-write-meta` `{ post_id: 123, html: "...", convert: true }` — this call is
+3. Deal with the CSS slot; it goes into the same write as the body (step 4). A Twig page's
+   `_canai_css` is rendered **through Twig**, so plain CSS left over from the blocks build is
+   parsed as a Twig template — and `@media (min-width:640px){#hero{...}}` contains `{#`, which
+   Twig reads as a comment opener. The render throws, the error is swallowed, and the page
+   silently loses **all** of its CSS.
+   So rewrite the plain CSS into the Twig CSS body (Twig-safe: no bare `{#`, `{{` or `{%`;
+   rewrite `{#id` selectors, e.g. as `[id="hero"]`, or put a space after the brace) — or clear
+   it with `css: ""`. Never leave it untouched.
+4. `wpcanai-write-meta` `{ post_id: 123, html: "...", css: "...", convert: true }` — this call is
    `canai-mcp`'s tool, but the `convert` flow on a blocks page is documented here since it's the
    reverse of the workflow above. The mark is removed; `post_content` is left in place but no
    longer rendered.
