@@ -14,7 +14,7 @@ description: >
   "blog post", "write a blog post", "write post", "wpcanai-write-post".
 metadata:
   author: canai
-  version: "1.22.0"
+  version: "1.23.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -188,7 +188,7 @@ A blog post is ordinary WordPress content, not a CanAI-meta page. Write it with 
 
 ### Page format mark
 
-Every page carries a `format` mark: `"twig"` (the default, and the only format this skill authors) or `"blocks"`. `wpcanai-read-meta` returns it by default and `wpcanai-list-pages` rows carry it. Writing `html`/`css`/`js` onto a page marked `blocks` is refused with `format_mismatch` and changes nothing — the error carries a prompt to hand the site owner; hand it over rather than retrying or working around it.
+Every page carries a `format` mark: `"twig"` (the default, and the only format this skill authors) or `"blocks"`. `wpcanai-read-meta` returns it by default and `wpcanai-list-pages` rows carry it. Writing `html` or `js` onto a page marked `blocks` is refused with `format_mismatch` and changes nothing — the error carries a prompt to hand the site owner; hand it over rather than retrying or working around it. `css` alone is accepted on a blocks page (plugin v1.67.0): it is the page's plain-CSS slot, written to `_canai_css` and emitted raw in the head. `layout`, `context` and `tailwind_*` are accepted too.
 
 ### Static-site asset sideload pre-pass
 
@@ -810,8 +810,9 @@ Empty / missing → server falls back to Play CDN. **Dedup guard:** if a layout 
    - `wpcanai-list-pages {}` and `wpcanai-list-templates {}` rows whose `layout_id` equals this layout's id.
    - WC delegate bodies: `wpcanai-resolve-content-id { "type": "shop" }` (and `cart`, `checkout`, `my-account`, `product-category`) → the `content_post_id` whose `_canai_layout` resolves to this layout.
    - If this layout is `wpcanai_default_layout`, also include posts with **no** explicit `_canai_layout` (they fall back to it).
+   - Rows whose `format` is `blocks` (`wpcanai-list-pages` carries it) are consumers too — their body is `post_content`, not `_canai_html`, and it is scanned exactly like a Twig body (plugin v1.67.0; before that the server forced the Play CDN on block pages).
 
-4. **Build the union content** — concat, in one string: the layout's own `_canai_html`, plus every consumer's `_canai_html`, plus any partials referenced via `{% include 'slug' %}` / `{{ wpcanai_template('slug') }}` (header / footer — resolve each slug → post id → read its `_canai_html`). Write to a temp `.html` file so the Tailwind scanner picks up every class actually used anywhere on that layout.
+4. **Build the union content** — concat, in one string: the layout's own `_canai_html`, plus every consumer's `_canai_html`, plus any partials referenced via `{% include 'slug' %}` / `{{ wpcanai_template('slug') }}` (header / footer — resolve each slug → post id → read its `_canai_html`), plus, for every consumer whose `format` is `blocks`, the raw block markup and CSS from `wpcanai-read-meta { "post_id": <id>, "fields": ["blocks", "css"] }` (the `className` values sit in both the block comment JSON and the rendered `class=""`, so the raw markup is the right scan input; the CSS is included so a rule that names a utility is picked up). Write to a temp `.html` file so the Tailwind scanner picks up every class actually used anywhere on that layout.
 
 5. **Hash the inputs** — sha256 over `union_content + "\n--\n" + plugins.sort().join(",") + "\n--\n" + tailwind_version`. Compare with the **layout's** existing `_canai_tailwind_hash`. Equal → skip this layout, count as "skipped (already current)". Use the actual **v3** version you compile with as `tailwind_version` so the hash is stable across machines (and so an accidental v4 build invalidates it rather than colliding). Hash with **Node, not Python** (see **Local scripting glue**) — e.g. `node -e "const c=require('crypto'),fs=require('fs');console.log(c.createHash('sha256').update(fs.readFileSync(process.argv[1])).digest('hex'))" hash-input.txt`.
 
@@ -840,9 +841,11 @@ Empty / missing → server falls back to Play CDN. **Dedup guard:** if a layout 
 
 View a frontend page in the browser. The `<head>` should contain `<style id="wpcanai-tailwind-css">…</style>` and **no** `<script src=".../tailwind.min.js">`. If the Play CDN script still appears: the page's layout has an empty `_canai_tailwind_build` (re-check step 7 wrote to the right **layout** id — including the per-language layout on Polylang), the page renders through a *different* layout than the one you compiled, or `load_tailwind` is `no`.
 
+A blocks page rendered through a compiled layout shows the same `<style id="wpcanai-tailwind-css">` and no `tailwind.min.js`. If it still loads the CDN while its Twig siblings do not, the build is stale: a block page's body changes on every Gutenberg save (see **When to re-run**).
+
 ### When to re-run
 
-Whenever any input to a layout's build changes: the layout's own `_canai_html` (**including its inline `tailwind.config = {…}` block** — new tokens there are invisible at runtime once compiled, since the server skips the Play CDN), **any consumer page/template's `_canai_html`**, a shared partial (header/footer), `_canai_layout` assignments, or the plugin set in `wpcanai_tailwind_settings`. Note the per-layout tradeoff: **editing any single consumer re-stales the whole layout build.** The hash check in step 5 makes "always re-run" cheap — it only recompiles layouts whose union actually moved.
+Whenever any input to a layout's build changes: the layout's own `_canai_html` (**including its inline `tailwind.config = {…}` block** — new tokens there are invisible at runtime once compiled, since the server skips the Play CDN), **any consumer page/template's `_canai_html`**, **a blocks page's body (any Gutenberg save by the owner, or `wpcanai-write-page`) or its `css` slot**, a change to a page's format mark, a shared partial (header/footer), `_canai_layout` assignments, or the plugin set in `wpcanai_tailwind_settings`. Note the per-layout tradeoff: **editing any single consumer re-stales the whole layout build.** The hash check in step 5 makes "always re-run" cheap — it only recompiles layouts whose union actually moved.
 
 ### Runtime behavior after compile
 
