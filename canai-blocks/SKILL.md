@@ -9,10 +9,10 @@ description: >
   (templates, Twig pages, settings, media, i18n, Tailwind).
   Triggers on: "/canai-blocks", "canai-blocks", "block page", "block-authored page",
   "page in blocks", "deploy as blocks", "gutenberg page", "block editor page",
-  "wpcanai-write-page", "convert to blocks", "convert to twig".
+  "wpcanai-write-page", "convert to blocks", "convert to twig", "page css", "block page css".
 metadata:
   author: canai
-  version: "1.1.0"
+  version: "1.2.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -60,7 +60,8 @@ MCP sets; the admin UI shows the owner a prompt to paste to you instead of a tog
 | Write with | `wpcanai-write-meta` | `wpcanai-write-page` |
 | Create with | `wpcanai-create-page` | `wpcanai-create-page` with `format: "blocks"` |
 | Renders | Twig + layout | blocks inside the page's `_canai_layout` (`{{ page_content }}`) |
-| Tailwind | compiled build or Play CDN | **always the Play CDN** (block classes are not in the layout build) |
+| Tailwind | compiled build or Play CDN | compiled layout build when fresh (plugin v1.67.0); Play CDN after any edit until the next `compile tailwind` |
+| Page CSS | `_canai_css` (Twig-rendered) | `_canai_css` via write-page `css` — plain CSS, emitted raw after the layout's CSS |
 | Snapshots / `replace-in-meta` / `grep-content` / `scan` | yes | no — WordPress revisions are the history |
 | Export / import (`wpcanai-export` / `-import`) | yes | **no** — the exporter only finds pages with non-empty `_canai_html`, so a block page is never in a bundle |
 | Polylang translation | copies CanAI meta | copies the format mark too, so a translation stays blocks-authored |
@@ -75,10 +76,11 @@ product, cart, checkout and archive templates are always Twig (`canai-mcp`'s ter
 skill's).
 
 `wpcanai-read-meta` returns `format` by default; `wpcanai-list-pages` rows carry `format`.
-Reading `blocks` on a Twig page, writing `html` on a blocks page, or `write-page` on a Twig page
+Reading `blocks` on a Twig page, writing `html` or `js` on a blocks page, or `write-page` on a Twig page
 with html all fail with `format_mismatch` and change nothing. Both of those tools are
 `canai-mcp`'s — see that skill for their full argument/return reference; this skill only adds
-the block-authoring side.
+the block-authoring side. Writing `css` on a blocks page is allowed through either tool — it is
+the page's CSS slot.
 
 **Convert to blocks** (owner pastes `Convert post id 123 to blocks. /canai-blocks`):
 1. `wpcanai-read-meta` `{ post_id: 123 }` — read `html`, `css`, `js`, `layout`.
@@ -87,8 +89,11 @@ the block-authoring side.
    `{% %}` logic, loops over non-post data, or Alpine **cannot** be carried over: tell the user
    what you left out, or keep it verbatim in an `html` block if the owner accepts raw HTML
    there.
-3. `wpcanai-write-page` `{ post_id: 123, blocks: [...], convert: true }`. The Twig meta is
-   snapshotted, then cleared; the response says `converted: true`.
+3. `wpcanai-write-page` `{ post_id: 123, blocks: [...], convert: true, css: "..." }`. The Twig
+   meta is snapshotted, then cleared, then `css` is written; the response says
+   `converted: true`. Rewrite the old `_canai_css` against block class names
+   (`.wp-block-button__link`, `.wp-block-list li`) or drop it — Twig-specific selectors will not
+   match block markup.
 4. Tell the owner to open the page in the block editor and check it.
 
 **Convert to Twig** (owner pastes `Convert post id 123 to twig. /canai-blocks`):
@@ -99,6 +104,21 @@ the block-authoring side.
    `canai-mcp`'s tool, but the `convert` flow on a blocks page is documented here since it's the
    reverse of the workflow above. The mark is removed; `post_content` is left in place but no
    longer rendered.
+
+---
+
+## Workflow — brief to a deployed block page
+
+1. **Gate first.** Run [references/feasibility.md](references/feasibility.md) on the brief before
+   preparing anything. A fail names the reason and the Twig path (`canai-mcp`); say so to the user
+   up front instead of discovering it after the mapping.
+2. **Prepare HTML under the block constraints.** Use `canai-prepare` for the browser-previewable
+   HTML, applying [references/prepare-for-blocks.md](references/prepare-for-blocks.md) so every
+   element maps to a block.
+3. **Map and deploy.** Follow [references/html-to-blocks.md](references/html-to-blocks.md): produce
+   `pages/<slug>.blocks.json` and `pages/<slug>.css`, sideload images, then `create-page` /
+   `write-page`, set the layout, and run `compile tailwind` (`canai-mcp`) if the site uses
+   compiled builds.
 
 ---
 
@@ -125,10 +145,16 @@ This is the same `wpcanai-create-page` tool `canai-mcp` documents for Twig pages
 ### `wpcanai-write-page`
 
 - **Args:** `{ "post_id": int, "blocks": object[], "title"?: string, "status"?: string,
-  "layout"?: int, "convert"?: bool, "lang"?: string }` — `post_id` must be a `page`. `blocks`
-  replaces the whole body (WordPress revisions are the undo path). Block types are listed below;
-  the `html` block is available here (and in `create-page` with `format: "blocks"`), and nowhere
-  else.
+  "layout"?: int, "css"?: string, "convert"?: bool, "lang"?: string }` — `post_id` must be a
+  `page`. `blocks` replaces the whole body (WordPress revisions are the undo path). Block types
+  are listed below; the `html` block is available here (and in `create-page` with
+  `format: "blocks"`), and nowhere else.
+- **`css`.** Plain CSS stored in `_canai_css` and emitted raw in the head after the layout's
+  CSS — never Twig-rendered, no `@apply`. Use it only for the markup WordPress owns inside a
+  block (`.wp-block-button__link`, `.wp-block-list li`, `.wp-block-table td`, the cover overlay);
+  everything on a block's root element stays a Tailwind `className`. `""` deletes it; omit to
+  leave it. Written after the body and after a conversion's cleanup, so a failed body write never
+  touches it.
 - **Returns:** `{ "post_id", "slug", "status", "url", "edit_url", "lang", "format": "blocks",
   "converted": bool, "block_count", "warnings": string[] }`.
 - **Format guard.** On a Twig page whose `_canai_html` is non-empty the call fails with
@@ -136,6 +162,7 @@ This is the same `wpcanai-create-page` tool `canai-mcp` documents for Twig pages
   then the body is written first, and only once that lands is the CanAI meta snapshotted and
   `_canai_html`/`_canai_css`/`_canai_js` deleted and the page marked blocks — in that order, so a
   failed body write destroys nothing. A Twig page with empty html is simply written and marked.
+  A `css` field in the same call is written after the cleanup.
 - **Layout still applies.** Set `layout` to a `canai-mcp` layout template's id the same way you
   would on a Twig page. `_canai_layout` wraps a blocks page's rendered content in that layout's
   Twig shell (header/footer included) exactly as it wraps Twig content — the plugin checks
