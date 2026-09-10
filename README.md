@@ -24,6 +24,7 @@ To install just one:
 
 ```bash
 npx skills add usewp/canai --skill canai-mcp
+npx skills add usewp/canai --skill canai-blocks
 npx skills add usewp/canai --skill canai-prepare
 npx skills add usewp/canai --skill canai-replicate
 npx skills add usewp/canai --skill canai-yolo
@@ -44,7 +45,8 @@ npx skills remove canai-mcp
 
 | Skill | Use case |
 |---|---|
-| `canai-mcp` | Drive **any** WordPress site over the CanAI MCP server (API key + endpoint): templates, pages, settings, media sideload, translations, Tailwind builds. **Content-focused** — no FluentSnippets docs. |
+| `canai-mcp` | Drive **any** WordPress site over the CanAI MCP server (API key + endpoint): templates, pages, settings, media sideload, translations, Tailwind builds. **Content-focused** — no FluentSnippets or block-authoring docs. |
+| `canai-blocks` | **Companion to `canai-mcp`.** Author content as native WordPress blocks over the same MCP server: blog posts, block-authored (Gutenberg-editable) pages, and converting a page between Twig and blocks. |
 | `canai-prepare` | Produce **single self-contained HTML files** per page (semantic HTML5, Tailwind utilities, vanilla JS/Alpine, Lucide) for later CanAI import. Not tied to a WordPress install. |
 | `canai-replicate` | **Replicate a whole live site** into `canai-prepare` format: discover → classify → capture → `DESIGN.md` → transform to Twig templates + pages → verify by visual diff. Hands off to `canai-mcp` to push. |
 | `canai-yolo` | **Opt-in / high risk.** FluentSnippets create/update/publish via the same MCP server. Install only when you need site PHP/code workflows. |

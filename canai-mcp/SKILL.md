@@ -4,6 +4,9 @@ description: >
   Strictly use the CanAI MCP server as the only way to interact with the user’s WordPress site for CanAI content work (templates, pages, settings, setup, diagnostics, i18n, media).
   Do not use WP-CLI, REST/curl, or workspace edits under wp-content for live site data — only MCP tools (e.g. wpcanai-read-meta, wpcanai-write-meta) via the configured server (often canai-mcp).
   Does NOT cover FluentSnippets — that is in the separate opt-in canai-yolo skill.
+  Does NOT cover block-authored content (native WordPress blocks via wpcanai-write-post /
+  wpcanai-write-page, or the page-format/convert workflow) — that is in the separate
+  companion canai-blocks skill.
   Triggers on: "/canai-mcp", "wpcanai mcp", "canai mcp", "canai-mcp", "wpcanai remote",
   "canai remote", "remote wpcanai", "remote canai", "staging", "production", "remote site",
   "mcp", "api key", "deploy template",
@@ -13,7 +16,7 @@ description: >
   "sideload", "upload", "upload image", "upload media", "media library", "attach image", "attachment", "image to media".
 metadata:
   author: canai
-  version: "1.20.0"
+  version: "1.21.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -27,7 +30,7 @@ See [references/REFERENCE.md](references/REFERENCE.md) for CanAI-registered Twig
 
 This skill is **only** the **CanAI MCP server** and its tools. **Never** substitute terminal `wp`, `curl`, raw REST, or repo edits for interacting with the user’s WordPress. The site may be local or remote; either way it is reached over MCP.
 
-**FluentSnippets** lives in the separate opt-in skill **`canai-yolo`**. This skill stays content-focused (templates, pages, settings, i18n, media, Tailwind). If the user needs snippet authoring, install/use `canai-yolo` — do not improvise those workflows from this skill. There is **no eval escape hatch**: the `wpcanai/eval` ability was **removed in plugin v1.59.0**, so every capability must be a real `wpcanai/*` ability.
+**FluentSnippets** lives in the separate opt-in skill **`canai-yolo`**. **Block-authored content** — blog posts (`wpcanai-write-post`), block-authored pages (`wpcanai-write-page`, `wpcanai-create-page` with `format: "blocks"`), and converting a page between Twig and blocks — lives in the separate companion skill **`canai-blocks`**. This skill stays focused on Twig-authored templates and pages, settings, i18n, media, and Tailwind. If the user needs blog posts or a Gutenberg-editable page, install/use `canai-blocks`; for snippet authoring, install/use `canai-yolo`. Do not improvise either skill's workflows from this one. There is **no eval escape hatch**: the `wpcanai/eval` ability was **removed in plugin v1.59.0**, so every capability must be a real `wpcanai/*` ability.
 
 ---
 
@@ -181,42 +184,21 @@ When converting a static HTML file (e.g. `index.html`) into CanAI via MCP tools:
 7. **Normalize section comments to Twig.** Convert every `<!-- Section: X -->` (and any nav-label HTML comment `canai-prepare` emitted) into a `{# Section: X #}` Twig comment — **never** carry HTML nav comments into `_canai_html` (they pollute rendered output and are view-source reconnaissance). Then **guarantee** every top-level landmark — `<section>` / `<main>` / `<header>` / `<footer>` / `<nav>` / `<aside>` — carries a `{# Section: … #}` comment even when the source lacked one; these feed the editor's structure/outline menu. See the comment convention in [references/REFERENCE.md](references/REFERENCE.md) (**Twig Comment Convention**). A canai-replicate `pushprep` artifact already has this conversion applied — spot-check it, don't redo it from scratch.
 8. **After any meta write, run `wpcanai-scan` and clear leak findings before claiming done.** Treat `leaky_comment` / `leaky_secret` like broken layouts: convert HTML/`/* */` comments to `{# #}`, remove secret-shaped literals from meta. For a full-site pass, use the **Comment / secret security sweep** recipe below.
 
-### Blog posts (not CanAI pages)
+### Blog posts and block-authored pages — not this skill
 
-A blog post is ordinary WordPress content, not a CanAI-meta page. Write it with **`wpcanai-write-post`**, passing a structured block list — the body becomes native block markup the owner can edit in the block editor, and it renders through the blog kit's `blog-single-post` template with no extra work. Sideload any images first and reference them by attachment id. Do **not** reach for `wpcanai-create-page` or `wpcanai-write-meta` for posts.
+Blog posts and pages the owner wants to edit in Gutenberg are handled by the companion skill
+**`canai-blocks`** (`wpcanai-write-post`, `wpcanai-write-page`, `wpcanai-create-page` with
+`format: "blocks"`, plus converting a page between Twig and blocks). Install/use `canai-blocks`
+for those — do not reach for `wpcanai-create-page` or `wpcanai-write-meta` in this skill to
+improvise a blog post or a Gutenberg-editable page.
 
-### Page format — Twig or blocks (plugin v1.65.0)
-
-A **page** is authored in one of two formats. The format is a mark (`_canai_format`) that only MCP sets; the admin UI shows the owner a prompt to paste to you instead of a toggle.
-
-| | Twig (default) | Blocks |
-|---|---|---|
-| Body lives in | `_canai_html` / `_canai_css` / `_canai_js` | `post_content` (native block markup) |
-| Owner edits in | CanAI editor | Gutenberg |
-| Write with | `wpcanai-write-meta` | `wpcanai-write-page` |
-| Create with | `wpcanai-create-page` | `wpcanai-create-page` with `format: "blocks"` |
-| Renders | Twig + layout | blocks inside the page's `_canai_layout` (`{{ page_content }}`) |
-| Tailwind | compiled build or Play CDN | **always the Play CDN** (block classes are not in the layout build) |
-| Snapshots / `replace-in-meta` / `grep-content` / `scan` | yes | no — WordPress revisions are the history |
-| Export / import (`wpcanai-export` / `-import`) | yes | **no** — the exporter only finds pages with non-empty `_canai_html`, so a block page is never in a bundle |
-| Polylang translation | copies CanAI meta | copies the format mark too, so a translation stays blocks-authored |
-| Native `t()` / content overrides | yes | no — Polylang translates the page as a normal post |
-| Conditionals, loops over non-post data, Alpine | yes | no (an `html` block keeps raw markup but needs `unfiltered_html`) |
-
-**Choose blocks** when the owner wants to edit copy and layout themselves in Gutenberg (marketing pages, landing pages, about/contact). **Keep Twig** for anything with logic, loops over Woo/term/menu data, or Alpine. Layouts, headers, footers, shop, product, cart, checkout and archive templates are always Twig.
-
-`wpcanai-read-meta` returns `format` by default; `wpcanai-list-pages` rows carry `format`. Reading `blocks` on a Twig page, writing `html` on a blocks page, or `write-page` on a Twig page with html all fail with `format_mismatch` and change nothing.
-
-**Convert to blocks** (owner pastes `Convert post id 123 to blocks. /canai-mcp`):
-1. `wpcanai-read-meta` `{ post_id: 123 }` — read `html`, `css`, `js`, `layout`.
-2. Rewrite the body as a block list. Static markup maps to `group`/`columns`/`heading`/`paragraph`/`image`/`buttons`/`cover`/`media_text`. Anything with `{% %}` logic, loops over non-post data, or Alpine **cannot** be carried over: tell the user what you left out, or keep it verbatim in an `html` block if the owner accepts raw HTML there.
-3. `wpcanai-write-page` `{ post_id: 123, blocks: [...], convert: true }`. The Twig meta is snapshotted, then cleared; the response says `converted: true`.
-4. Tell the owner to open the page in the block editor and check it.
-
-**Convert to Twig** (owner pastes `Convert post id 123 to twig. /canai-mcp`):
-1. `wpcanai-read-meta` `{ post_id: 123, fields: ["blocks", "layout"] }`.
-2. Rewrite the block markup as Twig HTML (drop the `<!-- wp:… -->` delimiters, keep the elements and classes).
-3. `wpcanai-write-meta` `{ post_id: 123, html: "...", convert: true }`. The mark is removed; `post_content` is left in place but no longer rendered.
+A **page** authored with this skill's tools (`wpcanai-create-page`, `wpcanai-write-meta`) is
+always Twig-format unless `canai-blocks` marked it otherwise. `wpcanai-read-meta` returns
+`format` (`"twig"`|`"blocks"`) by default and `wpcanai-list-pages` rows carry it too — check it
+before writing `html`/`css`/`js` onto a post_id you didn't just create: writing Twig content
+onto a page marked `blocks` fails with `format_mismatch` (see that tool's own doc below) and
+changes nothing. See `canai-blocks` for the full format table, the `_canai_layout` behavior on
+blocks pages, and the convert workflows.
 
 ### Static-site asset sideload pre-pass
 
@@ -270,7 +252,7 @@ This is read-only static analysis: nothing is rendered, and no order, cart, or c
 
 Ability IDs use slashes; MCP tool names use **hyphens** (`wpcanai/read-meta` → `wpcanai-read-meta`).
 
-**`lang` parameter (Polylang):** the 11 tools below that target a post or page (`list-templates`, `list-pages`, `read-meta`, `write-meta`, `replace-in-meta`, `create-template`, `resolve-content-id`, `scan`, `get-wc-page-ids`, `create-page`, `write-post`) accept an optional `"lang": string` (Polylang language slug). When Polylang is active, `lang` is **required** unless `WPCANAI_MCP_LANG_OPTIONAL` is defined in `wp-config.php`. Calls without `lang` return `WP_Error('lang_required')`; unknown slugs return `WP_Error('unknown_lang')`. See the **CRITICAL: Multi-language (Polylang)** section for details. Settings/options tools further down are unchanged.
+**`lang` parameter (Polylang):** the 10 tools below that target a post or page (`list-templates`, `list-pages`, `read-meta`, `write-meta`, `replace-in-meta`, `create-template`, `resolve-content-id`, `scan`, `get-wc-page-ids`, `create-page`) accept an optional `"lang": string` (Polylang language slug). When Polylang is active, `lang` is **required** unless `WPCANAI_MCP_LANG_OPTIONAL` is defined in `wp-config.php`. Calls without `lang` return `WP_Error('lang_required')`; unknown slugs return `WP_Error('unknown_lang')`. See the **CRITICAL: Multi-language (Polylang)** section for details. Settings/options tools further down are unchanged. (`canai-blocks`'s `wpcanai-write-post` / `wpcanai-write-page` follow the same rule — see that skill.)
 
 ### `wpcanai-list-templates`
 
@@ -280,7 +262,7 @@ Ability IDs use slashes; MCP tool names use **hyphens** (`wpcanai/read-meta` →
 ### `wpcanai-list-pages`
 
 - **Args:** `{ "lang"?: string }` — `lang` filters to that Polylang language.
-- **Returns:** `array` of objects: `id`, `title`, `post_type`, `layout_id` (int or null), `format` (`"twig"`|`"blocks"`), `lang` (slug or null) for posts/pages that have `_canai_html`, or pages marked blocks.
+- **Returns:** `array` of objects: `id`, `title`, `post_type`, `layout_id` (int or null), `format` (`"twig"`|`"blocks"` — see `canai-blocks` for what a `"blocks"` page is), `lang` (slug or null) for posts/pages that have `_canai_html`, or pages marked blocks.
 - **Published only.** Returns posts with status `publish`. A page created via `wpcanai-create-page` with `status: "draft"` will NOT appear here — re-resolve it by id, don't assume it was lost.
 
 ### `wpcanai-read-meta`
@@ -288,7 +270,7 @@ Ability IDs use slashes; MCP tool names use **hyphens** (`wpcanai/read-meta` →
 - **Args:** `{ "post_id": int, "fields"?: ["html"|"css"|"js"|"context"|"layout"|"format"|"blocks"|"tailwind_build"|"tailwind_hash"], "lang"?: string }` — `post_id` required; omit `fields` to read the default set (`html`, `css`, `js`, `context`, `layout`, `format`). Pass `tailwind_build` / `tailwind_hash` explicitly when you need them — they are excluded from the default set because the build CSS can be large. When `lang` is set and Polylang is active, errors with `lang_mismatch` if `post_id` is in a different language (no auto-translate — pass the language-specific id).
 - **Returns:** object with any of `html`, `css`, `js`, `context` (strings), `layout` (int), `format` (`"twig"`|`"blocks"`), `blocks` (string, raw block markup), `tailwind_build` (string), `tailwind_hash` (string), `hashes` (object).
 - **(v1.58.0) `hashes`.** Whenever `fields` includes, or defaults to, `html`, `css`, and/or `js`, the response also carries `hashes` — a SHA-1 per requested content field, e.g. `{ "html": "<sha1>" }`. Absent from metadata-only reads (no `html`/`css`/`js` requested). Feed these straight into `wpcanai-write-meta`'s `expected_hash` to make your next write conditional on that field not having changed since this read.
-- **(v1.65.0) `format` and `blocks`.** `format` is in the default set. `blocks` returns the raw block markup and is only valid on a blocks page (`format_mismatch` otherwise); it is not hashed.
+- **(v1.65.0) `format` and `blocks`.** `format` is in the default set. `blocks` returns the raw block markup and is only valid on a blocks page (`format_mismatch` otherwise); it is not hashed. See `canai-blocks` for reading/writing block-authored pages — this skill's `write-meta` refuses `html`/`css`/`js` on one (below).
 
 ### `wpcanai-write-meta`
 
@@ -300,7 +282,7 @@ Ability IDs use slashes; MCP tool names use **hyphens** (`wpcanai/read-meta` →
 - **(v1.58.0) `confirm_truncate`** (boolean, optional) — required (`true`) to replace `html`/`css`/`js` content that is 1KB or larger with a payload more than 70% smaller. Without it, such a write is refused with error code `truncation_blocked` (status 409) and **nothing is written** — no DB change, no snapshot taken, no operation opened, because the write never happens. The error message names the field and the exact old/new byte counts. If the shrink is intentional, re-send the identical call with `confirm_truncate: true`; if it isn't, `wpcanai-read-meta` the post first — your payload was probably wrong. Pass a real boolean or the string `"true"`; the strings `"false"` and `"0"` correctly count as *not confirmed*, not as truthy.
 - **(v1.58.0) `expected_hash`** (object, optional) — optimistic lock **keyed by field**, e.g. `{ "html": "<sha1>" }` (never a bare scalar — one call can write several fields at once). If that field changed since you read it, the write fails with error code `hash_mismatch` (status 409) and **nothing is written**; the error carries the current hash so you can re-read, reapply your edit, and retry. Get hashes from `wpcanai-read-meta`'s `hashes` object (see above). Omitting `expected_hash` keeps the previous last-write-wins behavior exactly.
 - **(v1.58.0) Guard order:** `expected_hash` is checked before `confirm_truncate`, and both are checked before anything is written — a stale read is reported ahead of a shrink refusal, and either one blocks the write outright.
-- **(v1.65.0) Blocks pages.** Writing html/css/js onto a page whose format is blocks is refused with `format_mismatch` unless `convert: true`, which switches the page back to Twig. `layout`, `context` and `tailwind_*` are always allowed.
+- **(v1.65.0) Blocks pages.** Writing html/css/js onto a page whose format is blocks is refused with `format_mismatch` unless `convert: true`, which switches the page back to Twig. `layout`, `context` and `tailwind_*` are always allowed. See `canai-blocks` for the convert-to-Twig workflow and for authoring the page as blocks instead.
 
 ### `wpcanai-replace-in-meta`
 
@@ -365,53 +347,11 @@ Ability IDs use slashes; MCP tool names use **hyphens** (`wpcanai/read-meta` →
 
 ### `wpcanai-create-page`
 
-- **Args:** `{ "title": string, "slug"?: string, "status"?: string, "html"?: string, "css"?: string, "js"?: string, "layout"?: int, "lang"?: string, "translation_of"?: int, "format"?: "twig"|"blocks", "blocks"?: object[] }` — `title` required; creates a `page` post with optional `_canai_*` meta. `lang` sets the new page's Polylang language. `translation_of` is the source page id; when provided, the new page is merged into the source's translation group.
+- **Args:** `{ "title": string, "slug"?: string, "status"?: string, "html"?: string, "css"?: string, "js"?: string, "layout"?: int, "lang"?: string, "translation_of"?: int }` — `title` required; creates a `page` post with optional `_canai_*` meta. `lang` sets the new page's Polylang language. `translation_of` is the source page id; when provided, the new page is merged into the source's translation group.
 - **Returns:** `{ "post_id": int, "slug": string, "lang": string|null, "format": string, "warnings": string[] }`.
-- **(v1.65.0) `format: "blocks"`.** `blocks` is then required and `html`/`css`/`js` are rejected; the page is created with a block body and marked blocks. `warnings` is empty on the Twig path. The reverse is also refused: sending `blocks` without `format: "blocks"` errors `invalid_input` rather than silently publishing an empty page.
+- **(v1.65.0) Also accepts `"format"?: "twig"|"blocks"` and `"blocks"?: object[]`** to create the page as a block-authored page in one call instead — see the companion skill **`canai-blocks`** for that path; it isn't documented here.
 
-### `wpcanai-write-post`
-
-- **Args:** `{ "post_id"?: int, "title"?: string, "blocks"?: object[], "slug"?: string, "status"?: string, "excerpt"?: string, "date"?: string, "featured_image"?: int, "categories"?: string[], "tags"?: string[], "lang"?: string, "translation_of"?: int }`.
-  - **Create** (no `post_id`): `title` and `blocks` are required. **Update** (`post_id` given): only the fields you send change; the id must be a `post`, not a page — a page id returns `WP_Error('not_a_post')`.
-  - **Default status is `draft`**, not `publish` — unlike `wpcanai-create-page`. The owner is expected to read the prose in the editor first. Valid: `draft`, `publish`, `pending`, `private`, `future`.
-  - `blocks` **replaces the entire body**. There is no partial edit; re-send the whole list. WordPress revisions are the undo path.
-  - `categories` / `tags` take names or slugs, create anything missing, and replace the whole set on update.
-- **Returns:** `{ "post_id": int, "slug": string, "status": string, "url": string, "edit_url": string, "lang": string|null, "block_count": int, "warnings": string[] }`. `warnings` is non-fatal (unresolvable embed provider, image with no alt text, a classic-editor body that was converted). Fatal problems return `WP_Error` and write nothing.
-- **This is for blog posts only.** Twig pages stay on `wpcanai-create-page` + `wpcanai-write-meta` (CanAI HTML/CSS/JS meta); block-authored pages use `wpcanai-create-page` with `format: "blocks"` plus `wpcanai-write-page`. `write-post` writes native block markup into a post's `post_content` and does not touch CanAI meta.
-
-### `wpcanai-write-page`
-
-- **Args:** `{ "post_id": int, "blocks": object[], "title"?: string, "status"?: string, "layout"?: int, "convert"?: bool, "lang"?: string }` — `post_id` must be a `page`. `blocks` replaces the whole body. Same block types as `write-post`; the `html` block is additionally available here (and in `create-page` with `format: "blocks"`), and nowhere else.
-- **Returns:** `{ "post_id", "slug", "status", "url", "edit_url", "lang", "format": "blocks", "converted": bool, "block_count", "warnings": string[] }`.
-- **Format guard.** On a Twig page whose `_canai_html` is non-empty the call fails with `format_mismatch` (the error carries the prompt to show the owner) unless `convert: true`: then the body is written first, and only once that lands is the CanAI meta snapshotted and `_canai_html`/`_canai_css`/`_canai_js` deleted and the page marked blocks — in that order, so a failed body write destroys nothing. A Twig page with empty html is simply written and marked.
-- **Errors:** `invalid_input`, `invalid_status`, `lang_mismatch`, `not_a_page`, `invalid_blocks` (with `path` like `"2.blocks.0"` for nested blocks), `invalid_attachment`, `format_mismatch`. Fatal problems write nothing.
-
-**Block types (v1).** Each item in `blocks` is `{ "type": …, …fields }` — shared by `write-post` and `write-page`:
-
-| `type` | Fields |
-|---|---|
-| `paragraph` | `text` (required), `align` (`left`/`center`/`right`) |
-| `heading` | `text` (required), `level` 2–6 (default 2; **level 1 is rejected** — the post title is the h1) |
-| `list` | `items` string[] (required), `ordered` bool. Flat lists only |
-| `quote` | `text` **or** `paragraphs` string[] (one required), `cite` |
-| `image` | `id` int (required — an attachment id), `alt`, `caption`, `size` (default `large`), `link` (`none`/`media`/`attachment`) |
-| `code` | `code` (required). Escaped as literal text; no inline HTML |
-| `separator` | — |
-| `embed` | `url` (required, http/https) |
-| `table` | `rows` string[][] (required, rectangular), `header` string[] |
-| `group` | `blocks` (required, child blocks), `tag` (`div`/`section`/`header`/`footer`/`aside`/`main`), `className` |
-| `columns` | `columns` (required, 1–6 of `{ width?, className?, blocks }`), `className` |
-| `buttons` | `buttons` (required, `{ text, url, style?: fill/outline, target?: _blank, rel?, className? }`), `className` |
-| `cover` | `image` (required, attachment id), `overlay_opacity` (10–100 step 10, default 50), `blocks` (required), `className` |
-| `media_text` | `image` (required, attachment id), `side` (`left`/`right`), `blocks` (required), `className` |
-| `spacer` | `height` px (1–1000, default 100), `className` |
-| `html` | `html` (required, raw markup kept verbatim). **`write-page` and `create-page` with `format: "blocks"` only**, and it requires `unfiltered_html` on the user the write runs as; refused otherwise. `write-post` never accepts it |
-
-Every type except `embed` and `html` accepts `className` (Tailwind classes on the block's root element). `core/html` declares `supports.className: false`, so a class set there is dropped and reported as a warning — put it on your own markup instead; `embed` rewrites its own class list on first save. Nesting is capped at 4 levels. Nested errors report a dotted `path`.
-
-**Images: sideload first, then pass the id.** `write-post` and `write-page` accept attachment ids only — no URLs, no binaries (`write-page`'s `cover` and `media_text` blocks take the same id and return `invalid_attachment` if it doesn't resolve). Call `wpcanai-sideload-url` (or find an existing one with `wpcanai-list-media`) and pass the returned `id`.
-
-**Inline HTML inside text fields** is limited to `<a href|title|rel|target>`, `<strong>`, `<em>`, `<b>`, `<i>`, `<code>`, `<br>`, `<s>`, `<sub>`, `<sup>`, `<kbd>`, `<mark>`. Anything else is stripped silently, not rejected — a `<script>` or `<iframe>` in a paragraph would be invalid block content anyway. Markdown is **not** accepted; there is no raw-HTML escape hatch inside text fields — raw markup goes in an `html` block, which `write-page` and blocks-format `create-page` accept and `write-post` does not.
+**`wpcanai-write-post` and `wpcanai-write-page`** (blog posts and block-authored pages) are documented in the companion skill **`canai-blocks`**, not here.
 
 ### `wpcanai-read-settings`
 
@@ -539,7 +479,7 @@ Site name, tagline, and archive/search/404 SEO title+description live in a per-l
 
 ### `wpcanai-export` / `wpcanai-import`
 
-- **`wpcanai-export`** → a JSON bundle of CanAI templates + pages (meta `_canai_html/css/js/context/layout`), and a per-row `i18n_meta` key round-tripping every `_canai_i18n_{lang}` content-override blob. **(v1.39.0)** rows that have a compiled build also carry the precompiled Tailwind cache (`_canai_tailwind_build` / `_hash` / `_built_at`; only non-empty builds export, and the source-relative `_canai_tailwind_epoch` stamp is excluded) so an imported layout renders inline instead of falling back to the Play CDN. **Media binaries are NOT included** — attachment IDs are flagged for re-sideload, never remapped automatically. **(v1.65.0) Blocks pages are NOT included either** — the export only matches posts with a non-empty `_canai_html`, so a blocks-authored page (body in `post_content`) never appears in a bundle; don't promise it full backup coverage.
+- **`wpcanai-export`** → a JSON bundle of CanAI templates + pages (meta `_canai_html/css/js/context/layout`), and a per-row `i18n_meta` key round-tripping every `_canai_i18n_{lang}` content-override blob. **(v1.39.0)** rows that have a compiled build also carry the precompiled Tailwind cache (`_canai_tailwind_build` / `_hash` / `_built_at`; only non-empty builds export, and the source-relative `_canai_tailwind_epoch` stamp is excluded) so an imported layout renders inline instead of falling back to the Play CDN. **Media binaries are NOT included** — attachment IDs are flagged for re-sideload, never remapped automatically. **(v1.65.0) Blocks pages are NOT included either** — the export only matches posts with a non-empty `_canai_html`, so a blocks-authored page (body in `post_content`) never appears in a bundle; don't promise it full backup coverage. See `canai-blocks` for what a blocks page is.
 - **`wpcanai-import`** — `{ "data": object | "json": string, "dry_run"?: bool }`. `dry_run: true` reports what would change without writing. Override blobs are re-sanitized on import. **Auth gate:** import performs `unfiltered_html`-level writes and returns a 403 `forbidden` unless the caller has the `unfiltered_html` capability (administrators do on single-site) or the request carries a valid CanAI API key (Bearer / `X-WPCanAI-API-Key`).
 
 ### `wpcanai-diagnostics`
@@ -621,7 +561,7 @@ Clean up badly named uploads and missing alt text (plugin 1.45.0+):
 
 ## CRITICAL: CanAI storage model
 
-CanAI does **not** use `post_content` for Twig bodies. Use `**wpcanai-read-meta`** / `**wpcanai-write-meta`** for `_canai_html`, `_canai_css`, `_canai_js`, `_canai_context`, `_canai_layout`. **Blocks-authored pages** (`format` `"blocks"`) are the exception: their body is `post_content`, read with `wpcanai-read-meta` `fields: ["blocks"]` and written with `wpcanai-write-page`.
+CanAI does **not** use `post_content` for Twig bodies. Use `**wpcanai-read-meta`** / `**wpcanai-write-meta`** for `_canai_html`, `_canai_css`, `_canai_js`, `_canai_context`, `_canai_layout`. **Blocks-authored pages** (`format` `"blocks"`) are the exception: their body is `post_content` — see the companion skill **`canai-blocks`** for reading and writing them.
 
 ## CRITICAL: Content resolution
 
