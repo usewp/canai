@@ -156,10 +156,13 @@ Markup (icons render after `lucide.createIcons()` in preview, or after CanAI’s
 Place user-supplied images, video, and audio under `assets/` next to the HTML files:
 
 ```html
-<img src="assets/hero.webp" alt="Descriptive alt text" class="h-auto w-full rounded-lg object-cover" width="1200" height="630" loading="lazy">
+<div class="aspect-[4/3] overflow-hidden rounded-lg">
+  <img src="assets/hero.webp" alt="Descriptive alt text" class="h-full w-full object-cover object-[center_35%]" width="1200" height="900" loading="lazy">
+</div>
 ```
 
 Use **relative URLs** so pages keep working when moved. After upload to the Media Library, replace with `image_attrs()` in Twig during CanAI conversion.
+Choose the aspect ratio and `object-position` only after the image-framing preflight in `SKILL.md`; the values above are illustrative, not universal defaults.
 
 ## pages.json manifest (multi-page / SPA split)
 
@@ -169,4 +172,3 @@ Use **relative URLs** so pages keep working when moved. After upload to the Medi
   { "slug": "about", "title": "About", "file": "about.html" }
 ]
 ```
-

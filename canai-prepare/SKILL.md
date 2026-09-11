@@ -9,7 +9,7 @@ description: >
   "spa to html", "pwa to html", "static html", "single html", "per-page html", "convert design to html".
 metadata:
   author: canai
-  version: "1.4.0"
+  version: "1.5.0"
 allowed-tools: Bash Read Write Edit Grep Glob
 ---
 
@@ -103,9 +103,27 @@ Default: write under `**./<project-slug>/**` in the **current working directory*
 
 1. Accept screenshot, Figma export, or other reference image(s).
 2. Infer layout: header, hero, sections, footer; typography scale; spacing; color **roles** (map to Tailwind palette + optional `tailwind.config` extend in a small inline script **only if needed** — prefer standard utilities).
-3. Emit **one `.html` file per distinct full-page design** the user asked for.
-4. Label sections with HTML comments: `<!-- Section: Hero -->`, `<!-- Section: Features -->`, … (these become `{# Section: … #}` in Twig).
-5. Save extracted raster assets into `assets/`; reference them relatively. Use stable filenames; optionally list them in a short `README.txt` in the project folder.
+3. Run the **Image framing preflight** below before choosing image-container classes.
+4. Emit **one `.html` file per distinct full-page design** the user asked for.
+5. Label sections with HTML comments: `<!-- Section: Hero -->`, `<!-- Section: Features -->`, … (these become `{# Section: … #}` in Twig).
+6. Save extracted raster assets into `assets/`; reference them relatively. Use stable filenames; optionally list them in a short `README.txt` in the project folder.
+
+## Image framing preflight
+
+Run this for every meaningful raster image before writing its container markup. Logos, icons, decorative textures, and images rendered with `object-contain` do not need subject-crop analysis.
+
+1. **Inspect the asset, not only the reference page.** Read its intrinsic width and height with an available local image-info tool and inspect the pixels with the host's image viewer. Record the aspect (`width / height`) and the important region: faces, full bodies, co-subjects, hands, products, awards, or text baked into the image. If the asset cannot be inspected, preserve it with `object-contain` or a close-to-source aspect ratio rather than guessing a destructive crop.
+2. **Choose the container from the source shape and design role.** Prefer responsive `aspect-*` utilities over shallow fixed `h-*` crops: portrait originals → `aspect-[4/5]`, `aspect-[3/4]`, or `aspect-square`; square → `aspect-square` or `aspect-[4/3]`; landscape → `aspect-[16/9]`, `aspect-[3/2]`, or `aspect-[4/3]`. A portrait may use a landscape crop only when the inspected safe region demonstrably fits at every target breakpoint.
+3. **Set an optical focal point when using `object-cover`.** Start from these baselines, then adjust from the actual image: headshot/single portrait `object-[center_30%]` (roughly 25–35% Y); seated pair `object-[center_58%]` (55–60% Y); standing group `object-[center_20%]`; subject holding an item `object-[center_80%]` (75–85% Y) with at least `aspect-[3/4]` or comparable height. Off-centre subjects need both coordinates, for example `object-[80%_25%]`. These are starting points, never a substitute for inspection.
+4. **Verify responsive crops.** Preview at narrow mobile and wide desktop sizes. Faces, heads, co-subjects, and task-relevant objects must remain visible without pressing against an edge. Use breakpoint-specific aspect/focal classes when the composition genuinely needs them; if no crop works robustly, use a taller/source-matched container or `object-contain`.
+
+Example:
+
+```html
+<div class="aspect-[4/5] overflow-hidden rounded-2xl sm:aspect-[3/4]">
+  <img src="assets/founder.webp" alt="Founder holding the product" class="h-full w-full object-cover object-[center_80%]" width="1200" height="1600" loading="lazy">
+</div>
+```
 
 ## Workflow B — SPA / PWA → linked static HTML pages
 
@@ -120,7 +138,7 @@ Default: write under `**./<project-slug>/**` in the **current working directory*
 - Section comments use a consistent `<!-- Section: Name -->` pattern.
 - No `<style>` in body content; no inline `style=""` unless unavoidable (prefer utilities).
 - Scripts: preview libs inside `WPCanAI-PREVIEW-LIBS`; page logic below, outside those markers.
-- Images: descriptive `alt`, `width`/`height` when known, `loading="lazy"` below the fold.
+- Images: framing preflight completed; descriptive `alt`, intrinsic `width`/`height`, responsive aspect container, and `loading="lazy"` below the fold.
 - Lucide: decorative icons `aria-hidden="true"`; controls have `aria-label`.
 - Links: readable link text; avoid `href="#"` for real navigation.
 
@@ -139,4 +157,3 @@ Default: write under `**./<project-slug>/**` in the **current working directory*
 ## Related skills
 
 - `**canai-mcp**` — MCP tools for `_canai_*` on the configured server.
-

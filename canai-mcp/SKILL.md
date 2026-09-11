@@ -14,7 +14,7 @@ description: >
   "blog post", "write a blog post", "write post", "wpcanai-write-post".
 metadata:
   author: canai
-  version: "1.23.0"
+  version: "1.24.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -201,18 +201,24 @@ Triggered when the user runs `/canai-mcp implement <folder>`, asks you to import
 
    **Skip:** absolute `http(s)://` URLs to other origins, protocol-relative `//cdn…`, `data:` URIs, `mailto:` / `tel:`, anchor-only `#…`, and any path that doesn't resolve to a real file under the folder. Deduplicate by resolved absolute path.
 
-2. **Sideload each unique file** via `POST {site}/wp-json/wpcanai/v1/sideload` (see **Uploading media** for the exact `curl`). Run uploads **one at a time** so you can capture each `id` / `source_url`. Pass a sensible `alt` when the source HTML provides one (`<img alt="…">`); otherwise omit it. Re-uploading the same bytes is fine — WordPress dedupes on filename, but the API returns a fresh attachment each call, so cache hits in your map matter.
+2. **Preflight every meaningful raster image before writing markup.** Read its intrinsic width and height with an available local image-info tool and inspect the pixels with the host's image viewer. Record the aspect (`width / height`) and the important region: faces, heads, full bodies, co-subjects, hands, products, awards, or baked-in text. Logos, icons, decorative textures, and `object-contain` images do not need subject-crop analysis. For a remote source image, inspect the source/captured asset before sideloading when possible; if it cannot be inspected, preserve it with `object-contain` or a close-to-source aspect ratio rather than guessing a destructive crop.
 
-3. **Build a rewrite map keyed on the media `id`** — `{ <original-reference-string>: <media id> }`, **not** the raw `source_url`. Key on the **exact string as it appears in the source** (e.g. `./images/hero.jpg`, `images/hero.jpg`, `/images/hero.jpg` — all three map to the same upload `id`). CanAI resolves the live URL at render time from the id, so the page survives the media being regenerated or the site moving; a pinned `source_url` does not. (Only the OG/manifest exception in step 4 keeps the absolute `source_url`.)
+   Prefer responsive aspect containers over shallow fixed `h-*` crops: portrait originals → `aspect-[4/5]`, `aspect-[3/4]`, or `aspect-square`; square → `aspect-square` or `aspect-[4/3]`; landscape → `aspect-[16/9]`, `aspect-[3/2]`, or `aspect-[4/3]`. With `object-cover`, start from the inspected composition; useful baselines are headshot/single portrait `object-[center_30%]` (25–35% Y), seated pair `object-[center_58%]` (55–60% Y), standing group `object-[center_20%]`, and subject holding an item `object-[center_80%]` (75–85% Y) with at least `aspect-[3/4]` or comparable height. Off-centre subjects need both coordinates, e.g. `object-[80%_25%]`. These are starting points, not blind defaults.
 
-4. **Rewrite HTML / CSS / JS in memory to ID-based helpers** before any `wpcanai-write-meta` call. Apply to the same content surfaces you scanned in step 1, using the right form per surface:
-   - **`<img>`** → strip the hardcoded `src` / `alt` and splat `{{ image_attrs(<id>, 'src,alt') }}` (use `'src,alt,width,height'` when dimensions are known). **Preserve** existing `class` / other attributes; keep or append `loading="lazy"` below the fold.
+   Preview narrow mobile and wide desktop crops before deploy. Faces, heads, co-subjects, and task-relevant objects must remain visible without pressing against an edge. Use breakpoint-specific aspect/focal classes when needed; if no crop survives both sizes, use a taller/source-matched container or `object-contain`.
+
+3. **Sideload each unique file** via `POST {site}/wp-json/wpcanai/v1/sideload` (see **Uploading media** for the exact `curl`). Run uploads **one at a time** so you can capture each `id` / `source_url`. Pass a sensible `alt` when the source HTML provides one (`<img alt="…">`); otherwise omit it. Re-uploading the same bytes is fine — WordPress dedupes on filename, but the API returns a fresh attachment each call, so cache hits in your map matter.
+
+4. **Build a rewrite map keyed on the media `id`** — `{ <original-reference-string>: <media id> }`, **not** the raw `source_url`. Key on the **exact string as it appears in the source** (e.g. `./images/hero.jpg`, `images/hero.jpg`, `/images/hero.jpg` — all three map to the same upload `id`). CanAI resolves the live URL at render time from the id, so the page survives the media being regenerated or the site moving; a pinned `source_url` does not. (Only the OG/manifest exception in step 5 keeps the absolute `source_url`.)
+
+5. **Rewrite HTML / CSS / JS in memory to ID-based helpers** before any `wpcanai-write-meta` call. Apply to the same content surfaces you scanned in step 1, using the right form per surface:
+   - **`<img>`** → strip the hardcoded `src` / `alt` and splat `{{ image_attrs(<id>, 'src,alt') }}` (use `'src,alt,width,height'` when dimensions are known). **Preserve** existing class/other attributes, including the preflighted aspect container and focal-position utility; keep or append `loading="lazy"` below the fold.
    - **CSS `url(...)`** (in `_canai_css` / inline `style`), **`<source srcset>`**, **`<video poster>`**, **`<link rel="icon">` / `apple-touch-icon`** → `{{ media_url(<id>, 'full') }}` (Twig-rendered surfaces). Rewrite each `srcset` candidate independently, preserving its `1x` / `2x` / `480w` descriptor.
    - **OG / Twitter meta** (`og:image`, `twitter:image`) and **web-manifest icons** → keep the absolute `source_url`. These require absolute URLs and aren't reliably Twig-rendered — the one documented exception to ID-based rewriting.
 
    Do **not** edit files on disk — the rewrite happens in the agent, and the rewritten string is what you pass to `html` / `css` / `js`.
 
-5. **Report the manifest** to the user when done: a short table of `original path → media id → final Twig form` — where *final Twig form* is the `{{ image_attrs(...) }}` / `{{ media_url(...) }}` it was rewritten to, or the absolute `source_url` for the OG/manifest exception — plus a count of skipped references (with reasons: external, data URI, missing file). The user uses this to spot-check the conversion.
+6. **Report the manifest** to the user when done: a short table of `original path → dimensions/aspect → framing choice → media id → final Twig form` — where *framing choice* names the container aspect and focal utility (or `object-contain`), and *final Twig form* is the `{{ image_attrs(...) }}` / `{{ media_url(...) }}` it was rewritten to, or the absolute `source_url` for the OG/manifest exception — plus a count of skipped references (with reasons: external, data URI, missing file). The user uses this to spot-check the conversion.
 
 **Idempotence.** If the user re-runs the import, you'll re-upload (the endpoint doesn't dedupe by content hash). That's acceptable for a one-shot import; warn the user if you detect an obvious re-run (e.g. they're pointing at the same folder a template was already built from) and offer to reuse existing attachments via `wpcanai-list-media` / `wpcanai-get-media` instead of re-uploading.
 
@@ -1013,4 +1019,3 @@ If the damage spans several posts (a bad preset install or import), skip straigh
 
 - Treat API keys like passwords; revoke in **AI Agent → Connections** when unused.
 - Prefer HTTPS for non-local sites.
-
