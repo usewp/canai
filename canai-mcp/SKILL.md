@@ -1,16 +1,19 @@
 ---
 name: canai-mcp
 description: >
-  Use the CanAI MCP server as the only way to interact with a WordPress site's CanAI
-  templates, pages, settings, setup, diagnostics, translations, media, Tailwind builds,
-  and blog posts. Use for /canai-mcp, CanAI MCP/remote-site work, API keys, template
-  deployment, multilingual content, media uploads, and CanAI-authored posts. Never use
-  WP-CLI, raw REST/curl, or wp-content workspace edits for live site data; use the
-  configured wpcanai/* MCP tools. FluentSnippets work belongs to the separate opt-in
-  canai-yolo skill.
+  Use the CanAI MCP server exclusively for live CanAI site data; never substitute WP-CLI,
+  REST/curl, or wp-content edits. FluentSnippets belongs to the opt-in canai-yolo skill.
+  Triggers on: "/canai-mcp", "wpcanai mcp", "canai mcp", "canai-mcp", "wpcanai remote",
+  "canai remote", "remote wpcanai", "remote canai", "staging", "production", "remote site",
+  "mcp", "api key", "deploy template",
+  "translate", "translation", "translate the site", "i18n", "multilingual", "string translation", "native translation", "/canai-mcp translate",
+  "translate content", "translate cpt", "content translation",
+  "optimize production", "compile tailwindcss", "compile tailwind", "build css", "tailwind build",
+  "sideload", "upload", "upload image", "upload media", "media library", "attach image", "attachment", "image to media",
+  "blog post", "write a blog post", "write post", "wpcanai-write-post".
 metadata:
   author: canai
-  version: "1.25.0"
+  version: "1.25.1"
 allowed-tools: "Read Grep Glob"
 ---
 
