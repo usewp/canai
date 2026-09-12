@@ -13,7 +13,7 @@ description: >
   "blog post", "write a blog post", "write post", "wpcanai-write-post".
 metadata:
   author: canai
-  version: "1.25.1"
+  version: "1.26.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -178,8 +178,8 @@ When converting a static HTML file (e.g. `index.html`) into CanAI via MCP tools:
 4. **Page body vs layout:** put `<main>` / primary page markup in a **`page`** created with `wpcanai-create-page` (set `layout` to the layout template ID) — not as a `wpcanai_template` of type `layout`. Layout templates are the document shell (`{{ page_content }}`, header/footer includes); page bodies are not `template_type` `layout`.
 5. **Auto-detect and sideload local media BEFORE writing HTML.** Static site folders almost always reference local assets (`./images/hero.jpg`, `assets/logo.svg`, `videos/intro.mp4`, favicons, OG images, CSS `url(...)` backgrounds). If you push the HTML/CSS as-is, every one of those references 404s on the live site. Run the **Static-site asset sideload pre-pass** (next subsection) before any `wpcanai-create-page` / `wpcanai-write-meta` call so the HTML you write resolves media **by ID** through `{{ image_attrs(...) }}` / `{{ media_url(...) }}`, not relative paths or pinned upload URLs.
 6. **Rewrite internal links to CanAI helpers** (instance of the principle above). Static sources keep `<a href="about.html">` / `href="/about">`; these break on the live site (wrong base path, non-permalink, moved slugs). Rewrite each internal link to the matching helper: cross-page links → `{{ slug_url('<slug>') }}` (or `{{ id_url(<id>) }}` when the target page id is known from `wpcanai-create-page`); term / archive links → `{{ term_url(<term_id>) }}`. **Leave untouched:** external / absolute (`https://other.com`), protocol-relative (`//cdn…`), and anchor-only (`#section`) links. Report the rewrites in the manifest.
-7. **Normalize section comments to Twig.** Convert every `<!-- Section: X -->` (and any nav-label HTML comment `canai-prepare` emitted) into a `{# Section: X #}` Twig comment — **never** carry HTML nav comments into `_canai_html` (they pollute rendered output and are view-source reconnaissance). Then **guarantee** every top-level landmark — `<section>` / `<main>` / `<header>` / `<footer>` / `<nav>` / `<aside>` — carries a `{# Section: … #}` comment even when the source lacked one; these feed the editor's structure/outline menu. See the comment convention in [references/REFERENCE.md](references/REFERENCE.md) (**Twig Comment Convention**). A canai-replicate `pushprep` artifact already has this conversion applied — spot-check it, don't redo it from scratch.
-8. **After any meta write, run `wpcanai-scan` and clear leak findings before claiming done.** Treat `leaky_comment` / `leaky_secret` like broken layouts: convert HTML/`/* */` comments to `{# #}`, remove secret-shaped literals from meta. For a full-site pass, use the **Comment / secret security sweep** recipe below.
+7. **Normalize section comments to Twig navigation labels.** Convert every HTML nav comment that `canai-prepare` emitted into the exact form `{# Type / Short Label #}` — for example, `{# Section / Hero #}`. **Never** carry HTML nav comments into `_canai_html` (they pollute rendered output and are view-source reconnaissance). Guarantee every landmark has its matching type immediately before the opening tag: `<main>` → `Container`, `<section>` → `Section`, `<header>` → `Header`, `<footer>` → `Footer`, `<nav>` → `Navigation`, `<aside>` → `Sidebar`. The full controlled Atomic Design vocabulary is in [references/REFERENCE.md](references/REFERENCE.md) (**Twig Comment Convention**). Ordinary implementation notes use `{# @dev … #}` and stay out of the editor's Structure outline. A canai-replicate `pushprep` artifact may use the older convention; normalize it before writing.
+8. **After any meta write, run `wpcanai-scan` and clear content findings before claiming done.** Treat `missing_structure_comment`, `invalid_structure_comment`, `leaky_comment`, and `leaky_secret` like broken layouts: add or correct Twig navigation labels, convert HTML/`/* */` comments to Twig, and remove secret-shaped literals from meta. For a full-site pass, use the **Comment / secret security sweep** recipe below.
 
 ### Blog posts (not CanAI pages)
 
@@ -762,18 +762,18 @@ When a live page references the wrong asset URLs (e.g. relative paths left over 
 
 ### Diagnose configuration
 
-- `wpcanai-scan` `{ }` — delegate, layout, template, and content-leak issues (`leaky_comment` / `leaky_secret`). On Polylang sites, run once per language (`{ "lang": "en" }`, `{ "lang": "ms" }`) and diff to spot missing translations.
+- `wpcanai-scan` `{ }` — delegate, layout, template, structure-navigation, and content-leak issues (`missing_structure_comment` / `invalid_structure_comment` / `leaky_comment` / `leaky_secret`). On Polylang sites, run once per language (`{ "lang": "en" }`, `{ "lang": "ms" }`) and diff to spot missing translations.
 
 ### Comment / secret security sweep
 
 Run after bulk imports, before handing a site back to the user, or whenever the user asks to audit view-source leaks. Same standing-recipe pattern as the sideload pre-pass.
 
-1. **`wpcanai-scan` `{ }`** — collect every `leaky_comment` / `leaky_secret` finding (note `post_id` + `field`).
+1. **`wpcanai-scan` `{ }`** — collect every structure/comment/secret finding (note `post_id` + `field`).
 2. **Optional site-wide grep** for patterns scan might not classify:  
    `wpcanai-grep-content { "pattern": "<!--", "fields": ["html"] }`  
    `wpcanai-grep-content { "pattern": "webhook|snippet|api[_\\s-]?key", "regex": true, "fields": ["js"] }`  
    `wpcanai-grep-content { "pattern": "sk_(live|test)_", "regex": true }`
-3. **Fix** — for HTML/JS section comments, `wpcanai-replace-in-meta` (or a full `write-meta`) converting `<!-- … -->` / suspicious `/* … */` to `{# … #}`. For `leaky_secret`, remove the credential from meta (move it to wp-config / env / a server-side snippet the browser never sees).
+3. **Fix** — add or normalize navigation labels as `{# Type / Short Label #}`; convert ordinary implementation notes to `{# @dev … #}`; convert exposed `<!-- … -->` / suspicious `/* … */` comments to Twig. For `leaky_secret`, remove the credential from meta (move it to wp-config / env / a server-side snippet the browser never sees).
 4. **Re-scan** until no `leaky_*` findings remain. Do not claim the task done while they persist.
 
 ---
@@ -868,7 +868,7 @@ When the rendered page's layout has a non-empty `_canai_tailwind_build`, `AssetM
 
 ## HTML manipulation guidance
 
-- Templates use `**{# Twig comments #}`** for section labels; use them to find boundaries (see [REFERENCE.md](references/REFERENCE.md) for comment rules).
+- Templates use `**{# Type / Short Label #}`** navigation comments for section boundaries; use those labels to find boundaries and ignore `{# @dev … #}` implementation notes (see [REFERENCE.md](references/REFERENCE.md) for comment rules).
 - **Remove a block:** delete from its opening Twig comment (or identifiable start) through the end of that section (next sibling section comment, closing structural tag, or include line).
 - **Edit a block:** replace only the markup inside that section; keep the rest of the string unchanged.
 - Build the final string **in the agent** and pass it to `**wpcanai-write-meta`** — no external scripts required.

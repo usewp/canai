@@ -406,9 +406,13 @@ pagination.per_page
 
 ## Twig Comment Convention
 
-**CRITICAL**: Always use Twig comments `{# #}` for section navigation in CanAI templates. Twig comments are stripped during rendering (zero output bloat) and serve purely as developer navigation aids in lengthy template code.
+**CRITICAL**: Structure navigation uses the exact single-line form `{# Type / Short Label #}`, for example `{# Section / Hero #}`. Twig comments are stripped during rendering (zero output bloat), while the editor's Structure metabox displays only comments that follow this convention.
 
-`_canai_html`, `_canai_css`, and `_canai_js` are all rendered through the same Twig engine before output. `{# #}` is equally valid in page-level JavaScript (`_canai_js`) and is stripped before the script reaches `wp_footer()`. Prefer `{# #}` over `/* */` for any comment naming internal services, snippet names, hook names, or architecture details.
+The controlled Atomic Design vocabulary is: `Layout`, `Container`, `Header`, `Footer`, `Navigation`, `Section`, `Sidebar`, `Card`, `Form`, `Menu`, `Search`, `Button`, `Input`, `Icon`, and `Badge`. Keep the label at 60 characters or fewer. The type communicates the reusable UI role; the label identifies this instance.
+
+Landmark types are fixed: `<main>` → `Container`, `<section>` → `Section`, `<header>` → `Header`, `<footer>` → `Footer`, `<nav>` → `Navigation`, and `<aside>` → `Sidebar`. Put the navigation comment immediately before the opening tag. `wpcanai-scan` reports `missing_structure_comment` or `invalid_structure_comment` when this contract is not met.
+
+`_canai_html`, `_canai_css`, and `_canai_js` are all rendered through the same Twig engine before output. Ordinary programming notes use `{# @dev Explain the implementation #}`; they remain in code but do not clutter the Structure metabox. `{# #}` is equally valid in page-level JavaScript (`_canai_js`) and is stripped before the script reaches `wp_footer()`. Prefer it over `/* */` for any comment naming internal services, snippet names, hook names, or architecture details.
 
 **Do NOT use HTML comments `<!-- -->` for section labels** — those pollute the rendered HTML. The only acceptable HTML comment is one that must appear in the final output for a specific reason (e.g., conditional IE tags).
 
@@ -416,9 +420,9 @@ pagination.per_page
 
 ### When to Apply Comments
 
-- **Always** comment every top-level `<section>`, `<main>`, `<aside>`, `<header>`, `<footer>`, `<nav>`
+- **Always** put the matching `{# Type / Short Label #}` immediately before every `<section>`, `<main>`, `<aside>`, `<header>`, `<footer>`, and `<nav>`
 - **Always** comment major layout divisions (columns, grid areas, sidebar vs content)
-- **Always** comment data query blocks (`{% set products = ... %}`)
+- **Always** add an `@dev` note for non-obvious data query blocks (`{% set products = ... %}`)
 - Comment nested sub-sections when the template is long (50+ lines)
 - Comment non-obvious conditional blocks and loops
 
@@ -429,18 +433,17 @@ pagination.per_page
 <!DOCTYPE html>
 <html>
 <head>
-  {# Meta & Viewport #}
-  {# Fonts #}
-  {# Tailwind CSS Config #}
+  {# Container / Document Head #}
+  {# @dev Configure metadata, fonts, and Tailwind here #}
 </head>
 <body>
-  {# Header Component #}
+  {# Header / Site #}
   {{ wpcanai_template('header-slug') }}
 
-  {# Page Content #}
+  {# Container / Page Content #}
   {{ page_content }}
 
-  {# Footer #}
+  {# Footer / Site #}
   <footer>...</footer>
 </body>
 </html>
@@ -448,97 +451,97 @@ pagination.per_page
 
 **Page templates** — comment each section of the page:
 ```twig
-{# Main Content #}
+{# Container / Main Content #}
 <main>
-  {# Section: Hero #}
+  {# Section / Hero #}
   <section>...</section>
 
-  {# Section: Features #}
+  {# Section / Features #}
   <section>
-    {# Section Heading #}
-    {# Two Column Layout #}
+    {# Container / Section Heading #}
+    {# Container / Two Columns #}
     <div>
-      {# Left Column - Content #}
-      {# Right Column - Image #}
+      {# Container / Content #}
+      {# Container / Image #}
     </div>
   </section>
 
-  {# Section: Contact Form #}
+  {# Section / Contact Form #}
   <section>
-    {# Form Header #}
-    {# Form #}
+    {# Header / Form #}
+    {# Form / Contact #}
   </section>
 </main>
 ```
 
 **WooCommerce product templates** — comment UI regions:
 ```twig
-{# Query product data #}
+{# @dev Query product data #}
 {% set products = wpcanai_get_posts_enriched(...) %}
 
-{# Main Content: Product Detail #}
+{# Container / Product Detail #}
 <main>
-  {# Left Column: Gallery #}
+  {# Section / Product Gallery #}
   <section>
-    {# Primary Image #}
-    {# Gallery Images #}
+    {# Container / Primary Image #}
+    {# Container / Gallery Images #}
   </section>
 
-  {# Right Column: Product Info (Sticky) #}
+  {# Sidebar / Product Information #}
   <aside>
-    {# Breadcrumbs #}
-    {# Product Header #}
-    {# Description #}
-    {# Tech Specs #}
-    {# Add to Cart Form #}
+    {# Navigation / Breadcrumbs #}
+    {# Header / Product #}
+    {# Section / Description #}
+    {# Section / Specifications #}
+    {# Form / Add to Cart #}
   </aside>
 </main>
 ```
 
 **WooCommerce cart/checkout** — comment functional blocks:
 ```twig
-{# Main Content #}
+{# Container / Cart #}
 <main>
-  {# Cart Items #}
+  {# Section / Cart Items #}
   <div>
-    {# Table Header #}
+    {# Header / Cart Table #}
     {% for item in cart.items %}
-      {# Item Row #}
+      {# Card / Cart Item #}
     {% endfor %}
   </div>
 
-  {# Sidebar Summary #}
+  {# Sidebar / Order Summary #}
   <aside>
-    {# Order Totals (AJAX refreshable) #}
-    {# Payment Methods #}
+    {# Section / Order Totals #}
+    {# Form / Payment Methods #}
   </aside>
 </main>
 ```
 
 **Shop/archive templates** — comment filters and grid:
 ```twig
-{# Query products and categories #}
+{# @dev Query products and categories #}
 {% set products = wpcanai_get_posts_enriched({...}) %}
 {% set categories = wpcanai_get_terms_enriched('...') %}
 
-{# Main Content Area #}
+{# Container / Shop #}
 <main>
-  {# Sidebar Filters (Sticky) #}
+  {# Sidebar / Filters #}
   <aside>
-    {# Collection Info #}
-    {# Filter: Category #}
-    {# Filter: Color #}
-    {# Filter: Size #}
+    {# Section / Collection #}
+    {# Menu / Category Filter #}
+    {# Menu / Color Filter #}
+    {# Menu / Size Filter #}
   </aside>
 
-  {# Product Grid #}
+  {# Section / Product Grid #}
   <section>
-    {# Item Count & Sort Bar #}
-    {# Grid Layout #}
+    {# Container / Sort Bar #}
+    {# Container / Product Cards #}
     <div>
-      {# Sale badge #}
-      {# Out of stock overlay #}
-      {# Product image + gallery hover #}
+      {# Badge / Sale #}
+      {# Badge / Out of Stock #}
+      {# Card / Product #}
     </div>
   </section>
 </main>
@@ -546,10 +549,10 @@ pagination.per_page
 
 ### Comment Rules
 
-1. **Use `{# #}` for ALL section comments** — never `<!-- -->` for navigation labels
-2. **Indent comments** to match the HTML nesting level they describe
-3. **Use `Section:` prefix** for top-level page sections: `{# Section: Hero #}`, `{# Section: Services #}`
-4. **Use column labels** for multi-column layouts: `{# Left Column - Content #}`, `{# Right Column - Image #}`
-5. **Label data queries** before the `{% set %}` block: `{# Query product data #}`
-6. **Note AJAX-sensitive containers**: `{# Order Totals (AJAX refreshable) #}`
-7. **Do NOT over-comment** — skip comments for self-evident single elements like a lone `<h1>` or `<p>`
+1. **Use the exact navigation grammar** `{# Type / Short Label #}` with one space around `/`
+2. **Use only the controlled type vocabulary** above; choose the component's Atomic Design role
+3. **Match semantic landmarks to their fixed type** and place the comment immediately before the tag
+4. **Keep labels human-readable and at most 60 characters**: `{# Section / Hero #}`, `{# Button / Add to Cart #}`
+5. **Indent comments** to match the element nesting level they describe
+6. **Prefix implementation notes with `@dev`**: `{# @dev Query products once before the loop #}`
+7. **Do not use HTML comments for navigation labels** and do not over-comment self-evident text elements
