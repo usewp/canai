@@ -1,20 +1,16 @@
 ---
 name: canai-mcp
 description: >
-  Strictly use the CanAI MCP server as the only way to interact with the user’s WordPress site for CanAI content work (templates, pages, settings, setup, diagnostics, i18n, media).
-  Do not use WP-CLI, REST/curl, or workspace edits under wp-content for live site data — only MCP tools (e.g. wpcanai-read-meta, wpcanai-write-meta) via the configured server (often canai-mcp).
-  Does NOT cover FluentSnippets — that is in the separate opt-in canai-yolo skill.
-  Triggers on: "/canai-mcp", "wpcanai mcp", "canai mcp", "canai-mcp", "wpcanai remote",
-  "canai remote", "remote wpcanai", "remote canai", "staging", "production", "remote site",
-  "mcp", "api key", "deploy template",
-  "translate", "translation", "translate the site", "i18n", "multilingual", "string translation", "native translation", "/canai-mcp translate",
-  "translate content", "translate cpt", "content translation",
-  "optimize production", "compile tailwindcss", "compile tailwind", "build css", "tailwind build",
-  "sideload", "upload", "upload image", "upload media", "media library", "attach image", "attachment", "image to media",
-  "blog post", "write a blog post", "write post", "wpcanai-write-post".
+  Use the CanAI MCP server as the only way to interact with a WordPress site's CanAI
+  templates, pages, settings, setup, diagnostics, translations, media, Tailwind builds,
+  and blog posts. Use for /canai-mcp, CanAI MCP/remote-site work, API keys, template
+  deployment, multilingual content, media uploads, and CanAI-authored posts. Never use
+  WP-CLI, raw REST/curl, or wp-content workspace edits for live site data; use the
+  configured wpcanai/* MCP tools. FluentSnippets work belongs to the separate opt-in
+  canai-yolo skill.
 metadata:
   author: canai
-  version: "1.24.0"
+  version: "1.25.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -290,7 +286,7 @@ Ability IDs use slashes; MCP tool names use **hyphens** (`wpcanai/read-meta` →
 
 - **Args:** `{ "title": string, "type": string, "html"?: string, "css"?: string, "js"?: string, "layout"?: int, "lang"?: string, "translation_of"?: int }` — `title` and `type` (template_type slug) required. `lang` sets the new post's Polylang language. `translation_of` is the source post id; when provided, the new template is merged into the source's translation group via `pll_save_post_translations` (preserves existing translations on the source).
 - **Returns:** `{ "post_id": int, "slug": string, "lang": string|null }`.
-- **Typed CPT templates (v1.24+).** A published `wpcanai_template` whose `template_type` term is `single-<post_type>` or `archive-<post_type>` claims that CPT's singular / archive rendering on the frontend — e.g. create one with type `single-service` to own the `service` detail page, `archive-service` for its archive. `single-post` (pre-seeded since 1.60.0) does the same for blog posts written in the WordPress editor: `{{ the_content(post.post_content) }}` inside a `prose` container, with `post.featured_image.*` available on typed `single-*` takeovers. Existence-gated: with no such template, CanAI falls through byte-identically to the theme. Pages keep their own meta path; WooCommerce products keep the WC block.
+- **Typed CPT templates (v1.24+).** A published `wpcanai_template` whose `template_type` term is `single-<post_type>` or `archive-<post_type>` claims that CPT's singular / archive rendering on the frontend — e.g. create one with type `single-service` to own the `service` detail page, `archive-service` for its archive. `single-post` (pre-seeded since 1.60.0) does the same for blog posts written in the WordPress editor: `{{ the_content(post.post_content) }}` inside a `prose` container, with `post.featured_image.*` available on typed `single-*` takeovers and `post.author.*` available since 1.68.15. Existence-gated: with no such template, CanAI falls through byte-identically to the theme. Pages keep their own meta path; WooCommerce products keep the WC block.
 
 ### `wpcanai-resolve-content-id`
 

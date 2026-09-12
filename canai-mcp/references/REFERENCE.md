@@ -74,7 +74,7 @@ Use these for **main-query** archives so URLs respect **pretty permalinks**, CPT
 {% set posts = wpcanai_get_posts_enriched({
   'post_type': 'post',
   'posts_per_page': 6,
-  'wpcanai_include': 'featured_image'
+  'wpcanai_include': 'featured_image,author'
 }) %}
 
 {# Query taxonomy terms #}
@@ -98,6 +98,8 @@ Use these for **main-query** archives so URLs respect **pretty permalinks**, CPT
 {{ media_url(media_id, 'full') }}        {# Media URL for an attachment and size #}
 {{ image_attrs(media_id, {}) }}          {# Image with src, alt #}
 {{ id_url(post_id) }}                    {# Permalink by ID #}
+{{ author_url(author_id) }}              {# Author's profile Website URL, or '' #}
+{{ author_posts_url(author_id) }}        {# WordPress author archive URL #}
 {{ post_url(post_id) }}                  {# Post permalink #}
 {{ term_url(term_id) }}                  {# Term archive URL #}
 {{ slug_url('shop') }}                   {# Page URL by slug #}
@@ -225,6 +227,31 @@ item.variation_label
 - **Tailwind config placement**: if you’re using CanAI’s Tailwind injection on `wp_head`, set `tailwind.config = {...}` *after* `{{ wp_head() }}` in the layout `<head>` so Tailwind is present before configuration runs.
 - **Design tokens**: a common pattern is defining CSS variables in layout `_canai_css` and mirroring them in `tailwind.config` (`colors.brand.*`, `fontFamily.*`) so template markup can stay purely utility-based.
 - **Lucide icons**: calling `lucide.createIcons()` in layout `_canai_js` is a good default; if a component injects new Lucide markup at runtime (e.g. mobile menu), call `lucide.createIcons()` again after DOM changes.
+
+### Post author enrichment
+
+Typed `single-*` takeovers automatically expose the queried post's author as `post.author`.
+Queries can opt into the same surface with `wpcanai_include: 'author'` (or a comma-separated
+combination such as `'featured_image,author'`). The value is a curated array, not a live
+`WP_User` object:
+
+```twig
+post.author.id
+post.author.display_name
+post.author.user_url       {# Website field from the WordPress user profile #}
+post.author.posts_url      {# WordPress author archive #}
+post.author.description
+post.author.avatar
+```
+
+Guard the surface for posts whose author account no longer exists. Profile text is escaped by
+Twig unless the template explicitly applies `|raw`.
+
+```twig
+{% if post.author is defined %}
+  <span>{{ t('By') }} <a href="{{ post.author.posts_url }}">{{ post.author.display_name }}</a></span>
+{% endif %}
+```
 
 ### Product Enrichment (via wpcanai_get_posts_enriched with wpcanai_include=featured_image)
 ```twig
