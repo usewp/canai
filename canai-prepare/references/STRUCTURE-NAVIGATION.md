@@ -28,6 +28,7 @@ Conversion changes only the comment delimiters. Preserve the type and label exac
 | Molecule | `Card`, `Form`, `Menu`, `Search` |
 | Organism | `Header`, `Footer`, `Navigation`, `Section`, `Sidebar` |
 | Template/page structure | `Layout`, `Container` |
+| Reusable UI pattern | `Accordion`, `Alert`, `Carousel`, `Dialog`, `Drawer`, `Steps`, `Tabs`, `Toast` |
 
 ## Required landmark mappings
 
@@ -93,5 +94,6 @@ The Twig form is a direct conversion:
 3. Keep the label human-readable and no longer than 60 characters.
 4. Describe the element's role on the page, not its implementation.
 5. Add navigation labels to useful components such as cards, forms, and buttons when they help a user jump through the template.
-6. Use `<!-- @dev Implementation note -->` in prepared HTML and `{# @dev Implementation note #}` in Twig for programming notes. Developer notes do not belong in the Structure metabox.
-7. Do not use `Section:`, decorative banners, internal service names, selectors, query details, or backend terminology as navigation labels.
+6. Use a reusable UI pattern type only for the complete component, not for its internal controls or panels.
+7. Use `<!-- @dev Implementation note -->` in prepared HTML and `{# @dev Implementation note #}` in Twig for programming notes. Developer notes do not belong in the Structure metabox.
+8. Do not use `Section:`, decorative banners, internal service names, selectors, query details, or backend terminology as navigation labels.

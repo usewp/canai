@@ -410,7 +410,7 @@ The authoritative, shared contract is [STRUCTURE-NAVIGATION.md](STRUCTURE-NAVIGA
 
 **CRITICAL**: Structure navigation uses the exact single-line form `{# Type / Short Label #}`, for example `{# Section / Hero #}`. Twig comments are stripped during rendering (zero output bloat), while the editor's Structure metabox displays only comments that follow this convention.
 
-The controlled Atomic Design vocabulary is: `Layout`, `Container`, `Header`, `Footer`, `Navigation`, `Section`, `Sidebar`, `Card`, `Form`, `Menu`, `Search`, `Button`, `Input`, `Icon`, and `Badge`. Keep the label at 60 characters or fewer. The type communicates the reusable UI role; the label identifies this instance.
+The controlled structure vocabulary is: `Layout`, `Container`, `Header`, `Footer`, `Navigation`, `Section`, `Sidebar`, `Card`, `Form`, `Menu`, `Search`, `Button`, `Input`, `Icon`, `Badge`, `Accordion`, `Alert`, `Carousel`, `Dialog`, `Drawer`, `Steps`, `Tabs`, and `Toast`. Keep the label at 60 characters or fewer. The type communicates the reusable UI role; the label identifies this instance. Use a reusable UI pattern type only for the complete component, not for its internal controls or panels.
 
 Landmark types are fixed: `<main>` → `Container`, `<section>` → `Section`, `<header>` → `Header`, `<footer>` → `Footer`, `<nav>` → `Navigation`, and `<aside>` → `Sidebar`. Put the navigation comment immediately before the opening tag. `wpcanai-scan` reports `missing_structure_comment` or `invalid_structure_comment` when this contract is not met.
 
@@ -552,7 +552,7 @@ Landmark types are fixed: `<main>` → `Container`, `<section>` → `Section`, `
 ### Comment Rules
 
 1. **Use the exact navigation grammar** `{# Type / Short Label #}` with one space around `/`
-2. **Use only the controlled type vocabulary** above; choose the component's Atomic Design role
+2. **Use only the controlled type vocabulary** above; choose the component's structure or reusable UI role
 3. **Match semantic landmarks to their fixed type** and place the comment immediately before the tag
 4. **Keep labels human-readable and at most 60 characters**: `{# Section / Hero #}`, `{# Button / Add to Cart #}`
 5. **Indent comments** to match the element nesting level they describe
