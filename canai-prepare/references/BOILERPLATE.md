@@ -20,10 +20,12 @@ Use this as the canonical structure for every generated page. Adjust `lang`, `ti
   <!-- WPCanAI-PREVIEW-LIBS:END -->
 </head>
 <body class="antialiased bg-white text-gray-900">
-  <!-- Section: Site header — maps to header component template "site header" in the main layout ({{ wpcanai_template('site-header') }}) -->
+  <!-- @dev Maps to the site-header component in the CanAI layout -->
+  <!-- Header / Site -->
   <header class="border-b border-gray-200">
     <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
       <a href="index.html" class="font-semibold">Site</a>
+      <!-- Navigation / Primary -->
       <nav class="flex gap-4" aria-label="Primary">
         <a href="index.html" class="text-gray-600 hover:text-gray-900">Home</a>
         <a href="about.html" class="text-gray-600 hover:text-gray-900">About</a>
@@ -31,16 +33,18 @@ Use this as the canonical structure for every generated page. Adjust `lang`, `ti
     </div>
   </header>
 
-  <!-- Section: Main page body — maps to this page’s _canai_html inside {{ page_content }} -->
+  <!-- @dev Maps to this page's _canai_html inside page_content -->
+  <!-- Container / Main Content -->
   <main id="main-content">
-    <!-- Section: Hero -->
+    <!-- Section / Hero -->
     <section class="mx-auto max-w-6xl px-4 py-16">
       <h1 class="text-4xl font-bold tracking-tight">Headline</h1>
       <p class="mt-4 text-lg text-gray-600">Supporting copy.</p>
     </section>
   </main>
 
-  <!-- Section: Site footer — maps to footer component template "site footer" in the main layout ({{ wpcanai_template('site-footer') }}) -->
+  <!-- @dev Maps to the site-footer component in the CanAI layout -->
+  <!-- Footer / Site -->
   <footer class="border-t border-gray-200 py-8">
     <div class="mx-auto max-w-6xl px-4 text-center text-sm text-gray-500">
       <p>&copy; Year Site Name</p>

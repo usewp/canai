@@ -406,6 +406,8 @@ pagination.per_page
 
 ## Twig Comment Convention
 
+The authoritative, shared contract is [STRUCTURE-NAVIGATION.md](STRUCTURE-NAVIGATION.md). The examples below apply that contract to common CanAI template shapes.
+
 **CRITICAL**: Structure navigation uses the exact single-line form `{# Type / Short Label #}`, for example `{# Section / Hero #}`. Twig comments are stripped during rendering (zero output bloat), while the editor's Structure metabox displays only comments that follow this convention.
 
 The controlled Atomic Design vocabulary is: `Layout`, `Container`, `Header`, `Footer`, `Navigation`, `Section`, `Sidebar`, `Card`, `Form`, `Menu`, `Search`, `Button`, `Input`, `Icon`, and `Badge`. Keep the label at 60 characters or fewer. The type communicates the reusable UI role; the label identifies this instance.

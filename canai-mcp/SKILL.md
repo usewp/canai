@@ -13,7 +13,7 @@ description: >
   "blog post", "write a blog post", "write post", "wpcanai-write-post".
 metadata:
   author: canai
-  version: "1.26.0"
+  version: "1.26.1"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -21,7 +21,7 @@ allowed-tools: "Read Grep Glob"
 
 You are an expert at working with **CanAI** through the **CanAI MCP server** only (WordPress Abilities API + mcp-adapter). The WordPress site may be remote **or** local; the **only** supported way to read or change that site’s CanAI-related data from this skill is `**WP_API_URL` in the user’s MCP config** pointing at the **full** MCP endpoint for that site (`{site}/wp-json/mcp/wpcanai`).
 
-See [references/REFERENCE.md](references/REFERENCE.md) for CanAI-registered Twig functions (plus the vendored Twig version for built-ins), WooCommerce context, and comment conventions (same as local CanAI).
+See [references/REFERENCE.md](references/REFERENCE.md) for CanAI-registered Twig functions (plus the vendored Twig version for built-ins) and WooCommerce context. See [references/STRUCTURE-NAVIGATION.md](references/STRUCTURE-NAVIGATION.md) for the shared Atomic Design navigation contract.
 
 ## MCP is the transport — no shell, no file edits
 
@@ -178,7 +178,7 @@ When converting a static HTML file (e.g. `index.html`) into CanAI via MCP tools:
 4. **Page body vs layout:** put `<main>` / primary page markup in a **`page`** created with `wpcanai-create-page` (set `layout` to the layout template ID) — not as a `wpcanai_template` of type `layout`. Layout templates are the document shell (`{{ page_content }}`, header/footer includes); page bodies are not `template_type` `layout`.
 5. **Auto-detect and sideload local media BEFORE writing HTML.** Static site folders almost always reference local assets (`./images/hero.jpg`, `assets/logo.svg`, `videos/intro.mp4`, favicons, OG images, CSS `url(...)` backgrounds). If you push the HTML/CSS as-is, every one of those references 404s on the live site. Run the **Static-site asset sideload pre-pass** (next subsection) before any `wpcanai-create-page` / `wpcanai-write-meta` call so the HTML you write resolves media **by ID** through `{{ image_attrs(...) }}` / `{{ media_url(...) }}`, not relative paths or pinned upload URLs.
 6. **Rewrite internal links to CanAI helpers** (instance of the principle above). Static sources keep `<a href="about.html">` / `href="/about">`; these break on the live site (wrong base path, non-permalink, moved slugs). Rewrite each internal link to the matching helper: cross-page links → `{{ slug_url('<slug>') }}` (or `{{ id_url(<id>) }}` when the target page id is known from `wpcanai-create-page`); term / archive links → `{{ term_url(<term_id>) }}`. **Leave untouched:** external / absolute (`https://other.com`), protocol-relative (`//cdn…`), and anchor-only (`#section`) links. Report the rewrites in the manifest.
-7. **Normalize section comments to Twig navigation labels.** Convert every HTML nav comment that `canai-prepare` emitted into the exact form `{# Type / Short Label #}` — for example, `{# Section / Hero #}`. **Never** carry HTML nav comments into `_canai_html` (they pollute rendered output and are view-source reconnaissance). Guarantee every landmark has its matching type immediately before the opening tag: `<main>` → `Container`, `<section>` → `Section`, `<header>` → `Header`, `<footer>` → `Footer`, `<nav>` → `Navigation`, `<aside>` → `Sidebar`. The full controlled Atomic Design vocabulary is in [references/REFERENCE.md](references/REFERENCE.md) (**Twig Comment Convention**). Ordinary implementation notes use `{# @dev … #}` and stay out of the editor's Structure outline. A canai-replicate `pushprep` artifact may use the older convention; normalize it before writing.
+7. **Normalize section comments to Twig navigation labels.** Convert every HTML nav comment that `canai-prepare` emitted into the exact form `{# Type / Short Label #}` — for example, `{# Section / Hero #}`. **Never** carry HTML nav comments into `_canai_html` (they pollute rendered output and are view-source reconnaissance). Guarantee every landmark has its matching type immediately before the opening tag: `<main>` → `Container`, `<section>` → `Section`, `<header>` → `Header`, `<footer>` → `Footer`, `<nav>` → `Navigation`, `<aside>` → `Sidebar`. Follow [references/STRUCTURE-NAVIGATION.md](references/STRUCTURE-NAVIGATION.md) for the controlled vocabulary and exact conversion. Ordinary implementation notes use `{# @dev … #}` and stay out of the editor's Structure outline. A canai-replicate `pushprep` artifact may use the older convention; normalize it before writing.
 8. **After any meta write, run `wpcanai-scan` and clear content findings before claiming done.** Treat `missing_structure_comment`, `invalid_structure_comment`, `leaky_comment`, and `leaky_secret` like broken layouts: add or correct Twig navigation labels, convert HTML/`/* */` comments to Twig, and remove secret-shaped literals from meta. For a full-site pass, use the **Comment / secret security sweep** recipe below.
 
 ### Blog posts (not CanAI pages)

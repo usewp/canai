@@ -9,7 +9,7 @@ description: >
   "spa to html", "pwa to html", "static html", "single html", "per-page html", "convert design to html".
 metadata:
   author: canai
-  version: "1.5.0"
+  version: "1.6.0"
 allowed-tools: Bash Read Write Edit Grep Glob
 ---
 
@@ -19,12 +19,12 @@ Generate **recommended static markup** for later import into **CanAI**: one **co
 
 **Assume the agent runs in the user’s own folder** (not necessarily the WordPress root). This skill focuses on **CanAI-compatible, integration-ready** single-HTML output only — no requirement for WP-CLI, `.env.wplocal`, or writing under `wp-content/`.
 
-See [references/BOILERPLATE.md](references/BOILERPLATE.md) for the canonical skeleton, Alpine/Lucide patterns, and `pages.json` format.
+See [references/BOILERPLATE.md](references/BOILERPLATE.md) for the canonical skeleton, Alpine/Lucide patterns, and `pages.json` format. See [references/STRUCTURE-NAVIGATION.md](references/STRUCTURE-NAVIGATION.md) for the shared Atomic Design navigation contract used by both `canai-prepare` and `canai-mcp`.
 
 ## Purpose
 
 - Output goes into the **current working directory** (or a user-specified output path). Files use **relative** asset paths so the project folder is self-contained and portable — it can later be copied into WordPress uploads, served locally, or handed off to `**canai-mcp**` for import.
-- Files are **CanAI-shaped**: section comments, semantic regions, and class names that map cleanly to Twig + `_canai_css` / `_canai_js` later.
+- Files are **CanAI-shaped**: Atomic Design navigation comments, semantic regions, and class names that map cleanly to Twig + `_canai_css` / `_canai_js` later.
 
 ## Tech stack (strict)
 
@@ -105,7 +105,7 @@ Default: write under `**./<project-slug>/**` in the **current working directory*
 2. Infer layout: header, hero, sections, footer; typography scale; spacing; color **roles** (map to Tailwind palette + optional `tailwind.config` extend in a small inline script **only if needed** — prefer standard utilities).
 3. Run the **Image framing preflight** below before choosing image-container classes.
 4. Emit **one `.html` file per distinct full-page design** the user asked for.
-5. Label sections with HTML comments: `<!-- Section: Hero -->`, `<!-- Section: Features -->`, … (these become `{# Section: … #}` in Twig).
+5. Label navigable elements with the exact HTML form `<!-- Type / Short Label -->`, such as `<!-- Section / Hero -->`, `<!-- Card / Feature -->`, and `<!-- Button / Get Started -->`. Follow the controlled vocabulary in [references/STRUCTURE-NAVIGATION.md](references/STRUCTURE-NAVIGATION.md).
 6. Save extracted raster assets into `assets/`; reference them relatively. Use stable filenames; optionally list them in a short `README.txt` in the project folder.
 
 ## Image framing preflight
@@ -135,7 +135,8 @@ Example:
 
 ## CanAI compatibility checklist
 
-- Section comments use a consistent `<!-- Section: Name -->` pattern.
+- Navigation comments use the exact `<!-- Type / Short Label -->` grammar and controlled vocabulary.
+- Every `<main>`, `<section>`, `<header>`, `<footer>`, `<nav>`, and `<aside>` has its required matching type immediately before the opening tag.
 - No `<style>` in body content; no inline `style=""` unless unavoidable (prefer utilities).
 - Scripts: preview libs inside `WPCanAI-PREVIEW-LIBS`; page logic below, outside those markers.
 - Images: framing preflight completed; descriptive `alt`, intrinsic `width`/`height`, responsive aspect container, and `loading="lazy"` below the fold.
@@ -150,9 +151,9 @@ Example:
 4. **Import:** Use `**canai-mcp**` (convert HTML → Twig, write `_canai_html` / `_canai_css` / `_canai_js`) — follow that skill for storage rules (e.g. no `post_content` for CanAI bodies).
 5. **Strip** `WPCanAI-PREVIEW-LIBS` blocks when pasting into templates (avoid duplicating what CanAI already injects).
 6. **Images become ID-based helpers at import, not here.** Prepared `.html` keeps **relative** `src="assets/…"` so the folder previews in a plain browser. On import, `canai-mcp` sideloads each asset and rewrites `<img>` → `{{ image_attrs(id, 'src,alt') }}` (and other surfaces → `{{ media_url(id, size) }}`) by media **id** — so keep the prepared markup clean and swappable: one `<img>` per asset, a descriptive `alt`, `width`/`height` when known, and no inline `style` that would fight the helper output.
-7. **Section comments map 1:1 on import:** every `<!-- Section: X -->` you emit is converted to `{# Section: X #}` Twig (HTML nav comments are never carried into `_canai_html`). Keep the `Section:` prefix and one comment per top-level landmark so the editor's structure menu populates cleanly.
+7. **Navigation comments map 1:1 on import:** `<!-- Type / Short Label -->` becomes `{# Type / Short Label #}`. Preserve the type and label exactly; only replace the delimiters. Follow [references/STRUCTURE-NAVIGATION.md](references/STRUCTURE-NAVIGATION.md), including the required landmark mappings, so `wpcanai-scan` passes and the editor's Structure metabox stays useful.
 8. **Keep copy translation-ready.** On native-i18n target sites, downstream import turns every user-facing string into a `{{ t('…') }}` translation source. Write copy so each string is a clean, self-contained phrase with **no markup inside it** — `<strong>Best seller</strong>` (wrap the text, not the tag), never a string that bakes in HTML. This mirrors the image → `image_attrs()` and section-comment handoffs.
-9. **WooCommerce pages** — for shop / cart / checkout pages, emit the cart/checkout region as a single clearly-commented placeholder section (e.g. `<!-- Section: Cart — replaced by wc_cart_block() on import -->`) rather than hand-building line items. Downstream (`canai-mcp`) swaps in the `wc_*` Twig helpers; do not wire helper markup here.
+9. **WooCommerce pages** — for shop / cart / checkout pages, emit the cart/checkout region as one navigable placeholder such as `<!-- Section / Cart -->`, with any implementation instruction in a separate `<!-- @dev Replace with wc_cart_block() on import -->` comment. Downstream (`canai-mcp`) swaps in the `wc_*` Twig helpers; do not wire helper markup here.
 
 ## Related skills
 
