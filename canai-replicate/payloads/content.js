@@ -212,10 +212,13 @@
     };
     const isRenderedEl = (el) => {
       const cs = getComputedStyle(el);
+      if (cs.display === "none" || cs.visibility === "hidden" || parseFloat(cs.opacity) === 0) return false;
       const r = el.getBoundingClientRect();
-      return cs.display !== "none" && cs.visibility !== "hidden" && r.width > 0 && r.height > 0;
+      return r.width > 0 && r.height > 0;
     };
-    const buildVideoModel = ({ tag, src, poster, title, autoplay, width, height, rendered }) => {
+    const buildVideoModel = ({
+      tag, src, poster = null, title = null, autoplay = false, width = null, height = null, rendered = true,
+    } = {}) => {
       if (!src || !rendered) return null;
       return {
         kind: videoKindForSrc(tag, src), src, poster: poster || null, title: title || null,
