@@ -23,6 +23,12 @@ const PAGE_MODE_PROMPT_TEMPLATE = path.resolve(
   new URL("..", import.meta.url).pathname,
   "prompts/transform-page.md",
 );
+// Wireframe objective — low-fidelity static draft, fixed neutral palette,
+// no DESIGN.md. Inline chrome + dual full-page refs, same as pixel.
+const WIREFRAME_PROMPT_TEMPLATE = path.resolve(
+  new URL("..", import.meta.url).pathname,
+  "prompts/transform-wireframe.md",
+);
 
 // Which page prompt each objective authors against. `styled` is the classic
 // full-site prompt (Twig chrome includes); `pixel` is the page-mode static
@@ -31,6 +37,7 @@ const PAGE_MODE_PROMPT_TEMPLATE = path.resolve(
 export const PROMPT_BY_OBJECTIVE = {
   styled: PROMPT_TEMPLATE,
   pixel: PAGE_MODE_PROMPT_TEMPLATE,
+  wireframe: WIREFRAME_PROMPT_TEMPLATE,
 };
 
 // Objectives whose page output inlines header/footer (static draft that opens

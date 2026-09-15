@@ -1334,7 +1334,7 @@ test("prepareTransformBundles: objective 'structure' folds a repeating type's sa
   }
 });
 
-test("prepareTransformBundles: an objective with no page prompt fails loud", async () => {
+test("prepareTransformBundles: an unknown objective fails loud", async () => {
   const { runDir, cleanup } = await mkRun("example.com", {
     "DESIGN.md": "# DESIGN.md",
     "pages.json": pagesJson(["https://example.com/about/"]),
@@ -1342,15 +1342,36 @@ test("prepareTransformBundles: an objective with no page prompt fails loud", asy
   try {
     await stageCapture(runDir, "about", { main: [] });
     await assert.rejects(
-      withSilencedStderr(() =>
-        prepareTransformBundles({ site: "example.com", runsDir: path.dirname(runDir), objective: "wireframe" }),
-      ),
-      /objective "wireframe" has no page prompt/,
-    );
-    await assert.rejects(
       prepareTransformBundles({ site: "example.com", runsDir: path.dirname(runDir), objective: "hifi" }),
       /invalid objective "hifi"/,
     );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("prepareTransformBundles: objective 'wireframe' uses transform-wireframe.md, inline chrome, no DESIGN.md, dual full-page required", async () => {
+  const { runDir, cleanup } = await mkRun("example.com", {
+    "pages.json": pagesJson(["https://example.com/pricing/"]),
+  });
+  try {
+    await stageCapture(runDir, "pricing", { main: [] });
+    await assert.rejects(
+      withSilencedStderr(() => prepareTransformBundles({ site: "example.com", runsDir: path.dirname(runDir), objective: "wireframe" })),
+      /wireframe: pricing is missing fullpage-desktop\.png/,
+    );
+    await writeFile(path.join(runDir, "captures", "pricing", "fullpage-desktop.png"), "png");
+    await writeFile(path.join(runDir, "captures", "pricing", "fullpage-mobile.png"), "png");
+    const r = await withSilencedStderr(() =>
+      prepareTransformBundles({ site: "example.com", runsDir: path.dirname(runDir), objective: "wireframe" }),
+    )();
+    assert.equal(r.objective, "wireframe");
+    assert.equal(r.chrome, null);
+    const prompt = await readFile(r.bundles[0].promptPath, "utf8");
+    assert.match(prompt, /# Task: page → low-fidelity wireframe/);
+    assert.match(prompt, /\*\*Mode\*\*: wireframe/);
+    assert.doesNotMatch(prompt, /Site-wide design system/);
+    assert.match(prompt, /layout-recipes\.md/);
   } finally {
     await cleanup();
   }

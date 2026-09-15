@@ -9,7 +9,7 @@ import { discover } from "../src/discover.mjs";
 import { classify } from "../src/classify.mjs";
 import { prepareDesignBundle } from "../src/designmd.mjs";
 import { prepareContentModelBundle } from "../src/contentmodel.mjs";
-import { prepareTransformBundles } from "../src/transform.mjs";
+import { prepareTransformBundles, INLINE_CHROME_OBJECTIVES } from "../src/transform.mjs";
 import { preparePushArtifacts } from "../src/pushprep.mjs";
 import { verifyScore, verifyBundle } from "../src/verify.mjs";
 import { verifyStructure } from "../src/verifyStructure.mjs";
@@ -287,7 +287,7 @@ async function main() {
       }
       if (!runConfig) runConfig = await requireRunConfig(runDir, { site });
       const objective = resolveObjective({ runConfig, pageModeFlag });
-      const pageMode = objective === "pixel";
+      const pageMode = INLINE_CHROME_OBJECTIVES.has(objective);
       const r = await prepareTransformBundles({ site, runsDir, only, objective });
       if (r.chrome) {
         stderr.write(
