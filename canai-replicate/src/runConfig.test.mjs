@@ -135,3 +135,50 @@ test("CLI: `replica objective <site>` with no run.json exits non-zero and lists 
     await cleanup();
   }
 });
+
+test("CLI: `replica capture <site> --page <url>` seeds run.json (objective=pixel, scope=page) when absent", async () => {
+  const { root, runDir, cleanup } = await tmpRun();
+  try {
+    const runs = path.join(root, "runs");
+    const r = await execFileP("node", [
+      BIN,
+      "capture",
+      "example.com",
+      "--page",
+      "https://example.com/pricing",
+      "--runs",
+      runs,
+    ]);
+    assert.match(r.stderr, /run\.json seeded: objective=pixel scope=page/);
+    const onDisk = JSON.parse(await readFile(runConfigPath(runDir), "utf8"));
+    assert.equal(onDisk.objective, "pixel");
+    assert.equal(onDisk.scope, "page");
+    assert.equal(onDisk.setBy, "capture-page");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("CLI: `replica capture <site> --page <url>` leaves an existing run.json untouched", async () => {
+  const { root, runDir, cleanup } = await tmpRun();
+  try {
+    const runs = path.join(root, "runs");
+    await writeRunConfig(runDir, { objective: "styled", scope: "site" });
+    const r = await execFileP("node", [
+      BIN,
+      "capture",
+      "example.com",
+      "--page",
+      "https://example.com/pricing",
+      "--runs",
+      runs,
+    ]);
+    assert.doesNotMatch(r.stderr, /run\.json seeded/);
+    const onDisk = JSON.parse(await readFile(runConfigPath(runDir), "utf8"));
+    assert.equal(onDisk.objective, "styled");
+    assert.equal(onDisk.scope, "site");
+    assert.equal(onDisk.setBy, "user");
+  } finally {
+    await cleanup();
+  }
+});

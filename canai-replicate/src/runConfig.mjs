@@ -2,8 +2,9 @@
 // for (structure / wireframe / styled / pixel) so every later stage —
 // transform, verify, verify-page, handoff-page — selects its prompt and gate
 // from one place instead of a per-command flag that a `--only` resume can
-// forget. The CLI refuses to transform/verify without this file; library
-// functions keep a default so tests and programmatic callers still work.
+// forget. The CLI will refuse to transform/verify without this file (wired in
+// a later task); library functions keep a default so tests and programmatic
+// callers still work.
 
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
@@ -39,7 +40,12 @@ export async function readRunConfig(runDir) {
     if (e && e.code === "ENOENT") return null;
     throw e;
   }
-  const config = JSON.parse(raw);
+  let config;
+  try {
+    config = JSON.parse(raw);
+  } catch (e) {
+    throw new Error(`${runConfigPath(runDir)}: invalid JSON — ${e.message}`);
+  }
   assertObjective(config.objective);
   return config;
 }
