@@ -53,7 +53,7 @@ function withSilencedStderr(fn) {
     const original = process.stderr.write.bind(process.stderr);
     process.stderr.write = () => true;
     try {
-      await fn();
+      return await fn();
     } finally {
       process.stderr.write = original;
     }
@@ -1210,6 +1210,87 @@ test("prepareTransformBundles: pageMode fails loud when fullpage PNGs are missin
         pageMode: true,
       }),
       /fullpage-desktop\.png|fullpage-mobile\.png|re-run capture --page/,
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+// --- Objective plumbing (run.json ladder) ----------------------------------
+
+test("prepareTransformBundles: objective 'pixel' behaves exactly like pageMode: true", async () => {
+  const { runDir, cleanup } = await mkRun("example.com", {
+    "DESIGN.md": "# DESIGN.md",
+    "pages.json": pagesJson(["https://example.com/pricing/"]),
+  });
+  try {
+    await stageCapture(runDir, "pricing", { main: [] });
+    await writeFile(path.join(runDir, "captures", "pricing", "fullpage-desktop.png"), "png");
+    await writeFile(path.join(runDir, "captures", "pricing", "fullpage-mobile.png"), "png");
+    const r = await withSilencedStderr(() =>
+      prepareTransformBundles({ site: "example.com", runsDir: path.dirname(runDir), objective: "pixel" }),
+    )();
+    assert.equal(r.objective, "pixel");
+    assert.equal(r.chrome, null);
+    assert.equal(r.count, 1);
+    const prompt = await readFile(r.bundles[0].promptPath, "utf8");
+    assert.match(prompt, /\*\*Mode\*\*: page-mode/);
+    assert.match(prompt, /Site-wide design system/);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("prepareTransformBundles: default objective is 'styled' and is echoed on the result", async () => {
+  const { runDir, cleanup } = await mkRun("example.com", {
+    "DESIGN.md": "# DESIGN.md",
+    "pages.json": pagesJson(["https://example.com/about/"]),
+  });
+  try {
+    await stageCapture(runDir, "about", { main: [] });
+    const r = await withSilencedStderr(() =>
+      prepareTransformBundles({ site: "example.com", runsDir: path.dirname(runDir) }),
+    )();
+    assert.equal(r.objective, "styled");
+    assert.equal(r.count, 1);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("prepareTransformBundles: objective wins over a contradicting pageMode flag", async () => {
+  const { runDir, cleanup } = await mkRun("example.com", {
+    "DESIGN.md": "# DESIGN.md",
+    "pages.json": pagesJson(["https://example.com/about/"]),
+  });
+  try {
+    await stageCapture(runDir, "about", { main: [] });
+    const r = await withSilencedStderr(() =>
+      prepareTransformBundles({ site: "example.com", runsDir: path.dirname(runDir), pageMode: true, objective: "styled" }),
+    )();
+    assert.equal(r.objective, "styled");
+    assert.ok(r.chrome, "styled builds the shared chrome bundle");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("prepareTransformBundles: an objective with no page prompt fails loud", async () => {
+  const { runDir, cleanup } = await mkRun("example.com", {
+    "DESIGN.md": "# DESIGN.md",
+    "pages.json": pagesJson(["https://example.com/about/"]),
+  });
+  try {
+    await stageCapture(runDir, "about", { main: [] });
+    await assert.rejects(
+      withSilencedStderr(() =>
+        prepareTransformBundles({ site: "example.com", runsDir: path.dirname(runDir), objective: "wireframe" }),
+      ),
+      /objective "wireframe" has no page prompt/,
+    );
+    await assert.rejects(
+      prepareTransformBundles({ site: "example.com", runsDir: path.dirname(runDir), objective: "hifi" }),
+      /invalid objective "hifi"/,
     );
   } finally {
     await cleanup();

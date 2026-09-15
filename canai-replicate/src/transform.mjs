@@ -10,6 +10,7 @@ import { readFile, writeFile, mkdir, access } from "node:fs/promises";
 import path from "node:path";
 import { urlToSlug, matchesOnly } from "./slug.mjs";
 import { pickRepresentativeCaptureUrl } from "./siteChrome.mjs";
+import { assertObjective } from "./runConfig.mjs";
 
 const PROMPT_TEMPLATE = path.resolve(
   new URL("..", import.meta.url).pathname,
@@ -21,6 +22,24 @@ const PAGE_MODE_PROMPT_TEMPLATE = path.resolve(
   new URL("..", import.meta.url).pathname,
   "prompts/transform-page.md",
 );
+
+// Which page prompt each objective authors against. `styled` is the classic
+// full-site prompt (Twig chrome includes); `pixel` is the page-mode static
+// draft. Task 7 adds `wireframe`; `structure` never needs a prompt (its
+// deliverable is written mechanically from content.json — see structureDoc.mjs).
+export const PROMPT_BY_OBJECTIVE = {
+  styled: PROMPT_TEMPLATE,
+  pixel: PAGE_MODE_PROMPT_TEMPLATE,
+};
+
+// Objectives whose page output inlines header/footer (static draft that opens
+// under file://) instead of the shared Twig chrome includes.
+export const INLINE_CHROME_OBJECTIVES = new Set(["pixel", "wireframe"]);
+// Objectives whose drafts need dual full-page captures for their gate.
+export const DUAL_FULLPAGE_OBJECTIVES = new Set(["pixel", "wireframe"]);
+// Objectives that read DESIGN.md. wireframe uses a fixed neutral palette;
+// structure emits no HTML at all.
+export const DESIGN_MD_OBJECTIVES = new Set(["styled", "pixel"]);
 
 async function exists(p) {
   try {
@@ -114,7 +133,13 @@ After writing, confirm the file exists. Do not write anything else.
 `;
 }
 
-function buildPageModePrompt({ site, slug, url, captureDir, designMdPath, outputPath, promptTemplate }) {
+function buildPageModePrompt({ site, slug, url, captureDir, designMdPath, outputPath, promptTemplate, objective = "pixel" }) {
+  const modeLabel = objective === "pixel"
+    ? "page-mode (static fidelity draft — inline chrome, no Twig includes)"
+    : `${objective} (static draft — inline chrome, no Twig includes)`;
+  const designLine = objective === "pixel"
+    ? `- Site-wide design system: \`${designMdPath}\` — if this file is missing, create DESIGN.md first via a one-page design pass before transforming\n`
+    : "";
   return `${promptTemplate}
 
 ---
@@ -124,7 +149,7 @@ function buildPageModePrompt({ site, slug, url, captureDir, designMdPath, output
 - **Site**: ${site}
 - **URL**: ${url}
 - **Slug**: ${slug}
-- **Mode**: page-mode (static fidelity draft — inline chrome, no Twig includes)
+- **Mode**: ${modeLabel}
 
 ## Inputs (read these)
 
@@ -136,8 +161,7 @@ function buildPageModePrompt({ site, slug, url, captureDir, designMdPath, output
 - Section indexes: \`${path.join(captureDir, "sections-desktop.json")}\`, \`${path.join(captureDir, "sections-mobile.json")}\`, compat \`${path.join(captureDir, "sections.json")}\`
 - Structured content (USE THIS COPY VERBATIM; inline header/footer from here): \`${path.join(captureDir, "content.json")}\`
 - Asset URLs: \`${path.join(captureDir, "assets.json")}\`
-- Site-wide design system: \`${designMdPath}\` — if this file is missing, create DESIGN.md first via a one-page design pass before transforming
-- UX pattern inventory: \`${path.join(captureDir, "ux.json")}\` — reproduce each pattern with its recipe from \`${ALPINE_RECIPES}\`
+${designLine}- UX pattern inventory: \`${path.join(captureDir, "ux.json")}\` — reproduce each pattern with its recipe from \`${ALPINE_RECIPES}\`
 - Layout composition recipes (classify each section — esp. hero — before writing HTML): \`${LAYOUT_RECIPES}\`
 - Detected libraries (hints only — never CDN-include): \`${path.join(captureDir, "libs.json")}\`
 
@@ -319,10 +343,18 @@ function resolveSlugClaims(oneOffs, types) {
   return { droppedArchives, droppedPages };
 }
 
-export async function prepareTransformBundles({ site, runsDir = "runs", only = null, pageMode = false }) {
+export async function prepareTransformBundles({
+  site,
+  runsDir = "runs",
+  only = null,
+  pageMode = false,
+  objective = null,
+}) {
+  const resolved = assertObjective(objective ?? (pageMode ? "pixel" : "styled"));
+  const inlineChrome = INLINE_CHROME_OBJECTIVES.has(resolved);
   const runDir = path.join(runsDir, site);
   const designMdPath = path.resolve(runDir, "DESIGN.md");
-  if (!(await exists(designMdPath))) {
+  if (DESIGN_MD_OBJECTIVES.has(resolved) && !(await exists(designMdPath))) {
     throw new Error(`DESIGN.md not found at ${designMdPath}. Run designmd first.`);
   }
 
@@ -337,7 +369,7 @@ export async function prepareTransformBundles({ site, runsDir = "runs", only = n
   try {
     const pt = JSON.parse(await readFile(path.join(runDir, "pagetypes.json"), "utf8"));
     oneOffs = pt.pages.map((p) => p.url);
-    types = pageMode ? [] : pt.types.filter((t) => t.kind !== "page");
+    types = inlineChrome ? [] : pt.types.filter((t) => t.kind !== "page");
     oneOffs.push(...pt.types.filter((t) => t.kind === "page").flatMap((t) => t.members));
     chromeSource = pt;
   } catch {
@@ -347,7 +379,11 @@ export async function prepareTransformBundles({ site, runsDir = "runs", only = n
     chromeSource = { pages: pagesJson.pages, types: [] };
   }
 
-  const pagePrompt = await readFile(pageMode ? PAGE_MODE_PROMPT_TEMPLATE : PROMPT_TEMPLATE, "utf8");
+  const pagePromptPath = PROMPT_BY_OBJECTIVE[resolved];
+  if (resolved !== "structure" && !pagePromptPath) {
+    throw new Error(`transform: objective "${resolved}" has no page prompt`);
+  }
+  const pagePrompt = pagePromptPath ? await readFile(pagePromptPath, "utf8") : null;
   const pagesOutDir = path.resolve(runDir, "output", "pages");
   const templatesOutDir = path.resolve(runDir, "output", "templates");
   await mkdir(pagesOutDir, { recursive: true });
@@ -374,7 +410,7 @@ export async function prepareTransformBundles({ site, runsDir = "runs", only = n
   // a plain run always attempts it), it just lives in its own slot.
   // Page-mode drafts inline chrome for local verify — skip entirely.
   let chrome = null;
-  if (!pageMode && matchesOnly(only, { typeName: "chrome" })) {
+  if (!inlineChrome && matchesOnly(only, { typeName: "chrome" })) {
     const repUrl = pickRepresentativeCaptureUrl(chromeSource);
     if (!repUrl) {
       process.stderr.write(`  ! skipping site chrome: no page or type to pick a representative capture from\n`);
@@ -421,20 +457,20 @@ export async function prepareTransformBundles({ site, runsDir = "runs", only = n
       process.stderr.write(`  ! skipping ${slug}: no capture\n`);
       continue;
     }
-    if (pageMode) {
+    if (DUAL_FULLPAGE_OBJECTIVES.has(resolved)) {
       const desktopFull = path.join(captureDir, "fullpage-desktop.png");
       const mobileFull = path.join(captureDir, "fullpage-mobile.png");
       if (!(await exists(desktopFull)) || !(await exists(mobileFull))) {
         throw new Error(
-          `page-mode: ${slug} is missing fullpage-desktop.png and/or fullpage-mobile.png under ${captureDir} — re-run capture --page <url>`,
+          `${resolved}: ${slug} is missing fullpage-desktop.png and/or fullpage-mobile.png under ${captureDir} — re-run capture --page <url>`,
         );
       }
     }
     const bundleDir = path.resolve(runDir, ".transform", slug);
     await mkdir(bundleDir, { recursive: true });
     const outputPath = path.resolve(pagesOutDir, slug + ".html");
-    const prompt = pageMode
-      ? buildPageModePrompt({ site, slug, url, captureDir, designMdPath, outputPath, promptTemplate: pagePrompt })
+    const prompt = inlineChrome
+      ? buildPageModePrompt({ site, slug, url, captureDir, designMdPath, outputPath, promptTemplate: pagePrompt, objective: resolved })
       : buildPrompt({ site, slug, url, captureDir, designMdPath, outputPath, promptTemplate: pagePrompt });
     const promptPath = path.join(bundleDir, "PROMPT.md");
     await writeFile(promptPath, prompt);
@@ -525,12 +561,12 @@ export async function prepareTransformBundles({ site, runsDir = "runs", only = n
   // Page-mode always needs at least one page capture (from --only or the
   // available one-off worklist) — a zero-bundle page-mode run is an error
   // even without --only (unlike full-site, which can still return chrome).
-  if (pageMode && bundles.length === 0) {
+  if (inlineChrome && bundles.length === 0) {
     throw new Error(
       only
         ? `no pages or types match --only ${only}`
-        : `page-mode: no capture available — pass --only <slug> or capture a page first`,
+        : `${resolved}: no capture available — pass --only <slug> or capture a page first`,
     );
   }
-  return { site, count: bundles.length, bundles, chrome };
+  return { site, count: bundles.length, bundles, chrome, objective: resolved };
 }

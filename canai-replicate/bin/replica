@@ -2,7 +2,7 @@
 import { argv, exit, stderr } from "node:process";
 import { pathToFileURL } from "node:url";
 import path from "node:path";
-import { readRunConfig, writeRunConfig, requireRunConfig, runConfigPath, OBJECTIVES } from "../src/runConfig.mjs";
+import { readRunConfig, writeRunConfig, requireRunConfig, runConfigPath, OBJECTIVES, resolveObjective } from "../src/runConfig.mjs";
 import { seedPageModeWorklist } from "../src/pageCapture.mjs";
 import { urlToSlug } from "../src/slug.mjs";
 import { discover } from "../src/discover.mjs";
@@ -273,9 +273,17 @@ async function main() {
     }
     case "transform": {
       const site = args._[0];
-      if (!site) throw new Error("usage: transform <site> [--page-mode] [--only <slug>]");
-      const pageMode = !!args["page-mode"];
-      const r = await prepareTransformBundles({ site, runsDir, only, pageMode });
+      if (!site) throw new Error("usage: transform <site> [--only <slug>]  (objective comes from run.json; --page-mode = pixel alias)");
+      const runDir = path.join(runsDir, site);
+      const pageModeFlag = !!args["page-mode"];
+      let runConfig = await readRunConfig(runDir);
+      if (!runConfig && pageModeFlag) {
+        ({ config: runConfig } = await writeRunConfig(runDir, { objective: "pixel", scope: "page", setBy: "page-mode-flag" }));
+      }
+      if (!runConfig) runConfig = await requireRunConfig(runDir, { site });
+      const objective = resolveObjective({ runConfig, pageModeFlag });
+      const pageMode = objective === "pixel";
+      const r = await prepareTransformBundles({ site, runsDir, only, objective });
       if (r.chrome) {
         stderr.write(
           `  chrome (site-wide header/footer, from ${r.chrome.sourceCapture})\n` +
@@ -284,10 +292,10 @@ async function main() {
         );
       }
       const transformNothing = transformProducedNothing(r.count, !!r.chrome);
-      const modeNote = pageMode ? " (page-mode)" : "";
+      const modeNote = ` (objective: ${objective})`;
       stderr.write(`${transformNothing ? "✗" : "✓"} ${r.count} transform bundle(s) ready${modeNote}:\n`);
       for (const b of r.bundles) {
-        stderr.write(`  ${b.slug}\n    prompt: ${b.promptPath}\n    output: ${b.outputPath}\n`);
+        stderr.write(`  ${b.slug}\n${b.promptPath ? `    prompt: ${b.promptPath}\n` : ""}    output: ${b.outputPath}\n`);
         if (b.archiveOutputPath) {
           stderr.write(`    archive output: ${b.archiveOutputPath}\n`);
         }
