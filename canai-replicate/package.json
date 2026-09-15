@@ -1,6 +1,6 @@
 {
   "name": "replica",
-  "version": "4.0.0",
+  "version": "4.1.0",
   "description": "Replicate a live website as semantic single-HTML-per-page files for canai-prepare → WPCanAI. Includes page mode for high-fidelity single-URL replication.",
   "type": "module",
   "private": true,

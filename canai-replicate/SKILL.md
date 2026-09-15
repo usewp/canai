@@ -1,36 +1,20 @@
 ---
 name: canai-replicate
 description: >
-  Replicate an existing live website — multi-page, semantically — into the
-  canai-prepare single-HTML-per-page format using the replica pipeline.
-  Discover pages → classify into page types (with a review gate that
-  confirms WooCommerce is real before keeping any woo:* kind) → capture
-  samples (full-page + per-section screenshots, structured content, style
-  tokens, UX inventory — each URL is 2xx-checked before its capture is
-  accepted) → extract a site-wide DESIGN.md → write a CONTENT-MODEL.md
-  handoff (CPTs/custom fields via Pods or Easy Code Manager, both fully
-  supported) → transform each page type into a reusable Twig template and
-  each one-off page into a self-contained HTML file, all sharing one
-  site-wide header/footer partial driven by real WordPress menus instead of
-  N independently-drifting inlined copies → convert every generated file
-  into push-ready JSON artifacts (pushprep, avoiding CanAI's
-  double-document-shell footgun) → verify by screenshotting every output
-  (pixel scoring applies only to Twig-free files, so real verification
-  happens after deploy — this skill has no PHP dependency). Also supports
-  page mode: high-fidelity single-URL capture/transform/verify-page/handoff
-  with dual-width hard gates. --only (URL pathname, output slug,
-  or page-type name) resumes any stage uniformly. Output is ready for
-  canai-mcp to push into WordPress. Use when the user wants
-  to rebuild, migrate, port, or clone a whole site (not just one URL) from a
-  live source — or one page at high fidelity via page mode. Pairs with
-  agent-browser for sourcing and verification.
-  Triggers on: "canai-replicate", "replicate this site", "clone this site",
-  "rebuild this site in tailwind", "migrate this site to wpcanai",
-  "port this site", "copy this site", "replica", "migrate any website",
-  "convert this site to wordpress", "replicate this page", "page mode".
+  Use when the user wants to replicate, clone, migrate, port or rebuild a live
+  website or a single live URL into CanAI (WordPress + Twig + Tailwind) — at any
+  of four objectives: a content-structure inventory, a low-fidelity wireframe, a
+  styled semantic migration kit, or a pixel-gated high-fidelity page. Pairs with
+  agent-browser for capture and verification.
+  Triggers on: "canai-replicate", "replicate this site", "replicate this page",
+  "clone this site", "rebuild this site in tailwind", "migrate this site to
+  wpcanai", "port this site", "copy this site", "replica", "migrate any website",
+  "convert this site to wordpress", "page mode", "wireframe", "lo-fi", "low
+  fidelity", "content structure", "content inventory", "section map", "section
+  breakdown", "pixel-perfect", "high fidelity", "pixelmatch".
 metadata:
   author: canai
-  version: "4.0.0"
+  version: "4.1.0"
 allowed-tools: Bash Read Write Edit Grep Glob
 ---
 
@@ -99,6 +83,54 @@ or repo clone is required; just having the skill installed is enough.
 - **No PHP, no Twig engine, no CDP plumbing.** `replica` does pure file, JSON
   and pixel work.
 
+## Objective (record it before any other command)
+
+Every run has exactly one **objective**, stored in `runs/<site>/run.json`.
+`transform`, `verify`, `verify-page` and `handoff-page` read it; the CLI refuses
+to run them without it.
+
+| objective | you get | verified by |
+| --- | --- | --- |
+| `structure` | `output/structure/<slug>.md` — sections, headings, copy, images, videos, forms, tables, straight from the capture | `verify-structure` |
+| `wireframe` | grey-box static HTML: real copy, real geometry, no brand styling | `verify-structure` + height Δ < 20% (`verify-page`) |
+| `styled` | the semantic migration kit: Twig templates per page type, shared chrome, DESIGN.md, CONTENT-MODEL.md | `verify-structure` + `verify` (advisory mismatch 50%) |
+| `pixel` | page-mode static draft, hard-gated | `verify-page` (mismatch < 15%, height Δ < 10%) |
+
+**If the request names both a scope and an objective**, record them and continue:
+
+| the user says | scope | objective |
+| --- | --- | --- |
+| content structure, content inventory, section map, section breakdown, "what's on the page" | as stated | `structure` |
+| wireframe, lo-fi, low fidelity, grey box, blockframe | as stated | `wireframe` |
+| migrate, port, rebuild in tailwind, clone the site, semantic | site | `styled` |
+| pixel-perfect, high fidelity, hi-fi, pixelmatch, exact copy, page mode | page | `pixel` |
+
+```bash
+"$HOME/.claude/skills/canai-replicate/bin/replica" objective example.com --set wireframe --scope page
+```
+
+**Otherwise ask, one question at a time, before running anything else.**
+First: *"Whole site, or one URL?"* Then, as a multiple choice with the
+recommended default first (`styled` for a site, `pixel` for one URL):
+*"What should the result be — structure inventory, wireframe, styled
+migration kit, or pixel-gated page?"* Use `AskUserQuestion` when the host
+offers it; otherwise ask in chat and wait. Record the answer with
+`replica objective`, then proceed.
+
+`--page-mode` on `transform` is still accepted as an alias for `pixel` and
+seeds `run.json` when absent. A flag that contradicts `run.json` is an error.
+
+**Pixel runs can skip the chrome.** `replica objective <site> --set pixel --scope page --chrome skip`
+authors `<main>` only; `verify-page` crops the capture to the band between the
+header and footer boxes (both must exist in the section index, or it stops), and
+`handoff-page` wraps the draft with the shared Twig includes. Suggest `skip` only
+when `output/templates/header.html` and `footer.html` already exist, or the user
+named more than one URL on the same site; a first single page on a fresh site
+stays `inline`.
+
+`capture --page <url>` seeds `scope: page` / `objective: pixel` when no
+`run.json` exists yet.
+
 ## Setup
 
 Ask the user before installing anything, and confirm each step.
@@ -165,6 +197,10 @@ USAGE
   replica <command> <args> [flags]
 
 COMMANDS
+  objective    <site>  Record what this run is for — required before
+                       transform/verify/verify-page/handoff-page
+                       --set <structure|wireframe|styled|pixel> [--scope site|page] [--chrome inline|skip]
+                       → runs/<site>/run.json (no --set: print the current value)
   discover     <url>   Find pages (sitemap.xml, fallback BFS crawl)
                        → runs/<site>/pages.json
   classify     <site>  Cluster pages into page types (URL pattern + DOM fingerprint)
@@ -178,8 +214,11 @@ COMMANDS
                        → runs/<site>/.designmd/PROMPT.md → you write runs/<site>/DESIGN.md
   contentmodel <site>  Prepare CPT/custom-field handoff bundle
                        → runs/<site>/.contentmodel/PROMPT.md → you write runs/<site>/CONTENT-MODEL.md
-  transform    <site>  Prepare bundles: one shared site-chrome bundle (header/footer,
-                       once per site), one per one-off page, one per page type
+  transform    <site>  Prompt and chrome mode come from run.json objective
+                       (structure writes output/structure/<slug>.md directly,
+                       no prompt). Prepare bundles: one shared site-chrome
+                       bundle (header/footer, once per site), one per one-off
+                       page, one per page type
                        → output/templates/header.html + footer.html (shared chrome,
                           template_type header/footer); output/pages/<slug>.html;
                           output/templates/<type>-single.html (+ <type>-archive.html
@@ -204,6 +243,13 @@ COMMANDS
                        (rarely any — generated pages include the shared chrome)
                           → runs/<site>/verify/report.md. Everything else is listed
                           for post-deploy verification; the live site renders Twig.
+  verify-structure <site>
+                       Browser-free structural gate: sections/headings/images/
+                       videos/forms/tables of every output vs its capture's
+                       content.json. Works on Twig outputs — the whole gate
+                       for structure/wireframe, plus a check `verify` can't do
+                       for styled/pixel.
+                       → runs/<site>/verify/structure-report.{md,json}
   verify-page  <site>  Write the page-mode screenshot bundle (requires --only <slug>)
   verify-page-score <site>
                        Page-mode dual full-page hard gate (requires --only <slug>).
@@ -223,14 +269,22 @@ FLAGS
   --only <path|slug|type> Restrict to one page or one page type — one shared matcher,
                           identical across capture/transform/verify/verify-page/handoff-page
   --page <url>            (capture) Page-mode: capture one URL at dual widths (1440/390)
-  --page-mode             (transform) Page-mode static fidelity draft (inline chrome,
-                          transform-page.md) — no Twig includes until handoff-page
-  --max-mismatch <n>      (verify-page) Max mismatch % before fail (default: 15)
-  --max-height-delta <n>  (verify-page) Max height delta % before fail (default: 10)
-  --max-attempts <n>      (verify-page) Attempts before hard fail (default: 3)
+  --page-mode             (transform) Alias for objective pixel — seeds run.json
+                          when absent; errors if it contradicts it
+  --chrome inline|skip    (objective) (pixel only) skip = author <main> only;
+                          verify-page crops the capture to the main band;
+                          handoff-page wraps it with the Twig includes instead
+                          of swapping inline chrome
+  --max-mismatch <n>      (verify-page) Max mismatch % before fail (default: 15;
+                          pixel objective only — wireframe/styled use their own preset)
+  --max-height-delta <n>  (verify-page) Max height delta % before fail (default: 10;
+                          pixel objective only)
+  --max-attempts <n>      (verify-page) Attempts before hard fail (default: 3;
+                          pixel objective only)
   --min-severity-improvement <n>
                           (verify-page) Min combined-severity improvement between
-                          failed attempts; else early stagnant fail (default: 1.0)
+                          failed attempts; else early stagnant fail (default: 1.0;
+                          pixel objective only)
   --runs <dir>            Output root (default: runs)
 ```
 
@@ -266,8 +320,10 @@ section slices under `sections-desktop/` and `sections-mobile/` (plus a
 compat `sections/` mirror of desktop). `viewports.json` and `libs.json` land
 alongside the usual `content.json` / `dom.html` / `styles.json` / `ux.json`.
 
-**Hard gate.** `verify-page` screenshots the static draft at both widths and
-scores against the dual full-page captures. Defaults: **mismatch < 15%**,
+**Hard gate.** `verify-page` reads the objective's gate preset from
+`run.json`: `pixel` is the hard gate below; `wireframe` checks height only
+(Δ < 20%, 2 attempts); `styled` reports mismatch ≥ 50% as advisory and never
+fails. Defaults: **mismatch < 15%**,
 **height Δ < 10%**, both viewports must pass, **max 3 attempts**
 (`--max-mismatch` / `--max-height-delta` / `--max-attempts` override). Status
 `pass` → ready for handoff; `in-progress` → fix + re-transform + re-verify;
@@ -357,9 +413,11 @@ through to the theme with no CanAI template bound at all.
 - `sections.json` — role + tag + class + dimensions per section file
 - `content.json` — `{ header, main: [section…], footer }`. Each section has
   its own headings, paragraphs, lists, links, images, forms, buttons, and
-  (Task 7b) **tables, definitionLists, and labelValuePairs** — this is what
-  lets a WooCommerce product's SKU/attributes table, or any site's spec
-  sheet, survive capture instead of silently vanishing. The `id` field
+  **tables, definitionLists, labelValuePairs, and videos** (`<video>` and
+  YouTube/Vimeo/Wistia/Loom/other `<iframe>` embeds — kind, src, poster,
+  title, size) — this is what lets a WooCommerce product's SKU/attributes
+  table, or any site's spec sheet, survive capture instead of silently
+  vanishing. The `id` field
   matches the screenshot filename. It also records the page `title` and meta
   `description`, which can seed the WordPress SEO title/description at
   import.
@@ -643,10 +701,18 @@ see the comment above `buildReportLines` in `src/verify.mjs` for the full
 derivation and the calibration cases that pin the 0.3 weight). Fix the worst
 page, re-run `transform --only <path>`, re-verify.
 
+**9. verify-structure** — run after any transform, for every objective except
+`pixel` (where it is optional but cheap):
+
+```bash
+"$HOME/.claude/skills/canai-replicate/bin/replica" verify-structure example.com
+```
+
 ## Output layout
 
 ```
 runs/<site>/
+├── run.json                           # { objective, scope, setAt, setBy } — set by `replica objective`
 ├── pages.json                        # discovered pages
 ├── pagetypes.json                    # page types (post-classify) + top-level one-off `pages`
 ├── .classify/PROMPT.md               # classify review prompt — rename/prune before capturing
@@ -679,6 +745,7 @@ runs/<site>/
 │   ├── pages/<slug>.html             # generated one-off pages (canai-prepare format)
 │   ├── pages/<slug>.page-mode.json   # page-mode: attempt/status/scores for verify-page
 │   ├── pages/<slug>.page-mode.static.html  # page-mode: backup before handoff-page chrome swap
+│   ├── structure/<slug>.md           # structure objective: mechanical content inventory per page
 │   └── templates/
 │       ├── header.html               # shared site chrome (template_type=header), once per site
 │       ├── footer.html               # shared site chrome (template_type=footer), once per site
@@ -698,10 +765,16 @@ runs/<site>/
     │                                 #   deploy; pages with no original capture)
     ├── page-report.md                # page-mode: human hard-gate report
     ├── page-report.json              # page-mode: machine hard-gate report (handoff gate)
+    ├── structure-report.md           # verify-structure: missing sections/headings/images/videos per file
+    ├── structure-report.json         # verify-structure: machine-readable form of the same
     └── index.json                    # every rendered pair, machine-readable
 ```
 
 ## Handoff
+
+- A `structure` or `wireframe` run has nothing to push — its deliverable is
+  `output/structure/` or the static wireframe HTML. Only `styled` and `pixel`
+  reach `pushprep` / `handoff-page`.
 
 1. **Materialize CONTENT-MODEL.md** on the destination site (user step):
    via the Pods plugin, or by installing the generated PHP snippet with
