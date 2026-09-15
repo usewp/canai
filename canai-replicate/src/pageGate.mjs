@@ -12,6 +12,27 @@ export const DEFAULT_PAGE_GATE = {
   minSeverityImprovement: 1.0,
 };
 
+/** Advisory mismatch line for `styled` output — reported, never enforced. */
+export const ADVISORY_MISMATCH_PCT = 50;
+
+// One threshold set per objective that has a pixel gate at all. `pixel` IS
+// DEFAULT_PAGE_GATE (hard, unchanged — see the attempt policy in SKILL.md);
+// `styled` only reports; `wireframe` checks height (a dropped section) and
+// never mismatch (there are no real colours/images to match).
+export const GATE_PRESETS = Object.freeze({
+  pixel: Object.freeze({ ...DEFAULT_PAGE_GATE, mode: "hard" }),
+  styled: Object.freeze({ maxMismatchPct: ADVISORY_MISMATCH_PCT, maxHeightDeltaPct: 15, maxAttempts: 1, minSeverityImprovement: 0, mode: "advisory" }),
+  wireframe: Object.freeze({ maxMismatchPct: Infinity, maxHeightDeltaPct: 20, maxAttempts: 2, minSeverityImprovement: 1.0, mode: "height-only" }),
+});
+
+export function gatePresetFor(objective) {
+  const preset = GATE_PRESETS[objective];
+  if (!preset) {
+    throw new Error(`no verify-page gate preset for objective "${objective}" — structure has no pixel gate (use verify-structure)`);
+  }
+  return preset;
+}
+
 /** Keep in sync with verify.mjs severityScore (HEIGHT_WEIGHT = 0.3). */
 export const HEIGHT_WEIGHT = 0.3;
 

@@ -25,6 +25,7 @@ import { matchesOnly } from "./slug.mjs";
 import { decodePng, diffScore } from "./pngdiff.mjs";
 import { isChromePartial, containsTwigSyntax, classifyTemplateFilename } from "./outputFiles.mjs";
 import { isBrowserDeathError } from "./capture.mjs";
+import { ADVISORY_MISMATCH_PCT } from "./pageGate.mjs";
 
 async function exists(p) {
   try {
@@ -226,11 +227,11 @@ export function buildReportLines({ site, results }) {
     "",
     "## Scored pages (worst first)",
     "",
-    "| page | severity | mismatch % | height Δ % | original | generated |",
-    "| --- | --- | --- | --- | --- | --- |",
+    "| page | severity | mismatch % | height Δ % | advisory | original | generated |",
+    "| --- | --- | --- | --- | --- | --- | --- |",
     ...scored.map(
       (r) =>
-        `| ${r.slug} | ${severityScore(r).toFixed(1)} | ${r.mismatchPct} | ${r.heightDeltaPct} | ${r.original} | ${r.generated} |`,
+        `| ${r.slug} | ${severityScore(r).toFixed(1)} | ${r.mismatchPct} | ${r.heightDeltaPct} | ${r.mismatchPct >= ADVISORY_MISMATCH_PCT ? `over ${ADVISORY_MISMATCH_PCT}% — review` : "ok"} | ${r.original} | ${r.generated} |`,
     ),
     "",
     "## Not scored (eyeball these)",

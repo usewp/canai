@@ -9,7 +9,9 @@ import {
   nextAttemptState,
   DEFAULT_PAGE_GATE,
   combinedSeverity,
+  gatePresetFor,
 } from "./pageGate.mjs";
+import { readRunConfig } from "./runConfig.mjs";
 import { severityScore } from "./verify.mjs";
 import { PAGE_WIDTHS, PAGE_WINDOW_HEIGHTS } from "./pageCapture.mjs";
 import { onlyToSlug, matchesOnly } from "./slug.mjs";
@@ -203,13 +205,18 @@ export function buildPageReport({
       reasons: gate.reasons,
       desktop: gate.desktop,
       mobile: gate.mobile,
+      advisory: Boolean(gate.advisory),
+      advisoryReasons: gate.advisoryReasons ?? [],
     },
     thresholds: {
-      maxMismatchPct: thresholds.maxMismatchPct ?? DEFAULT_PAGE_GATE.maxMismatchPct,
+      maxMismatchPct: Number.isFinite(thresholds.maxMismatchPct ?? DEFAULT_PAGE_GATE.maxMismatchPct)
+        ? (thresholds.maxMismatchPct ?? DEFAULT_PAGE_GATE.maxMismatchPct)
+        : null,
       maxHeightDeltaPct: thresholds.maxHeightDeltaPct ?? DEFAULT_PAGE_GATE.maxHeightDeltaPct,
       maxAttempts: thresholds.maxAttempts ?? DEFAULT_PAGE_GATE.maxAttempts,
       minSeverityImprovement:
         thresholds.minSeverityImprovement ?? DEFAULT_PAGE_GATE.minSeverityImprovement,
+      mode: thresholds.mode ?? "hard",
     },
     sectionNotes,
   };
@@ -222,15 +229,19 @@ export function buildPageReport({
     `- canHandoff: ${json.canHandoff}`,
     `- canRetry: ${json.canRetry}`,
     `- combinedSeverity: ${json.combinedSeverity}`,
+    `- mode: ${json.thresholds.mode}`,
     ...(json.stagnant ? [`- stagnant: true (severity did not improve enough vs prior attempt)`] : []),
     ...(json.failReason ? [`- failReason: ${json.failReason}`] : []),
     "",
     "## Hard gate",
     "",
     `- pass: ${gate.pass}`,
-    `- thresholds: mismatchPct < ${json.thresholds.maxMismatchPct}, heightDeltaPct < ${json.thresholds.maxHeightDeltaPct}, maxAttempts ${json.thresholds.maxAttempts}, minSeverityImprovement ${json.thresholds.minSeverityImprovement}`,
+    `- thresholds: mismatchPct < ${json.thresholds.maxMismatchPct ?? "none"}, heightDeltaPct < ${json.thresholds.maxHeightDeltaPct}, maxAttempts ${json.thresholds.maxAttempts}, minSeverityImprovement ${json.thresholds.minSeverityImprovement}`,
     ...(gate.reasons.length
       ? ["", "### Fail reasons", "", ...gate.reasons.map((r) => `- ${r}`)]
+      : []),
+    ...(json.gate.advisoryReasons.length
+      ? ["", "### Advisory (not enforced)", "", ...json.gate.advisoryReasons.map((r) => `- ${r}`)]
       : []),
     ...(json.stagnant
       ? [
@@ -300,6 +311,7 @@ export async function verifyPage({
   site,
   runsDir = "runs",
   only = null,
+  objective = null,
   thresholds = {},
   screenshotFn = null,
   /** When null/undefined, auto-rank section diffs. Pass an array to override. */
@@ -314,15 +326,20 @@ export async function verifyPage({
     throw new Error(`verifyPage: --only ${only} did not resolve to a slug`);
   }
 
+  const runDir = path.join(runsDir, site);
+  const resolvedObjective = objective ?? (await readRunConfig(runDir))?.objective ?? "pixel";
+  const preset = gatePresetFor(resolvedObjective);
+  if (resolvedObjective !== "pixel" && Object.keys(thresholds).length > 0) {
+    throw new Error(`--max-* overrides apply to the pixel objective only (run.json objective is "${resolvedObjective}")`);
+  }
   const gateThresholds = {
-    maxMismatchPct: thresholds.maxMismatchPct ?? DEFAULT_PAGE_GATE.maxMismatchPct,
-    maxHeightDeltaPct: thresholds.maxHeightDeltaPct ?? DEFAULT_PAGE_GATE.maxHeightDeltaPct,
-    maxAttempts: thresholds.maxAttempts ?? DEFAULT_PAGE_GATE.maxAttempts,
-    minSeverityImprovement:
-      thresholds.minSeverityImprovement ?? DEFAULT_PAGE_GATE.minSeverityImprovement,
+    maxMismatchPct: thresholds.maxMismatchPct ?? preset.maxMismatchPct,
+    maxHeightDeltaPct: thresholds.maxHeightDeltaPct ?? preset.maxHeightDeltaPct,
+    maxAttempts: thresholds.maxAttempts ?? preset.maxAttempts,
+    minSeverityImprovement: thresholds.minSeverityImprovement ?? preset.minSeverityImprovement,
+    mode: preset.mode,
   };
 
-  const runDir = path.join(runsDir, site);
   const verifyDir = path.join(runDir, "verify");
   const captureDir = path.join(runDir, "captures", slug);
   const htmlPath = path.join(runDir, "output", "pages", `${slug}.html`);
@@ -384,7 +401,10 @@ export async function verifyPage({
 
   const desktop = await scoreAgainstCapture(desktopCapture, desktopBuf);
   const mobile = await scoreAgainstCapture(mobileCapture, mobileBuf);
-  const gate = evaluatePageGate({ desktop, mobile }, gateThresholds);
+  let gate = evaluatePageGate({ desktop, mobile }, gateThresholds);
+  if (gateThresholds.mode === "advisory") {
+    gate = { ...gate, advisory: true, advisoryReasons: gate.reasons, reasons: [], pass: true };
+  }
 
   let notes = sectionNotes;
   if (notes == null) {

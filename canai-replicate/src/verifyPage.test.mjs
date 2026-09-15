@@ -24,7 +24,8 @@ import {
 } from "./verifyPage.mjs";
 import {
   nextAttemptState,
-  DEFAULT_PAGE_GATE
+  DEFAULT_PAGE_GATE,
+  GATE_PRESETS
 } from "./pageGate.mjs";
 import {
   severityScore
@@ -207,6 +208,33 @@ test("buildPageReport: formats structured sectionNotes in markdown", () => {
   assert.equal(json.sectionNotes[0].id, "hero");
   assert.match(markdown, /Section notes \(worst first/);
   assert.match(markdown, /desktop\/hero: mismatch 42\.1%, height Δ 8\.3%/);
+});
+
+test("buildPageReport: advisory mode prints the mode and lists advisory reasons without failing", () => {
+  const gate = { pass: true, advisory: true, advisoryReasons: ["desktop: mismatchPct 60 >= 50"], reasons: [], desktop: { pass: true, reasons: [] }, mobile: { pass: true, reasons: [] } };
+  const { markdown, json } = buildPageReport({
+    site: "example.com", slug: "about",
+    desktop: { mismatchPct: 60, heightDeltaPct: 1 }, mobile: { mismatchPct: 10, heightDeltaPct: 1 },
+    gate, attemptState: { status: "pass", attempts: 1, canHandoff: true, canRetry: false },
+    thresholds: GATE_PRESETS.styled,
+  });
+  assert.match(markdown, /- mode: advisory/);
+  assert.match(markdown, /### Advisory \(not enforced\)/);
+  assert.match(markdown, /desktop: mismatchPct 60 >= 50/);
+  assert.equal(json.gate.advisory, true);
+  assert.equal(json.thresholds.mode, "advisory");
+});
+
+test("buildPageReport: wireframe preset prints mismatch threshold as 'none'", () => {
+  const gate = { pass: true, reasons: [], desktop: { pass: true, reasons: [] }, mobile: { pass: true, reasons: [] } };
+  const { markdown, json } = buildPageReport({
+    site: "example.com", slug: "about",
+    desktop: { mismatchPct: 80, heightDeltaPct: 1 }, mobile: { mismatchPct: 80, heightDeltaPct: 1 },
+    gate, attemptState: { status: "pass", attempts: 1, canHandoff: true, canRetry: false },
+    thresholds: GATE_PRESETS.wireframe,
+  });
+  assert.match(markdown, /mismatchPct < none/);
+  assert.equal(json.thresholds.maxMismatchPct, null);
 });
 
 // ---------------------------------------------------------------------------

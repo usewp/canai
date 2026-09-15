@@ -502,7 +502,7 @@ function scoredResult(slug, mismatchPct, overrides = {}) {
 test("buildReportLines sorts the scored table worst-first by mismatchPct", () => {
   const results = [scoredResult("low", 5), scoredResult("high", 90), scoredResult("mid", 42)];
   const lines = buildReportLines({ site: "example.com", results });
-  const tableStart = lines.indexOf("| page | severity | mismatch % | height Δ % | original | generated |");
+  const tableStart = lines.indexOf("| page | severity | mismatch % | height Δ % | advisory | original | generated |");
   const rows = lines.slice(tableStart + 2, tableStart + 5);
   assert.deepEqual(
     rows.map((r) => r.split("|")[1].trim()),
@@ -524,7 +524,7 @@ test("buildReportLines ranks a low-mismatch/high-height-delta page above a highe
     scoredResult("mostly-missing", 11, { heightDeltaPct: 60 }), // truncated — the real failure
   ];
   const lines = buildReportLines({ site: "example.com", results });
-  const tableStart = lines.indexOf("| page | severity | mismatch % | height Δ % | original | generated |");
+  const tableStart = lines.indexOf("| page | severity | mismatch % | height Δ % | advisory | original | generated |");
   const rows = lines.slice(tableStart + 2, tableStart + 4);
   assert.deepEqual(
     rows.map((r) => r.split("|")[1].trim()),
@@ -566,7 +566,7 @@ test("buildReportLines ranks wrong-content-same-height ABOVE faithful-but-20%-ta
     scoredResult("wrong-content-same-height", 15, { heightDeltaPct: 0 }), // case 4
   ];
   const lines = buildReportLines({ site: "example.com", results });
-  const tableStart = lines.indexOf("| page | severity | mismatch % | height Δ % | original | generated |");
+  const tableStart = lines.indexOf("| page | severity | mismatch % | height Δ % | advisory | original | generated |");
   const rows = lines.slice(tableStart + 2, tableStart + 4);
   assert.deepEqual(
     rows.map((r) => r.split("|")[1].trim()),
@@ -592,7 +592,7 @@ test("buildReportLines: both broken cases (truncated, wrong-content) rank above 
     scoredResult("4-wrong-content", 15.0, { heightDeltaPct: 0.0 }),
   ];
   const lines = buildReportLines({ site: "example.com", results });
-  const tableStart = lines.indexOf("| page | severity | mismatch % | height Δ % | original | generated |");
+  const tableStart = lines.indexOf("| page | severity | mismatch % | height Δ % | advisory | original | generated |");
   const rows = lines.slice(tableStart + 2, tableStart + 6);
   const order = rows.map((r) => r.split("|")[1].trim());
   const rank = (slug) => order.indexOf(slug);

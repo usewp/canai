@@ -395,6 +395,10 @@ async function main() {
     case "verify-page-score": {
       const site = args._[0];
       if (!site || !only) throw new Error("usage: verify-page-score <site> --only <slug>");
+      // Like verify-structure, the CLI (not the library) enforces that the
+      // objective has been recorded — the gate preset (pixel hard / styled
+      // advisory / wireframe height-only) comes from run.json, not a flag.
+      const runConfig = await requireRunConfig(path.join(runsDir, site), { site });
       const thresholds = {};
       if (args["max-mismatch"] != null) thresholds.maxMismatchPct = Number(args["max-mismatch"]);
       if (args["max-height-delta"] != null) thresholds.maxHeightDeltaPct = Number(args["max-height-delta"]);
@@ -402,7 +406,7 @@ async function main() {
       if (args["min-severity-improvement"] != null) {
         thresholds.minSeverityImprovement = Number(args["min-severity-improvement"]);
       }
-      const r = await verifyPage({ site, runsDir, only, thresholds });
+      const r = await verifyPage({ site, runsDir, only, objective: runConfig.objective, thresholds });
       const mark = r.status === "pass" ? "✓" : r.status === "fail" ? "✗" : "…";
       stderr.write(
         `${mark} verify-page ${r.slug}: status=${r.status} (attempt ${r.attempts})` +
