@@ -1,12 +1,12 @@
 // One objective per run. `runs/<site>/run.json` records what the user asked
 // for (structure / wireframe / styled / pixel) so every later stage —
-// transform, verify, verify-page, handoff-page — selects its prompt and gate
-// from one place instead of a per-command flag that a `--only` resume can
-// forget. The CLI will refuse to transform/verify without this file (wired in
-// a later task); library functions keep a default so tests and programmatic
-// callers still work.
+// transform, verify-structure, verify-page-score, handoff-page — selects its
+// prompt and gate from one place instead of a per-command flag that a `--only`
+// resume can forget. The CLI refuses to run those four without this file
+// (`requireRunConfig` in bin/replica); library functions keep a default so
+// tests and programmatic callers still work.
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 
 export const OBJECTIVES = ["structure", "wireframe", "styled", "pixel"];
@@ -75,6 +75,41 @@ export async function writeRunConfig(runDir, { objective, scope = "site", chrome
   const config = { objective, scope, chrome, setAt: new Date().toISOString(), setBy };
   await writeFile(runConfigPath(runDir), JSON.stringify(config, null, 2) + "\n");
   return { config, previous };
+}
+
+/**
+ * Drop verify-page's attempt history for a run: every
+ * output/pages/*.page-mode.json plus verify/page-report.{md,json}. The
+ * history belongs to one objective+chrome — a wireframe's two height-only
+ * attempts must not count against the pixel run that follows, and a stale
+ * wireframe/styled page-report must not be what handoff-page reads. Drafts,
+ * the .page-mode.static.html backup and every other report stay put.
+ * @returns {Promise<string[]>} run-relative paths removed (sorted), [] when none
+ */
+export async function resetPageAttempts(runDir) {
+  const removed = [];
+  const pagesDir = path.join(runDir, "output", "pages");
+  let pageFiles = [];
+  try {
+    pageFiles = await readdir(pagesDir);
+  } catch (e) {
+    if (!(e && e.code === "ENOENT")) throw e;
+  }
+  const targets = [
+    ...pageFiles.filter((f) => f.endsWith(".page-mode.json")).map((f) => path.join("output", "pages", f)),
+    path.join("verify", "page-report.json"),
+    path.join("verify", "page-report.md"),
+  ];
+  for (const rel of targets) {
+    const abs = path.join(runDir, rel);
+    try {
+      await rm(abs);
+      removed.push(rel);
+    } catch (e) {
+      if (!(e && e.code === "ENOENT")) throw e;
+    }
+  }
+  return removed.sort();
 }
 
 export async function requireRunConfig(runDir, { site } = {}) {

@@ -3,7 +3,13 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, mkdir, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { swapInlineChromeToTwig, handoffPageHtml, runHandoffPage, wrapMainWithTwigChrome } from "./handoffPage.mjs";
+import { writeRunConfig } from "./runConfig.mjs";
+
+const execFileP = promisify(execFile);
+const BIN = path.resolve(new URL("..", import.meta.url).pathname, "bin/replica");
 
 const DRAFT = `<!DOCTYPE html>
 <html lang="en">
@@ -32,16 +38,21 @@ const FOOTER = `<!-- wpcanai-template: template_type=footer -->
 <footer id="colophon" class="site-footer"><p>©</p></footer>
 `;
 
-async function stageRun(site, { report, html = DRAFT, withChrome = true } = {}) {
+// A page-report as verifyPage writes it for a pixel run: status/slug plus the
+// gate mode and chrome it was scored under (handoff-page checks both).
+const PASS_REPORT = { status: "pass", slug: "about", canHandoff: true, thresholds: { mode: "hard" }, chrome: "inline" };
+
+async function stageRun(site, { report, html = DRAFT, withChrome = true, runConfig = { objective: "pixel", scope: "page" } } = {}) {
   const root = await mkdtemp(path.join(tmpdir(), "handoff-page-"));
   const runsDir = path.join(root, "runs");
   const runDir = path.join(runsDir, site);
   await mkdir(path.join(runDir, "verify"), { recursive: true });
   await mkdir(path.join(runDir, "output", "pages"), { recursive: true });
   await mkdir(path.join(runDir, "output", "templates"), { recursive: true });
+  if (runConfig) await writeRunConfig(runDir, runConfig);
   await writeFile(
     path.join(runDir, "verify", "page-report.json"),
-    JSON.stringify(report ?? { status: "pass", slug: "about", canHandoff: true }),
+    JSON.stringify(report ?? PASS_REPORT),
   );
   await writeFile(path.join(runDir, "output", "pages", "about.html"), html);
   if (withChrome) {
@@ -172,7 +183,7 @@ test("runHandoffPage: requires --only", async () => {
 
 test("runHandoffPage: page-report slug must match --only (after onlyToSlug)", async () => {
   const { runsDir, cleanup } = await stageRun("example.com", {
-    report: { status: "pass", slug: "contact", canHandoff: true },
+    report: { ...PASS_REPORT, slug: "contact" },
   });
   try {
     await assert.rejects(
@@ -183,6 +194,130 @@ test("runHandoffPage: page-report slug must match --only (after onlyToSlug)", as
     await assert.rejects(
       () => runHandoffPage({ site: "example.com", runsDir, only: "/about" }),
       /normalized: "about"/i,
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Objective gate (final-review Important 1): handoff-page is the pixel
+// objective's exit. A wireframe run's height-only verify-page-score also
+// returns status: pass / canHandoff: true, so without this gate the grey-box
+// draft would be chrome-swapped and pushprepped as if it were a real page.
+// ---------------------------------------------------------------------------
+
+test("runHandoffPage: refuses a wireframe run.json even when page-report says pass", async () => {
+  const { runsDir, runDir, cleanup } = await stageRun("example.com", {
+    runConfig: { objective: "wireframe", scope: "page" },
+    report: { ...PASS_REPORT, thresholds: { mode: "height-only" } },
+  });
+  try {
+    await assert.rejects(
+      () => runHandoffPage({ site: "example.com", runsDir, only: "about" }),
+      /handoff-page is for the pixel objective only — run\.json objective is "wireframe"; a wireframe has nothing to push/,
+    );
+    // Nothing touched: no backup, draft untouched, no push artifacts.
+    await assert.rejects(readFile(path.join(runDir, "output", "pages", "about.page-mode.static.html")));
+    assert.equal(await readFile(path.join(runDir, "output", "pages", "about.html"), "utf8"), DRAFT);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("runHandoffPage: refuses a styled run.json (styled goes through pushprep, not handoff-page)", async () => {
+  const { runsDir, cleanup } = await stageRun("example.com", {
+    runConfig: { objective: "styled", scope: "site" },
+    report: { ...PASS_REPORT, thresholds: { mode: "advisory" } },
+  });
+  try {
+    await assert.rejects(
+      () => runHandoffPage({ site: "example.com", runsDir, only: "about" }),
+      /handoff-page is for the pixel objective only — run\.json objective is "styled"/,
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("runHandoffPage: refuses a page-report that was not scored under the hard (pixel) gate", async () => {
+  // run.json was re-set to pixel but verify/page-report.json is the stale
+  // advisory report from the earlier styled pass — it must not gate a pixel draft.
+  const { runsDir, cleanup } = await stageRun("example.com", {
+    report: { ...PASS_REPORT, thresholds: { mode: "advisory" } },
+  });
+  try {
+    await assert.rejects(
+      () => runHandoffPage({ site: "example.com", runsDir, only: "about" }),
+      /page-report\.json was scored in "advisory" mode, not the pixel hard gate — re-run verify-page-score/,
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("runHandoffPage: refuses a page-report whose chrome does not match run.json chrome", async () => {
+  const { runsDir, cleanup } = await stageRun("example.com", {
+    runConfig: { objective: "pixel", scope: "page", chrome: "skip" },
+    report: { ...PASS_REPORT, chrome: "inline" },
+  });
+  try {
+    await assert.rejects(
+      () => runHandoffPage({ site: "example.com", runsDir, only: "about" }),
+      /page-report\.json chrome "inline" does not match run\.json chrome "skip" — re-run verify-page-score/,
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("runHandoffPage: refuses a page-report with no chrome field (stale, pre-chrome report)", async () => {
+  const { chrome: _chrome, ...noChrome } = PASS_REPORT;
+  void _chrome;
+  const { runsDir, cleanup } = await stageRun("example.com", { report: noChrome });
+  try {
+    await assert.rejects(
+      () => runHandoffPage({ site: "example.com", runsDir, only: "about" }),
+      /page-report\.json chrome "\(missing\)" does not match run\.json chrome "inline"/,
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("runHandoffPage: pixel run.json + hard report + matching chrome proceeds (chrome skip variant)", async () => {
+  // Same document shell as DRAFT (pushprep needs it), minus the chrome landmarks.
+  const MAIN_ONLY = DRAFT.replace(/<header[\s\S]*?<\/header>\n/, "").replace(/<footer>©<\/footer>\n/, "");
+  const { runsDir, runDir, cleanup } = await stageRun("example.com", {
+    runConfig: { objective: "pixel", scope: "page", chrome: "skip" },
+    report: { ...PASS_REPORT, chrome: "skip" },
+    html: MAIN_ONLY,
+  });
+  // pushprep prints its chrome-partial slug warnings to stderr; keep the suite output clean.
+  const originalWrite = process.stderr.write.bind(process.stderr);
+  process.stderr.write = () => true;
+  try {
+    const r = await runHandoffPage({ site: "example.com", runsDir, only: "about" });
+    assert.equal(r.chrome, "skip");
+    assert.equal(r.ok, 3, JSON.stringify(r.failures));
+    const swapped = await readFile(path.join(runDir, "output", "pages", "about.html"), "utf8");
+    assert.match(swapped, /wpcanai_template\('header'\) \}\}\n<main/);
+  } finally {
+    process.stderr.write = originalWrite;
+    await cleanup();
+  }
+});
+
+test("CLI: `replica handoff-page` refuses to run without run.json (requireRunConfig, like transform)", async () => {
+  const { runsDir, cleanup } = await stageRun("example.com", { runConfig: null });
+  try {
+    await assert.rejects(
+      execFileP("node", [BIN, "handoff-page", "example.com", "--only", "about", "--runs", runsDir]),
+      (e) => {
+        assert.equal(e.code, 1);
+        assert.match(e.stderr, /run\.json not found — record the objective first: replica objective example\.com --set/);
+        return true;
+      },
     );
   } finally {
     await cleanup();

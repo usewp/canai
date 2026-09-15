@@ -86,8 +86,11 @@ or repo clone is required; just having the skill installed is enough.
 ## Objective (record it before any other command)
 
 Every run has exactly one **objective**, stored in `runs/<site>/run.json`.
-`transform`, `verify`, `verify-page` and `handoff-page` read it; the CLI refuses
-to run them without it.
+`transform`, `verify-structure`, `verify-page-score` and `handoff-page` refuse
+to run without it; `verify` is objective-agnostic. Changing the objective or
+chrome with `replica objective --set` resets the `verify-page` attempt history
+(`output/pages/*.page-mode.json`, `verify/page-report.*`); a same-value re-run
+keeps it. `handoff-page` is the `pixel` exit only.
 
 | objective | you get | verified by |
 | --- | --- | --- |
@@ -192,9 +195,10 @@ USAGE
 
 COMMANDS
   objective    <site>  Record what this run is for — required before
-                       transform/verify/verify-page/handoff-page
+                       transform/verify-structure/verify-page-score/handoff-page
                        --set <structure|wireframe|styled|pixel> [--scope site|page] [--chrome inline|skip]
-                       → runs/<site>/run.json (no --set: print the current value)
+                       → runs/<site>/run.json (no --set: print the current value;
+                          a changed objective/chrome resets the verify-page attempt history)
   discover     <url>   Find pages (sitemap.xml, fallback BFS crawl)
                        → runs/<site>/pages.json
   classify     <site>  Cluster pages into page types (URL pattern + DOM fingerprint)
@@ -254,7 +258,9 @@ COMMANDS
                           <slug>-{desktop,mobile}-generated.png
   handoff-page <site>  After page-report status=pass: backup static draft, swap
                        inlined header/footer → Twig chrome includes, then pushprep
-                       (requires --only <slug>; chrome partials must already exist).
+                       (requires --only <slug>; chrome partials must already exist;
+                       pixel objective only — refuses wireframe/styled run.json and a
+                       page-report scored under another gate mode or chrome).
                        → <slug>.page-mode.static.html backup + push/<slug|header|footer>.json
 
 FLAGS
@@ -263,8 +269,8 @@ FLAGS
   --only <path|slug|type> Restrict to one page or one page type — one shared matcher,
                           identical across capture/transform/verify/verify-page/handoff-page
   --page <url>            (capture) Page-mode: capture one URL at dual widths (1440/390)
-  --page-mode             (transform) Alias for objective pixel — seeds run.json
-                          when absent; errors if it contradicts it
+  --page-mode             (transform) Alias for objective pixel (seeds run.json when absent;
+                          errors if it contradicts it)
   --chrome inline|skip    (objective) (pixel only) skip = author <main> only;
                           verify-page crops the capture to the main band;
                           handoff-page wraps it with the Twig includes instead

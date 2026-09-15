@@ -401,6 +401,20 @@ export async function verifyPage({
     throw new Error(`verifyPage: missing captures/${slug}/fullpage-mobile.png`);
   }
 
+  // An exhausted history is refused up front — nextAttemptState reports a
+  // passing attempt as pass regardless of the count, so scoring a 4th
+  // attempt would hand a "canHandoff: true" to a run that already failed on
+  // max-attempts. Advisory (styled) never fails on attempts, so it is exempt.
+  const prior = await readPriorMeta(metaPath);
+  if (prior.attempts >= gateThresholds.maxAttempts && gateThresholds.mode !== "advisory") {
+    const metaRel = path.join("output", "pages", `${slug}.page-mode.json`);
+    throw new Error(
+      `page-verify: ${slug} already has ${prior.attempts} attempt(s) recorded (max ${gateThresholds.maxAttempts}) — ` +
+        `start a new history by changing the objective/chrome (replica objective ${site} --set <objective> [--chrome inline|skip] resets it) ` +
+        `or delete ${metaRel} and verify/page-report.{md,json}; do not keep re-scoring the same draft`,
+    );
+  }
+
   await mkdir(verifyDir, { recursive: true });
 
   const fileUrl = `file://${path.resolve(htmlPath)}`;
@@ -456,7 +470,18 @@ export async function verifyPage({
   const mobile = await scoreAgainstCapture(mobileCapture, mobileBuf, { cropBox: mobileCrop });
   let gate = evaluatePageGate({ desktop, mobile }, gateThresholds);
   if (gateThresholds.mode === "advisory") {
-    gate = { ...gate, advisory: true, advisoryReasons: gate.reasons, reasons: [], pass: true };
+    // Advisory never fails: the reasons move to advisoryReasons and every
+    // pass flag — overall AND per viewport — flips to true, so page-report
+    // .json never says gate.pass: true over a desktop.pass: false.
+    gate = {
+      ...gate,
+      advisory: true,
+      advisoryReasons: gate.reasons,
+      reasons: [],
+      pass: true,
+      desktop: { ...gate.desktop, pass: true },
+      mobile: { ...gate.mobile, pass: true },
+    };
   }
 
   const excludeIds = resolvedChrome === "skip" ? ["header", "footer"] : [];
@@ -486,7 +511,6 @@ export async function verifyPage({
       .slice(0, sectionTopN);
   }
 
-  const prior = await readPriorMeta(metaPath);
   const attempts = prior.attempts + 1;
   const currentSev = combinedSeverity({ desktop, mobile });
   const attemptState = nextAttemptState({

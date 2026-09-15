@@ -5,7 +5,8 @@ import {
   rm,
   mkdir,
   writeFile,
-  readFile
+  readFile,
+  realpath
 } from "node:fs/promises";
 import {
   tmpdir
@@ -20,7 +21,8 @@ import {
   excludeChromePartials,
   scorePageAgainstOriginal,
   buildReportLines,
-  severityScore
+  severityScore,
+  verifyBundle
 } from "./verify.mjs";
 import {
   PAGE_SIZE_JS
@@ -756,3 +758,41 @@ function withSilencedStderr(fn) {
   };
 }
 
+
+// --- verifyBundle (dogfood bug: `replica verify` crashed on e.path) ---------
+// collectOutputs() entries are { file, dir, kind } — there is no `path`
+// field, so path.resolve(undefined) threw on the very first output. The
+// file:// URL must be absolute (resolve, not join: `dir` is relative under
+// --runs runs) and chrome partials must never be listed.
+
+test("verifyBundle: PROMPT.md lists one absolute file:// URL per page/template and never the chrome partials", async () => {
+  const { root, cleanup } = await mkTree({
+    "runs/example.com/output/pages/about.html": "<html><body>about</body></html>",
+    "runs/example.com/output/templates/post-single.html": "<html><body>{{ post.title }}</body></html>",
+    "runs/example.com/output/templates/header.html": "<header>h</header>",
+  });
+  try {
+    // Relative runsDir on purpose — the dogfood ran with the default "runs".
+    const cwd = process.cwd();
+    process.chdir(root);
+    let r;
+    try {
+      r = await verifyBundle({ site: "example.com", runsDir: "runs", profile: null, session: "canai" });
+    } finally {
+      process.chdir(cwd);
+    }
+    assert.equal(r.count, 2);
+    const prompt = await readFile(path.resolve(root, r.promptPath), "utf8");
+    // process.cwd() is the realpath (macOS tmpdir is a symlink), so the
+    // absolute URLs in the prompt are realpath-based too.
+    const realRoot = await realpath(root);
+    const expectedAbout = `file://${path.join(realRoot, "runs", "example.com", "output", "pages", "about.html")}`;
+    const expectedPost = `file://${path.join(realRoot, "runs", "example.com", "output", "templates", "post-single.html")}`;
+    assert.ok(prompt.includes(`open "${expectedAbout}"`), prompt);
+    assert.ok(prompt.includes(`open "${expectedPost}"`), prompt);
+    assert.doesNotMatch(prompt, /header/);
+    assert.doesNotMatch(prompt, /file:\/\/undefined|file:\/\/\/\S*\/undefined/);
+  } finally {
+    await cleanup();
+  }
+});

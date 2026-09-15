@@ -27,6 +27,7 @@ import {
   classifyProducedNothing,
   transformProducedNothing,
   resolveCapturePageUrl,
+  transformNextStepHint,
 } from "../bin/replica";
 
 // --- summarizeCountOutcome (capture, verify, discover) ---------------------
@@ -196,4 +197,47 @@ test("CLI: verify-page-score without run.json exits non-zero and names the objec
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+// --- transformNextStepHint (final-review Important 2) ------------------------
+// The post-transform "what next" line must follow the objective, not the
+// inline-chrome bit: wireframe used to be told to run handoff-page (pixel's
+// exit), and structure was told to hand a PROMPT.md to an agent when none
+// was written.
+
+test("transformNextStepHint: structure — inventory already written, verify-structure is the gate, no PROMPT.md", () => {
+  const hint = transformNextStepHint("structure");
+  assert.match(hint, /output\/structure\//);
+  assert.match(hint, /verify-structure/);
+  assert.doesNotMatch(hint, /Hand each PROMPT\.md/, "structure writes no prompt to hand over");
+  assert.doesNotMatch(hint, /handoff-page/);
+});
+
+test("transformNextStepHint: wireframe — author from PROMPT.md, verify-structure + verify-page height gate, nothing to hand off", () => {
+  const hint = transformNextStepHint("wireframe");
+  assert.match(hint, /PROMPT\.md/);
+  assert.match(hint, /verify-structure/);
+  assert.match(hint, /verify-page/);
+  assert.match(hint, /height/);
+  assert.match(hint, /nothing to hand off/);
+  assert.doesNotMatch(hint, /handoff-page/);
+});
+
+test("transformNextStepHint: pixel — static fidelity draft, then handoff-page after verify-page (chrome via transform --only chrome)", () => {
+  const hint = transformNextStepHint("pixel");
+  assert.match(hint, /static fidelity draft/);
+  assert.match(hint, /verify-page/);
+  assert.match(hint, /handoff-page/);
+  assert.match(hint, /transform --only chrome/);
+});
+
+test("transformNextStepHint: styled — hand PROMPT.md to a coding agent, chrome first", () => {
+  const hint = transformNextStepHint("styled");
+  assert.match(hint, /PROMPT\.md/);
+  assert.match(hint, /chrome first/);
+  assert.doesNotMatch(hint, /handoff-page/);
+});
+
+test("transformNextStepHint: unknown objective throws rather than guessing a next step", () => {
+  assert.throws(() => transformNextStepHint("hifi"), /no next-step hint for objective "hifi"/);
 });

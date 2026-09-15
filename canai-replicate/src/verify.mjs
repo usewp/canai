@@ -436,7 +436,9 @@ export async function verifyBundle({
 
   const blocks = entries.map((e) => {
     const slug = e.file.replace(/\.html$/, "");
-    const fileUrl = `file://${path.resolve(e.path)}`;
+    // collectOutputs entries are { file, dir, kind }; resolve (not join) so a
+    // relative `dir` under the default --runs still yields an absolute file:// URL.
+    const fileUrl = `file://${path.resolve(e.dir, e.file)}`;
     const outPng = path.join(verifyDir, `${slug}-generated.png`);
     return `### \`${slug}\`\n\n\`\`\`bash\n${ab} open "${fileUrl}"\n${ab} wait --load networkidle\n${ab} screenshot --full "${outPng}"\n\`\`\`\n`;
   });

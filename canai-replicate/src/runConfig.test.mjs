@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, readFile, writeFile, mkdir } from "node:fs/promises";
+import { mkdtemp, rm, readFile, writeFile, mkdir, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
@@ -14,6 +14,7 @@ import {
   requireRunConfig,
   resolveObjective,
   runConfigPath,
+  resetPageAttempts,
 } from "./runConfig.mjs";
 
 const execFileP = promisify(execFile);
@@ -196,6 +197,116 @@ test("CLI: `replica capture <site> --page <url>` leaves an existing run.json unt
     assert.equal(onDisk.objective, "styled");
     assert.equal(onDisk.scope, "site");
     assert.equal(onDisk.setBy, "user");
+  } finally {
+    await cleanup();
+  }
+});
+
+// --- attempt-history reset on objective/chrome change (dogfood bug 2) ------
+// verify-page's attempt history (output/pages/*.page-mode.json) and the last
+// page-report belong to ONE objective+chrome: a wireframe's two height-only
+// attempts must not count against the pixel run that follows it, and a stale
+// wireframe page-report must not sit around for handoff-page to trip over.
+
+async function seedAttemptHistory(runDir) {
+  await mkdir(path.join(runDir, "output", "pages"), { recursive: true });
+  await mkdir(path.join(runDir, "verify"), { recursive: true });
+  await writeFile(path.join(runDir, "output", "pages", "about.page-mode.json"), JSON.stringify({ attempts: 2 }));
+  await writeFile(path.join(runDir, "output", "pages", "pricing.page-mode.json"), JSON.stringify({ attempts: 1 }));
+  await writeFile(path.join(runDir, "output", "pages", "about.html"), "<html></html>");
+  await writeFile(path.join(runDir, "output", "pages", "about.page-mode.static.html"), "<html></html>");
+  await writeFile(path.join(runDir, "verify", "page-report.json"), "{}");
+  await writeFile(path.join(runDir, "verify", "page-report.md"), "# r");
+  await writeFile(path.join(runDir, "verify", "structure-report.json"), "{}");
+}
+
+async function missing(p) {
+  try {
+    await access(p);
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+test("resetPageAttempts removes every *.page-mode.json and verify/page-report.{md,json}, nothing else, and lists what it removed", async () => {
+  const { runDir, cleanup } = await tmpRun();
+  try {
+    await seedAttemptHistory(runDir);
+    const removed = await resetPageAttempts(runDir);
+    assert.deepEqual(removed.sort(), [
+      "output/pages/about.page-mode.json",
+      "output/pages/pricing.page-mode.json",
+      "verify/page-report.json",
+      "verify/page-report.md",
+    ]);
+    for (const rel of removed) assert.ok(await missing(path.join(runDir, rel)), rel);
+    // Drafts, the static backup and other reports are untouched.
+    await access(path.join(runDir, "output", "pages", "about.html"));
+    await access(path.join(runDir, "output", "pages", "about.page-mode.static.html"));
+    await access(path.join(runDir, "verify", "structure-report.json"));
+    // Idempotent and quiet on a run with nothing to reset.
+    assert.deepEqual(await resetPageAttempts(runDir), []);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("CLI: `replica objective --set` with a CHANGED objective resets the attempt history and says so", async () => {
+  const { root, runDir, cleanup } = await tmpRun();
+  try {
+    const runs = path.join(root, "runs");
+    await writeRunConfig(runDir, { objective: "wireframe", scope: "page" });
+    await seedAttemptHistory(runDir);
+    const r = await execFileP("node", [BIN, "objective", "example.com", "--set", "pixel", "--runs", runs]);
+    assert.match(r.stderr, /objective=pixel scope=site chrome=inline \(was wireframe\/page\/inline\)/);
+    assert.match(r.stderr, /attempt history reset \(objective wireframe → pixel\): output\/pages\/about\.page-mode\.json, output\/pages\/pricing\.page-mode\.json, verify\/page-report\.json, verify\/page-report\.md/);
+    assert.ok(await missing(path.join(runDir, "output", "pages", "about.page-mode.json")));
+    assert.ok(await missing(path.join(runDir, "verify", "page-report.json")));
+    await access(path.join(runDir, "output", "pages", "about.html"));
+  } finally {
+    await cleanup();
+  }
+});
+
+test("CLI: `replica objective --set` with a CHANGED chrome (same objective) also resets", async () => {
+  const { root, runDir, cleanup } = await tmpRun();
+  try {
+    const runs = path.join(root, "runs");
+    await writeRunConfig(runDir, { objective: "pixel", scope: "page", chrome: "inline" });
+    await seedAttemptHistory(runDir);
+    const r = await execFileP("node", [BIN, "objective", "example.com", "--set", "pixel", "--scope", "page", "--chrome", "skip", "--runs", runs]);
+    assert.match(r.stderr, /attempt history reset \(chrome inline → skip\)/);
+    assert.ok(await missing(path.join(runDir, "output", "pages", "about.page-mode.json")));
+  } finally {
+    await cleanup();
+  }
+});
+
+test("CLI: `replica objective --set` with the SAME objective and chrome keeps the attempt history", async () => {
+  const { root, runDir, cleanup } = await tmpRun();
+  try {
+    const runs = path.join(root, "runs");
+    await writeRunConfig(runDir, { objective: "pixel", scope: "page" });
+    await seedAttemptHistory(runDir);
+    // Scope changes alone do not touch the history — only objective/chrome do.
+    const r = await execFileP("node", [BIN, "objective", "example.com", "--set", "pixel", "--scope", "site", "--runs", runs]);
+    assert.doesNotMatch(r.stderr, /attempt history reset/);
+    await access(path.join(runDir, "output", "pages", "about.page-mode.json"));
+    await access(path.join(runDir, "verify", "page-report.json"));
+  } finally {
+    await cleanup();
+  }
+});
+
+test("CLI: first `replica objective --set` (no previous run.json) never prints a reset line", async () => {
+  const { root, runDir, cleanup } = await tmpRun();
+  try {
+    const runs = path.join(root, "runs");
+    await seedAttemptHistory(runDir);
+    const r = await execFileP("node", [BIN, "objective", "example.com", "--set", "pixel", "--runs", runs]);
+    assert.doesNotMatch(r.stderr, /attempt history reset/);
+    await access(path.join(runDir, "output", "pages", "about.page-mode.json"));
   } finally {
     await cleanup();
   }

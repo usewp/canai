@@ -2,14 +2,14 @@
 import { argv, exit, stderr } from "node:process";
 import { pathToFileURL } from "node:url";
 import path from "node:path";
-import { readRunConfig, writeRunConfig, requireRunConfig, runConfigPath, OBJECTIVES, resolveObjective } from "../src/runConfig.mjs";
+import { readRunConfig, writeRunConfig, requireRunConfig, runConfigPath, OBJECTIVES, resolveObjective, resetPageAttempts } from "../src/runConfig.mjs";
 import { seedPageModeWorklist } from "../src/pageCapture.mjs";
 import { urlToSlug } from "../src/slug.mjs";
 import { discover } from "../src/discover.mjs";
 import { classify } from "../src/classify.mjs";
 import { prepareDesignBundle } from "../src/designmd.mjs";
 import { prepareContentModelBundle } from "../src/contentmodel.mjs";
-import { prepareTransformBundles, INLINE_CHROME_OBJECTIVES } from "../src/transform.mjs";
+import { prepareTransformBundles } from "../src/transform.mjs";
 import { preparePushArtifacts } from "../src/pushprep.mjs";
 import { verifyScore, verifyBundle } from "../src/verify.mjs";
 import { verifyStructure } from "../src/verifyStructure.mjs";
@@ -76,6 +76,38 @@ export function transformProducedNothing(count, hasChrome) {
   return count === 0 && !hasChrome;
 }
 
+// What to do after `transform` — keyed on the objective itself, not on the
+// inline-chrome bit. Pre-fix, wireframe (inline chrome) was told to run
+// handoff-page (pixel's exit, which now refuses it), and structure fell into
+// the styled "hand each PROMPT.md to a coding agent" line although structure
+// writes no PROMPT.md at all.
+export function transformNextStepHint(objective) {
+  switch (objective) {
+    case "structure":
+      return (
+        `Structure inventory written to output/structure/ (no PROMPT.md — it comes straight from the capture). ` +
+        `Next: replica verify-structure <site>.`
+      );
+    case "wireframe":
+      return (
+        `Author the wireframe from each PROMPT.md (grey boxes, real copy, real geometry), then run ` +
+        `verify-structure and verify-page (height gate only). A wireframe is a deliverable in itself — nothing to hand off.`
+      );
+    case "pixel":
+      return (
+        `Hand each PROMPT.md to a coding agent to produce the static fidelity draft (inline chrome). ` +
+        `After verify-page passes, run handoff-page (requires chrome via \`transform --only chrome\` first).`
+      );
+    case "styled":
+      return (
+        `Hand each PROMPT.md to a coding agent (claudecode/cursor/gemini) to produce the output HTML — ` +
+        `chrome first, so header.html/footer.html exist before the others are authored against them.`
+      );
+    default:
+      throw new Error(`no next-step hint for objective "${objective}"`);
+  }
+}
+
 /**
  * Resolve capture `--page`. Absent → null (full-site). A bare `--page` with
  * no URL string must fail loud — never silently fall into full-site capture.
@@ -92,9 +124,11 @@ USAGE
   replica <command> <args> [flags]
 
 COMMANDS
-  objective    <site>  Record what this run is for — required before transform/verify
-                       --set <structure|wireframe|styled|pixel> [--scope site|page]
-                       → runs/<site>/run.json  (no --set: print the current value)
+  objective    <site>  Record what this run is for — required before
+                       transform/verify-structure/verify-page-score/handoff-page
+                       --set <structure|wireframe|styled|pixel> [--scope site|page] [--chrome inline|skip]
+                       → runs/<site>/run.json (no --set: print the current value;
+                          a changed objective/chrome resets the verify-page attempt history)
   discover  <url>            Find pages (sitemap or crawl). Writes runs/<site>/pages.json
   classify  <site>           Cluster pages into page types. Writes runs/<site>/pagetypes.json + .classify/PROMPT.md
   capture   <site>           Write the agent-browser capture bundle → runs/<site>/.capture/PROMPT.md (YOU run it)
@@ -112,7 +146,7 @@ COMMANDS
                        Works on Twig outputs. → runs/<site>/verify/structure-report.{md,json}
   verify-page <site>         Write the page-mode screenshot bundle (requires --only <slug>)
   verify-page-score <site>   Page-mode dual full-page hard gate (requires --only <slug>)
-  handoff-page <site>        After page-report pass: swap inline chrome→Twig, pushprep (requires --only <slug>)
+  handoff-page <site>        After page-report pass: swap inline chrome→Twig, pushprep (requires --only <slug>; pixel objective only)
 
 FLAGS
   --runs <dir>               Output root (default: runs)
@@ -120,7 +154,7 @@ FLAGS
   --session <name>           agent-browser session name (default: canai)
   --only <path|slug|type>    Restrict to one page (URL pathname or slug) or one page type (type name)
   --page <url>               (capture) Page-mode: capture one URL at dual widths (1440/390)
-  --page-mode                (transform) Page-mode static fidelity draft (inline chrome, transform-page.md)
+  --page-mode                (transform) Alias for objective pixel (seeds run.json when absent; errors if it contradicts it)
   --chrome inline|skip       (objective) (pixel only) skip = author <main> only; verify-page crops the capture to the main band
   --max-mismatch <n>         (verify-page) Max mismatch % before fail (default: ${DEFAULT_PAGE_GATE.maxMismatchPct})
   --max-height-delta <n>     (verify-page) Max height delta % before fail (default: ${DEFAULT_PAGE_GATE.maxHeightDeltaPct})
@@ -169,6 +203,20 @@ async function main() {
         const { config, previous } = await writeRunConfig(runDir, { objective: String(args.set), scope, chrome });
         const was = previous ? ` (was ${previous.objective}/${previous.scope}/${previous.chrome})` : "";
         stderr.write(`✓ ${site}: objective=${config.objective} scope=${config.scope} chrome=${config.chrome}${was} → ${runConfigPath(runDir)}\n`);
+        // The verify-page attempt history is per objective+chrome (dogfood
+        // bug 2): a changed value starts a fresh history; a same-value re-run
+        // (or a scope-only change) keeps it.
+        if (previous) {
+          const changed = [];
+          if (previous.objective !== config.objective) changed.push(`objective ${previous.objective} → ${config.objective}`);
+          if (previous.chrome !== config.chrome) changed.push(`chrome ${previous.chrome} → ${config.chrome}`);
+          if (changed.length > 0) {
+            const removed = await resetPageAttempts(runDir);
+            if (removed.length > 0) {
+              stderr.write(`  attempt history reset (${changed.join(", ")}): ${removed.join(", ")}\n`);
+            }
+          }
+        }
       } else {
         const c = await requireRunConfig(runDir, { site });
         stderr.write(`${site}: objective=${c.objective} scope=${c.scope} chrome=${c.chrome} (set ${c.setAt} by ${c.setBy})\n`);
@@ -289,7 +337,6 @@ async function main() {
       }
       if (!runConfig) runConfig = await requireRunConfig(runDir, { site });
       const objective = resolveObjective({ runConfig, pageModeFlag });
-      const pageMode = INLINE_CHROME_OBJECTIVES.has(objective);
       const r = await prepareTransformBundles({ site, runsDir, only, objective, chrome: runConfig.chrome });
       if (r.chrome) {
         stderr.write(
@@ -307,14 +354,7 @@ async function main() {
           stderr.write(`    archive output: ${b.archiveOutputPath}\n`);
         }
       }
-      if (pageMode) {
-        stderr.write(
-          `\nHand each PROMPT.md to a coding agent to produce the static fidelity draft (inline chrome). ` +
-            `After verify-page passes, run handoff-page (requires chrome via \`transform --only chrome\` first).\n`,
-        );
-      } else {
-        stderr.write(`\nHand each PROMPT.md to a coding agent (claudecode/cursor/gemini) to produce the output HTML — chrome first, so header.html/footer.html exist before the others are authored against them.\n`);
-      }
+      stderr.write(`\n${transformNextStepHint(objective)}\n`);
       if (transformNothing) {
         throw new Error(`transform produced 0 bundles for ${site} — nothing to hand to a coding agent`);
       }
@@ -410,9 +450,11 @@ async function main() {
       }
       const r = await verifyPage({ site, runsDir, only, objective: runConfig.objective, chrome: runConfig.chrome, thresholds });
       const mark = r.status === "pass" ? "✓" : r.status === "fail" ? "✗" : "…";
+      // handoff-page is pixel-only (see runHandoffPage) — a wireframe/styled
+      // pass must not be told to run it.
+      const handoffSuffix = r.canHandoff && runConfig.objective === "pixel" ? " — ready for handoff-page" : "";
       stderr.write(
-        `${mark} verify-page ${r.slug}: status=${r.status} (attempt ${r.attempts})` +
-          `${r.canHandoff ? " — ready for handoff-page" : ""}\n` +
+        `${mark} verify-page ${r.slug}: status=${r.status} (attempt ${r.attempts})${handoffSuffix}\n` +
           `  report: ${runsDir}/${site}/verify/page-report.json\n`,
       );
       break;
@@ -420,6 +462,9 @@ async function main() {
     case "handoff-page": {
       const site = args._[0];
       if (!site || !only) throw new Error("usage: handoff-page <site> --only <slug>");
+      // Same contract as transform/verify-page-score: the objective must have
+      // been recorded (runHandoffPage then enforces that it is pixel).
+      await requireRunConfig(path.join(runsDir, site), { site });
       const r = await runHandoffPage({ site, runsDir, only });
       const { mark, failedSuffix, isTotalFailure } = summarizeCountOutcome(r.ok, r.count);
       stderr.write(

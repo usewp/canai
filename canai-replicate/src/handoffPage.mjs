@@ -151,8 +151,19 @@ export async function runHandoffPage({ site, runsDir = "runs", only } = {}) {
 
   // run.json wins; when it's missing (e.g. a hand-copied run dir) fall back to
   // the page-mode.json meta verify-page writes (belt and braces — see
-  // verifyPage.mjs), then "inline" as the last resort.
+  // verifyPage.mjs), then "inline" as the last resort. (The CLI itself
+  // requires run.json — see bin/replica — this fallback is for library callers.)
   const runConfig = await readRunConfig(runDir);
+  // handoff-page is the pixel objective's exit and nothing else's: a
+  // wireframe's height-only verify-page-score also says pass/canHandoff, but
+  // a grey-box draft must never be chrome-swapped and pushprepped; styled
+  // output uses Twig chrome includes already and goes through pushprep.
+  if (runConfig && runConfig.objective !== "pixel") {
+    throw new Error(
+      `handoff-page is for the pixel objective only — run.json objective is "${runConfig.objective}"; ` +
+        (runConfig.objective === "wireframe" ? "a wireframe has nothing to push" : "use pushprep instead"),
+    );
+  }
   let chrome = runConfig?.chrome ?? null;
   if (chrome == null) {
     try {
@@ -179,6 +190,24 @@ export async function runHandoffPage({ site, runsDir = "runs", only } = {}) {
   }
 
   assertCanHandoff(report);
+
+  // A stale page-report from an earlier wireframe/styled pass (or a different
+  // chrome mode) must never gate a fresh pixel draft: the report has to have
+  // been scored under the hard gate, with the same chrome this run is in.
+  const reportMode = report?.thresholds?.mode ?? "(missing)";
+  if (reportMode !== "hard") {
+    throw new Error(
+      `handoff-page: page-report.json was scored in "${reportMode}" mode, not the pixel hard gate — ` +
+        `re-run verify-page-score ${site} --only ${slug} under the pixel objective before handoff`,
+    );
+  }
+  const reportChrome = report?.chrome ?? "(missing)";
+  if (reportChrome !== chrome) {
+    throw new Error(
+      `handoff-page: page-report.json chrome "${reportChrome}" does not match run.json chrome "${chrome}" — ` +
+        `re-run verify-page-score ${site} --only ${slug} before handoff`,
+    );
+  }
 
   if (!(await exists(htmlPath))) {
     throw new Error(`handoff-page: missing output/pages/${slug}.html`);

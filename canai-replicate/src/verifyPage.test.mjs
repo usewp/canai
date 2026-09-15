@@ -687,6 +687,192 @@ test(
   }),
 );
 
+// --- advisory / height-only presets end-to-end (final-review Important 3) ---
+// The advisory override lives in verifyPage (not evaluatePageGate), so the
+// spec's "styled never fails on mismatch" claim has to be proven through
+// verifyPage itself with real PNG fixtures, not just the buildPageReport
+// string tests.
+
+test(
+  "verifyPage: styled objective at 50% mismatch → pass, gate.advisory, one advisoryReasons entry, attempt 1 of 1",
+  withSilencedStderr(async () => {
+    const original = encodePng(8, 8, red);
+    const halfBlue = encodePng(8, 8, (x) => (x < 4 ? red() : blue())); // exactly 50% mismatch
+    const { root, cleanup } = await mkTree({
+      "mysite/run.json": JSON.stringify({ objective: "styled", scope: "site", chrome: "inline" }),
+      "mysite/output/pages/about.html": "<html><body>x</body></html>",
+      "mysite/captures/about/fullpage-desktop.png": original,
+      "mysite/captures/about/fullpage-mobile.png": original,
+    });
+    try {
+      const report = await verifyPage({
+        site: "mysite",
+        runsDir: root,
+        only: "about",
+        // Desktop trips the advisory line (50 >= 50); mobile is identical.
+        screenshotFn: async ({ width }) => (width === 1440 ? halfBlue : original),
+      });
+      assert.equal(report.status, "pass");
+      assert.equal(report.canHandoff, true);
+      assert.equal(report.attempts, 1);
+      assert.equal(report.desktop.mismatchPct, 50);
+      assert.equal(report.gate.pass, true);
+      assert.equal(report.gate.advisory, true);
+      assert.deepEqual(report.gate.reasons, []);
+      assert.deepEqual(report.gate.advisoryReasons, ["desktop: mismatchPct 50 >= 50"]);
+      assert.equal(report.thresholds.mode, "advisory");
+      assert.equal(report.thresholds.maxAttempts, GATE_PRESETS.styled.maxAttempts);
+      // Minor (final review): page-report.json must not contradict itself —
+      // gate.pass true with a per-viewport pass:false underneath it.
+      assert.equal(report.gate.desktop.pass, true, "per-viewport pass mirrors the advisory override");
+      assert.equal(report.gate.mobile.pass, true);
+      const md = await readFile(path.join(root, "mysite", "verify", "page-report.md"), "utf8");
+      assert.match(md, /- mode: advisory/);
+      assert.match(md, /### Advisory \(not enforced\)/);
+      assert.doesNotMatch(md, /### Fail reasons/);
+    } finally {
+      await cleanup();
+    }
+  }),
+);
+
+test(
+  "verifyPage: wireframe objective at ~100% mismatch but 12.5% height delta → pass (height-only gate)",
+  withSilencedStderr(async () => {
+    const original = encodePng(8, 8, red);
+    const tallerBlue = encodePng(8, 9, blue); // 100% mismatch on the overlap, |8-9|/9 = 11.1% height Δ
+    const { root, cleanup } = await mkTree({
+      "mysite/run.json": JSON.stringify({ objective: "wireframe", scope: "page", chrome: "inline" }),
+      "mysite/output/pages/about.html": "<html><body>x</body></html>",
+      "mysite/captures/about/fullpage-desktop.png": original,
+      "mysite/captures/about/fullpage-mobile.png": original,
+    });
+    try {
+      const report = await verifyPage({
+        site: "mysite",
+        runsDir: root,
+        only: "about",
+        screenshotFn: async () => tallerBlue,
+      });
+      assert.equal(report.status, "pass");
+      assert.equal(report.canHandoff, true);
+      assert.equal(report.desktop.mismatchPct, 100);
+      assert.ok(report.desktop.heightDeltaPct > 0 && report.desktop.heightDeltaPct <= 20, String(report.desktop.heightDeltaPct));
+      assert.equal(report.gate.pass, true);
+      assert.equal(report.gate.advisory, false, "height-only is a real gate, not advisory");
+      assert.deepEqual(report.gate.reasons, []);
+      assert.equal(report.thresholds.mode, "height-only");
+      assert.equal(report.thresholds.maxMismatchPct, null);
+    } finally {
+      await cleanup();
+    }
+  }),
+);
+
+test(
+  "verifyPage: wireframe objective fails on height alone — 25% height delta trips the gate even with 0% mismatch",
+  withSilencedStderr(async () => {
+    const original = encodePng(8, 8, red);
+    const tooTall = encodePng(8, 12, red); // 0% mismatch on overlap, |8-12|/12 = 33% height Δ
+    const { root, cleanup } = await mkTree({
+      "mysite/run.json": JSON.stringify({ objective: "wireframe", scope: "page", chrome: "inline" }),
+      "mysite/output/pages/about.html": "<html><body>x</body></html>",
+      "mysite/captures/about/fullpage-desktop.png": original,
+      "mysite/captures/about/fullpage-mobile.png": original,
+    });
+    try {
+      const report = await verifyPage({
+        site: "mysite",
+        runsDir: root,
+        only: "about",
+        screenshotFn: async () => tooTall,
+      });
+      assert.equal(report.status, "in-progress", "attempt 1 of 2 — not a hard fail yet");
+      assert.equal(report.canHandoff, false);
+      assert.equal(report.desktop.mismatchPct, 0);
+      assert.equal(report.gate.pass, false);
+      assert.match(report.gate.reasons[0], /desktop: heightDeltaPct 33\.3 >= 20/);
+    } finally {
+      await cleanup();
+    }
+  }),
+);
+
+// --- attempt history already exhausted (dogfood bug 2) ----------------------
+// nextAttemptState short-circuits on `pass` before the max-attempts check, so
+// a 4th attempt that happened to pass would report canHandoff: true. The
+// history must be refused up front — before any screenshot is read — and
+// the message must say how to start a fresh one.
+
+test(
+  "verifyPage: prior attempts already at maxAttempts → refuses before screenshotting, names the reset paths",
+  withSilencedStderr(async () => {
+    const original = encodePng(8, 8, red);
+    const { root, cleanup } = await mkTree({
+      "mysite/run.json": JSON.stringify({ objective: "pixel", scope: "page", chrome: "inline" }),
+      "mysite/output/pages/about.html": "<html><body>x</body></html>",
+      "mysite/captures/about/fullpage-desktop.png": original,
+      "mysite/captures/about/fullpage-mobile.png": original,
+      "mysite/output/pages/about.page-mode.json": JSON.stringify({
+        attempts: 3,
+        status: "fail",
+        failReason: "max-attempts",
+        combinedSeverity: 200,
+        scores: { desktop: { mismatchPct: 100, heightDeltaPct: 0 }, mobile: { mismatchPct: 100, heightDeltaPct: 0 } },
+      }),
+    });
+    try {
+      let shots = 0;
+      await assert.rejects(
+        () =>
+          verifyPage({
+            site: "mysite",
+            runsDir: root,
+            only: "about",
+            screenshotFn: async () => {
+              shots += 1;
+              return original;
+            },
+          }),
+        (e) => {
+          assert.match(e.message, /page-verify: about already has 3 attempt\(s\) recorded \(max 3\)/);
+          assert.match(e.message, /replica objective mysite --set/);
+          assert.match(e.message, /output\/pages\/about\.page-mode\.json/);
+          return true;
+        },
+      );
+      assert.equal(shots, 0, "screenshotFn must never run on an exhausted history");
+      // Nothing was written: no new report, meta untouched.
+      const meta = JSON.parse(await readFile(path.join(root, "mysite", "output", "pages", "about.page-mode.json"), "utf8"));
+      assert.equal(meta.attempts, 3);
+      await assert.rejects(access(path.join(root, "mysite", "verify", "page-report.json")));
+    } finally {
+      await cleanup();
+    }
+  }),
+);
+
+test(
+  "verifyPage: advisory (styled) never refuses on attempt count — maxAttempts 1 preset, attempt 2 still scores and passes",
+  withSilencedStderr(async () => {
+    const original = encodePng(8, 8, red);
+    const { root, cleanup } = await mkTree({
+      "mysite/run.json": JSON.stringify({ objective: "styled", scope: "site", chrome: "inline" }),
+      "mysite/output/pages/about.html": "<html><body>x</body></html>",
+      "mysite/captures/about/fullpage-desktop.png": original,
+      "mysite/captures/about/fullpage-mobile.png": original,
+      "mysite/output/pages/about.page-mode.json": JSON.stringify({ attempts: 1, status: "pass", combinedSeverity: 0 }),
+    });
+    try {
+      const report = await verifyPage({ site: "mysite", runsDir: root, only: "about", screenshotFn: async () => original });
+      assert.equal(report.status, "pass");
+      assert.equal(report.attempts, 2);
+    } finally {
+      await cleanup();
+    }
+  }),
+);
+
 // --- --max-* override refusal outside `pixel` -------------------------------
 // The refusal check runs before any capture/HTML file is touched, so an
 // empty runs dir is enough — these never reach screenshotFn.
