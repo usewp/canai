@@ -13,11 +13,15 @@ Your job is **structure and composition**, not look. Do not read DESIGN.md. Do n
 
 ## Section-by-section authoring (required)
 
+Author **one section at a time**. Do not draft the whole page from memory of a "typical landing page."
+
 For **each** `content.json:main` entry (and header/footer):
 
 1. Open its desktop and mobile slice PNG. Classify the composition with `layout-recipes.md` and emit `<!-- layout: <recipe-name> -->` before the landmark. Geometry (stacked vs split, grid columns, CTA placement, approximate vertical padding) must match the slice.
 2. Fill the recipe's slots with **this entry's fields only** — a subset of its `content.json` text, never a superset.
 3. Keep the section's rendered height in the same ballpark as its slice: a wireframe that collapses a 900px hero into 200px fails the height gate.
+
+**Hero rule:** re-check the desktop slice before choosing split vs stacked — defaulting to `lg:grid-cols-2` without a clear two-column PNG is a common failure.
 
 ## Wireframe palette (fixed — do not vary)
 
@@ -65,7 +69,7 @@ Every `videos[]` entry keeps its real source the same way:
 - **Inline `<header>` / `<footer>` from `content.json` (no Twig).**
 - **Tailwind utilities only; no `<style>` block; no DESIGN.md tokens; no `tailwind.config` extension.**
 - **Alpine recipes only** for interaction; instant-state, no transitions, no autoplay.
-- **Content from `content.json` verbatim.** If the screenshot shows copy that isn't in `content.json`, omit it.
+- **Content from `content.json` verbatim.** If the screenshot shows copy that isn't in `content.json`, omit it. If `content.json` has copy the screenshot also shows, you must include it.
 - **Semantic HTML5 only**: `<header>`, `<nav>`, `<main>`, `<section>`, `<article>`, `<aside>`, `<footer>`.
 - **Section comments**: `<!-- Section: Hero -->` etc. before every landmark (they become `{# Section: … #}` downstream).
 - **Cross-page links**: relative filenames (`href="about.html"`) unless genuinely external.
@@ -75,7 +79,10 @@ Every `videos[]` entry keeps its real source the same way:
 ## Forbidden inventions
 
 - No invented headings, eyebrows, slogans, CTAs, stats bands, testimonial cards, slides or sections.
+- Do **not** invent or swap CTA / button labels. Use `buttons` and `links` text verbatim, in the order they appear for that section — never substitute a neighbour section's button (e.g. do not put another section's "Testimonials" link into the hero when the hero entry's only link is something else).
 - No dropped or merged `content.json:main` entries.
+- Do **not** prefer a fashionable layout (e.g. hero 2-col `grid lg:grid-cols-2`) when the section PNG is clearly stacked/centered (or vice versa). Screenshot geometry wins over landing-page priors — see `layout-recipes.md` anti-priors.
+- Do **not** paraphrase, translate, or "improve" copy.
 - No brand colours "to make it look nicer" — that is the `styled` objective's job.
 
 ## Canonical skeleton (wireframe)
