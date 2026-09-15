@@ -170,6 +170,23 @@ test("verifyStructure: writes worst-first report, counts pass/fail/skipped, exit
   }
 });
 
+test("verifyStructure: objective 'structure' checks output/structure/*.md against content.json", async () => {
+  const { root, runDir, cleanup } = await fixtureRun();
+  try {
+    const { renderStructureMarkdown } = await import("./structureDoc.mjs");
+    await mkdir(path.join(runDir, "output", "structure"), { recursive: true });
+    await writeFile(path.join(runDir, "output", "structure", "pricing.md"),
+      renderStructureMarkdown({ slug: "pricing", url: "https://example.com/pricing/", content: CONTENT, sectionFiles: {} }));
+    await writeFile(path.join(runDir, "output", "structure", "about.md"), "# About\n");
+    const r = await verifyStructure({ site: "example.com", runsDir: path.join(root, "runs"), objective: "structure" });
+    assert.equal(r.passed, 1);
+    assert.equal(r.failed, 1);
+    assert.equal(r.results.find((x) => x.slug === "about").kind, "structure");
+  } finally {
+    await cleanup();
+  }
+});
+
 test("verifyStructure: --only narrows and throws when nothing matches", async () => {
   const { root, cleanup } = await fixtureRun();
   try {

@@ -1275,6 +1275,65 @@ test("prepareTransformBundles: objective wins over a contradicting pageMode flag
   }
 });
 
+test("prepareTransformBundles: objective 'structure' writes output/structure/<slug>.md with no prompt and no DESIGN.md", async () => {
+  const { runDir, cleanup } = await mkRun("example.com", {
+    "pages.json": pagesJson(["https://example.com/pricing/"]),
+  });
+  try {
+    await stageCapture(runDir, "pricing", {
+      title: "Pricing", header: {}, footer: {},
+      main: [{ id: "hero", role: "hero", tag: "section", headings: [{ level: 1, text: "Simple pricing" }] }],
+    });
+    const r = await withSilencedStderr(() =>
+      prepareTransformBundles({ site: "example.com", runsDir: path.dirname(runDir), objective: "structure" }),
+    )();
+    assert.equal(r.objective, "structure");
+    assert.equal(r.chrome, null);
+    assert.equal(r.count, 1);
+    assert.equal(r.bundles[0].kind, "structure");
+    assert.equal(r.bundles[0].promptPath, null);
+    const md = await readFile(r.bundles[0].outputPath, "utf8");
+    assert.equal(r.bundles[0].outputPath, path.join(runDir, "output", "structure", "pricing.md"));
+    assert.match(md, /^## 1\. hero/m);
+    await assert.rejects(
+      readFile(path.join(runDir, ".transform", "pricing", "PROMPT.md"), "utf8"),
+      "a structure run must never write a per-page PROMPT.md — the carried Task 2 finding this closes",
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("prepareTransformBundles: objective 'structure' folds a repeating type's samples into structure docs too, without requiring CONTENT-MODEL.md", async () => {
+  const { runDir, cleanup } = await mkRun("example.com", {
+    "pagetypes.json": pagetypes(
+      [
+        type({
+          name: "case-study",
+          members: ["https://example.com/work/a", "https://example.com/work/b"],
+          samples: ["https://example.com/work/a", "https://example.com/work/b"],
+          archiveUrl: null,
+        }),
+      ],
+      ["https://example.com/about"],
+    ),
+  });
+  try {
+    await stageCapture(runDir, "about", { title: "About", main: [] });
+    await stageCapture(runDir, "work__a", { title: "Case A", main: [{ id: "hero", role: "hero", headings: [{ level: 1, text: "A" }] }] });
+    await stageCapture(runDir, "work__b", { title: "Case B", main: [{ id: "hero", role: "hero", headings: [{ level: 1, text: "B" }] }] });
+    // Deliberately no CONTENT-MODEL.md — structure must never require it.
+    const r = await withSilencedStderr(() =>
+      prepareTransformBundles({ site: "example.com", runsDir: path.dirname(runDir), objective: "structure" }),
+    )();
+    assert.equal(r.count, 3);
+    assert.ok(r.bundles.every((b) => b.kind === "structure"));
+    assert.deepEqual(r.bundles.map((b) => b.slug).sort(), ["about", "work__a", "work__b"]);
+  } finally {
+    await cleanup();
+  }
+});
+
 test("prepareTransformBundles: an objective with no page prompt fails loud", async () => {
   const { runDir, cleanup } = await mkRun("example.com", {
     "DESIGN.md": "# DESIGN.md",

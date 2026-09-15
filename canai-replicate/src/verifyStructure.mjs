@@ -7,12 +7,13 @@
 // This is the whole gate for the `structure` and `wireframe` objectives and
 // the local check `verify` could never do for `styled` output.
 
-import { readFile, writeFile, mkdir, access } from "node:fs/promises";
+import { readFile, writeFile, mkdir, access, readdir } from "node:fs/promises";
 import path from "node:path";
 import { collectOutputs, excludeChromePartials, applyOnlyFilter } from "./verify.mjs";
 import { classifyTemplateFilename } from "./outputFiles.mjs";
 import { readRunConfig } from "./runConfig.mjs";
-import { urlToSlug } from "./slug.mjs";
+import { urlToSlug, matchesOnly } from "./slug.mjs";
+import { extractStructureFromDoc } from "./structureDoc.mjs";
 
 const norm = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
 const decodeEntities = (s) =>
@@ -183,22 +184,40 @@ export async function verifyStructure({ site, runsDir = "runs", only = null, obj
   const verifyDir = path.join(runDir, "verify");
   await mkdir(verifyDir, { recursive: true });
 
-  const entries = applyOnlyFilter(excludeChromePartials(await collectOutputs(path.join(runDir, "output"))), only);
   const results = [];
-  for (const { file, dir, kind } of entries) {
-    const slug = file.replace(/\.html$/, "");
-    let captureDir = path.join(runDir, "captures", slug);
-    if (kind === "template") {
-      const r = await sampleCaptureDirForTemplate(runDir, file);
-      if (r.skipped) { results.push({ slug, kind, skipped: r.skipped }); continue; }
-      captureDir = r.captureDir;
+  if (resolved === "structure") {
+    const docDir = path.join(runDir, "output", "structure");
+    let files = [];
+    try { files = (await readdir(docDir)).filter((f) => f.endsWith(".md")); } catch { files = []; }
+    if (only) {
+      files = files.filter((f) => matchesOnly(only, { slug: f.replace(/\.md$/, "") }));
+      if (files.length === 0) throw new Error(`no output matches --only ${only}`);
     }
-    const contentPath = path.join(captureDir, "content.json");
-    if (!(await exists(contentPath))) { results.push({ slug, kind, skipped: "no capture" }); continue; }
-    const expected = expectedFromContent(await readJson(contentPath));
-    const actual = extractStructure(await readFile(path.join(dir, file), "utf8"));
-    const cmp = compareStructure(expected, actual, { kind });
-    results.push({ slug, kind, ...cmp });
+    if (files.length === 0) throw new Error(`verify-structure: no output/structure/*.md for ${site} — run transform first`);
+    for (const file of files) {
+      const slug = file.replace(/\.md$/, "");
+      const contentPath = path.join(runDir, "captures", slug, "content.json");
+      if (!(await exists(contentPath))) { results.push({ slug, kind: "structure", skipped: "no capture" }); continue; }
+      const cmp = compareStructure(expectedFromContent(await readJson(contentPath)), extractStructureFromDoc(await readFile(path.join(docDir, file), "utf8")));
+      results.push({ slug, kind: "structure", ...cmp });
+    }
+  } else {
+    const entries = applyOnlyFilter(excludeChromePartials(await collectOutputs(path.join(runDir, "output"))), only);
+    for (const { file, dir, kind } of entries) {
+      const slug = file.replace(/\.html$/, "");
+      let captureDir = path.join(runDir, "captures", slug);
+      if (kind === "template") {
+        const r = await sampleCaptureDirForTemplate(runDir, file);
+        if (r.skipped) { results.push({ slug, kind, skipped: r.skipped }); continue; }
+        captureDir = r.captureDir;
+      }
+      const contentPath = path.join(captureDir, "content.json");
+      if (!(await exists(contentPath))) { results.push({ slug, kind, skipped: "no capture" }); continue; }
+      const expected = expectedFromContent(await readJson(contentPath));
+      const actual = extractStructure(await readFile(path.join(dir, file), "utf8"));
+      const cmp = compareStructure(expected, actual, { kind });
+      results.push({ slug, kind, ...cmp });
+    }
   }
 
   const { markdown, json } = buildStructureReport({ site, objective: resolved, results });

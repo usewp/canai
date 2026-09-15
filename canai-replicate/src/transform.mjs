@@ -11,6 +11,7 @@ import path from "node:path";
 import { urlToSlug, matchesOnly } from "./slug.mjs";
 import { pickRepresentativeCaptureUrl } from "./siteChrome.mjs";
 import { assertObjective } from "./runConfig.mjs";
+import { renderStructureMarkdown } from "./structureDoc.mjs";
 
 const PROMPT_TEMPLATE = path.resolve(
   new URL("..", import.meta.url).pathname,
@@ -343,6 +344,18 @@ function resolveSlugClaims(oneOffs, types) {
   return { droppedArchives, droppedPages };
 }
 
+// Map section id → slice PNG path (relative to the capture dir) from
+// sections.json, when present. Purely informational in the structure doc.
+async function sliceFilesFor(captureDir) {
+  try {
+    const entries = JSON.parse(await readFile(path.join(captureDir, "sections.json"), "utf8"));
+    const list = Array.isArray(entries) ? entries : entries.sections ?? [];
+    return Object.fromEntries(list.filter((e) => e && e.id && e.file).map((e) => [e.id, e.file]));
+  } catch {
+    return {};
+  }
+}
+
 export async function prepareTransformBundles({
   site,
   runsDir = "runs",
@@ -369,8 +382,9 @@ export async function prepareTransformBundles({
   try {
     const pt = JSON.parse(await readFile(path.join(runDir, "pagetypes.json"), "utf8"));
     oneOffs = pt.pages.map((p) => p.url);
-    types = inlineChrome ? [] : pt.types.filter((t) => t.kind !== "page");
+    types = inlineChrome || resolved === "structure" ? [] : pt.types.filter((t) => t.kind !== "page");
     oneOffs.push(...pt.types.filter((t) => t.kind === "page").flatMap((t) => t.members));
+    if (resolved === "structure") oneOffs.push(...pt.types.filter((t) => t.kind !== "page").flatMap((t) => t.samples ?? []));
     chromeSource = pt;
   } catch {
     const pagesJson = JSON.parse(await readFile(path.join(runDir, "pages.json"), "utf8"));
@@ -410,7 +424,7 @@ export async function prepareTransformBundles({
   // a plain run always attempts it), it just lives in its own slot.
   // Page-mode drafts inline chrome for local verify — skip entirely.
   let chrome = null;
-  if (!inlineChrome && matchesOnly(only, { typeName: "chrome" })) {
+  if (!inlineChrome && resolved !== "structure" && matchesOnly(only, { typeName: "chrome" })) {
     const repUrl = pickRepresentativeCaptureUrl(chromeSource);
     if (!repUrl) {
       process.stderr.write(`  ! skipping site chrome: no page or type to pick a representative capture from\n`);
@@ -455,6 +469,15 @@ export async function prepareTransformBundles({
     const captureDir = path.resolve(runDir, "captures", slug);
     if (!(await exists(path.join(captureDir, "content.json")))) {
       process.stderr.write(`  ! skipping ${slug}: no capture\n`);
+      continue;
+    }
+    if (resolved === "structure") {
+      const structureDir = path.resolve(runDir, "output", "structure");
+      await mkdir(structureDir, { recursive: true });
+      const content = JSON.parse(await readFile(path.join(captureDir, "content.json"), "utf8"));
+      const outputPath = path.join(structureDir, `${slug}.md`);
+      await writeFile(outputPath, renderStructureMarkdown({ slug, url, content, sectionFiles: await sliceFilesFor(captureDir) }));
+      bundles.push({ slug, kind: "structure", url, promptPath: null, outputPath });
       continue;
     }
     if (DUAL_FULLPAGE_OBJECTIVES.has(resolved)) {
