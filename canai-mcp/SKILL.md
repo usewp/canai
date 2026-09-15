@@ -655,6 +655,7 @@ CanAI sites can be multilingual in one of **two mutually exclusive models**: **n
 - **Stale index.** After editing `_canai_html` / `_canai_js`, rescan before listing.
 - **No-op until configured.** With no non-default language, prefix routing / redirects / hreflang are off and `t()` / `tmedia()` pass through unchanged.
 - **Content overrides are frontend-only.** Admin, REST edit contexts, and the default language always see the original values; only `/{lang}/` frontend renders swap.
+- **Editors can also translate in wp-admin.** Since plugin v1.70.0 a block-editor post opened with `post.php?post=<id>&action=edit&lang=<slug>` ("language mode") loads and saves that language's override blob — the same `_canai_i18n_<lang>` data `wpcanai-i18n-set-post-overrides` writes. If a user says they edited a translation "in the editor", read it back with `wpcanai-i18n-get-content { "post_id": <id>, "lang": "<slug>" }` rather than assuming it is untranslated.
 - **Search matches default-language text only** — WP search doesn't index override blobs.
 
 ### Twig helpers
