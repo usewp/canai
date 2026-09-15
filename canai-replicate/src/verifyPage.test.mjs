@@ -237,6 +237,20 @@ test("buildPageReport: wireframe preset prints mismatch threshold as 'none'", ()
   assert.equal(json.thresholds.maxMismatchPct, null);
 });
 
+test("buildPageReport: advisory mode with no advisoryReasons omits the Advisory heading", () => {
+  const gate = { pass: true, advisory: true, advisoryReasons: [], reasons: [], desktop: { pass: true, reasons: [] }, mobile: { pass: true, reasons: [] } };
+  const { markdown, json } = buildPageReport({
+    site: "example.com", slug: "about",
+    desktop: { mismatchPct: 10, heightDeltaPct: 1 }, mobile: { mismatchPct: 5, heightDeltaPct: 1 },
+    gate, attemptState: { status: "pass", attempts: 1, canHandoff: true, canRetry: false },
+    thresholds: GATE_PRESETS.styled,
+  });
+  assert.match(markdown, /- mode: advisory/);
+  assert.doesNotMatch(markdown, /### Advisory \(not enforced\)/);
+  assert.equal(json.gate.advisory, true);
+  assert.deepEqual(json.gate.advisoryReasons, []);
+});
+
 // ---------------------------------------------------------------------------
 // rankSectionDiffs / scaleBoxToPng / formatSectionNote
 // ---------------------------------------------------------------------------
@@ -644,6 +658,90 @@ test(
     }
   }),
 );
+
+test(
+  "verifyPage: thresholds override accepted explicitly under objective: pixel",
+  withSilencedStderr(async () => {
+    const original = encodePng(8, 8, red);
+    const generated = encodePng(8, 8, (x) => (x < 4 ? red() : blue())); // 50% mismatch
+    const { root, cleanup } = await mkTree({
+      "mysite/output/pages/about.html": "<html><body>x</body></html>",
+      "mysite/captures/about/fullpage-desktop.png": original,
+      "mysite/captures/about/fullpage-mobile.png": original,
+    });
+    try {
+      const report = await verifyPage({
+        site: "mysite",
+        runsDir: root,
+        only: "about",
+        objective: "pixel",
+        thresholds: { maxMismatchPct: 60, maxHeightDeltaPct: 50, maxAttempts: 3 },
+        screenshotFn: async () => generated,
+      });
+      assert.equal(report.status, "pass");
+      assert.equal(report.canHandoff, true);
+    } finally {
+      await cleanup();
+    }
+  }),
+);
+
+// --- --max-* override refusal outside `pixel` -------------------------------
+// The refusal check runs before any capture/HTML file is touched, so an
+// empty runs dir is enough — these never reach screenshotFn.
+
+test("verifyPage: --max-* overrides are refused for objective styled", async () => {
+  await assert.rejects(
+    verifyPage({
+      site: "mysite",
+      runsDir: "runs-does-not-need-to-exist",
+      only: "about",
+      objective: "styled",
+      thresholds: { maxMismatchPct: 60 },
+      screenshotFn: async () => {
+        throw new Error("screenshotFn must not run — refusal happens first");
+      },
+    }),
+    /--max-\* overrides apply to the pixel objective only \(run\.json objective is "styled"\)/,
+  );
+});
+
+test("verifyPage: --max-* overrides are refused for objective wireframe", async () => {
+  await assert.rejects(
+    verifyPage({
+      site: "mysite",
+      runsDir: "runs-does-not-need-to-exist",
+      only: "about",
+      objective: "wireframe",
+      thresholds: { maxAttempts: 5 },
+      screenshotFn: async () => {
+        throw new Error("screenshotFn must not run — refusal happens first");
+      },
+    }),
+    /--max-\* overrides apply to the pixel objective only \(run\.json objective is "wireframe"\)/,
+  );
+});
+
+test("verifyPage: --max-* overrides are accepted (no refusal) for objective pixel, even with no fixtures yet", async () => {
+  // Same early-refusal check, opposite branch: pixel + non-empty thresholds
+  // must NOT throw the override-refusal error. It still throws — just the
+  // later, unrelated "missing output/pages/*.html" error — proving control
+  // flow passed the refusal check and moved on.
+  await assert.rejects(
+    verifyPage({
+      site: "mysite",
+      runsDir: "runs-does-not-need-to-exist",
+      only: "about",
+      objective: "pixel",
+      thresholds: { maxMismatchPct: 60 },
+    }),
+    (e) => {
+      assert.doesNotMatch(e.message, /--max-\* overrides apply to the pixel objective only/);
+      assert.match(e.message, /missing output\/pages\/about\.html/);
+      return true;
+    },
+  );
+});
 
 // ---------------------------------------------------------------------------
 // defaultPageScreenshotFn — open → viewport(url) → reveal/scroll → shot

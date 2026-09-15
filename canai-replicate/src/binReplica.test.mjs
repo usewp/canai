@@ -167,3 +167,33 @@ test("every command dispatches without a dangling reference", async () => {
     );
   }
 });
+
+// Task 6 fix-loop finding: verify-page-score's gate preset comes from
+// run.json (pixel hard / styled advisory / wireframe height-only), so the
+// CLI — like verify-structure — must refuse to run without one, the same way
+// `replica objective <site>` does (see runConfig.test.mjs's CLI tests).
+test("CLI: verify-page-score without run.json exits non-zero and names the objective command", async () => {
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const { mkdtemp, mkdir, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const path = (await import("node:path")).default;
+  const run = promisify(execFile);
+  const bin = new URL("../bin/replica", import.meta.url).pathname;
+
+  const root = await mkdtemp(path.join(tmpdir(), "verify-page-score-cli-"));
+  const runs = path.join(root, "runs");
+  // The run directory exists (e.g. capture already ran) but run.json doesn't.
+  await mkdir(path.join(runs, "example.com"), { recursive: true });
+  try {
+    await assert.rejects(
+      run(process.execPath, [bin, "verify-page-score", "example.com", "--only", "p", "--runs", runs]),
+      (e) =>
+        e.code === 1 &&
+        /run\.json not found/.test(e.stderr) &&
+        /--set <structure\|wireframe\|styled\|pixel>/.test(e.stderr),
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
