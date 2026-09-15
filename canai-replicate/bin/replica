@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 import { argv, exit, stderr } from "node:process";
 import { pathToFileURL } from "node:url";
+import path from "node:path";
+import { readRunConfig, writeRunConfig, requireRunConfig, runConfigPath, OBJECTIVES } from "../src/runConfig.mjs";
+import { seedPageModeWorklist } from "../src/pageCapture.mjs";
+import { urlToSlug } from "../src/slug.mjs";
 import { discover } from "../src/discover.mjs";
 import { classify } from "../src/classify.mjs";
 import { prepareDesignBundle } from "../src/designmd.mjs";
@@ -87,6 +91,9 @@ USAGE
   replica <command> <args> [flags]
 
 COMMANDS
+  objective    <site>  Record what this run is for — required before transform/verify
+                       --set <structure|wireframe|styled|pixel> [--scope site|page]
+                       → runs/<site>/run.json  (no --set: print the current value)
   discover  <url>            Find pages (sitemap or crawl). Writes runs/<site>/pages.json
   classify  <site>           Cluster pages into page types. Writes runs/<site>/pagetypes.json + .classify/PROMPT.md
   capture   <site>           Write the agent-browser capture bundle → runs/<site>/.capture/PROMPT.md (YOU run it)
@@ -142,9 +149,25 @@ async function main() {
   const runsDir = args.runs || "runs";
   const session = args.session || "canai";
   const profile = args.profile || null;
-  const only = args.only || null;
+  let only = args.only || null;
 
   switch (cmd) {
+    case "objective": {
+      const site = args._[0];
+      if (!site) throw new Error(`usage: objective <site> [--set <${OBJECTIVES.join("|")}>] [--scope site|page]`);
+      const runDir = path.join(runsDir, site);
+      if (args.set != null) {
+        if (args.set === true) throw new Error(`--set requires a value: ${OBJECTIVES.join("|")}`);
+        const scope = args.scope != null ? String(args.scope) : "site";
+        const { config, previous } = await writeRunConfig(runDir, { objective: String(args.set), scope });
+        const was = previous ? ` (was ${previous.objective}/${previous.scope})` : "";
+        stderr.write(`✓ ${site}: objective=${config.objective} scope=${config.scope}${was} → ${runConfigPath(runDir)}\n`);
+      } else {
+        const c = await requireRunConfig(runDir, { site });
+        stderr.write(`${site}: objective=${c.objective} scope=${c.scope} (set ${c.setAt} by ${c.setBy})\n`);
+      }
+      break;
+    }
     case "discover": {
       const url = args._[0];
       if (!url) throw new Error("usage: discover <url>");
@@ -173,6 +196,16 @@ async function main() {
     case "capture": {
       const site = args._[0];
       if (!site) throw new Error("usage: capture <site> [--page <url>]");
+      const pageUrl = resolveCapturePageUrl(args.page);
+      if (pageUrl) {
+        const runDir = path.join(runsDir, site);
+        await seedPageModeWorklist(runDir, { site, url: pageUrl });
+        if (!(await readRunConfig(runDir))) {
+          await writeRunConfig(runDir, { objective: "pixel", scope: "page", setBy: "capture-page" });
+          stderr.write(`  run.json seeded: objective=pixel scope=page (change with: replica objective ${site} --set <objective>)\n`);
+        }
+        only = only || urlToSlug(pageUrl);
+      }
       const { captureBundle } = await import("../src/captureBundle.mjs");
       const r = await captureBundle({ site, runsDir, only, profile, session });
       stderr.write(`✓ capture bundle for ${r.count} page(s) → ${r.promptPath}\n`);
