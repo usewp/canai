@@ -98,6 +98,9 @@ export function wrapMainWithTwigChrome(html) {
   if (findBalancedTag(html, "header", "first")) {
     throw new Error("chrome skip: draft still contains a <header> landmark — re-transform with --chrome skip, or hand off with --chrome inline");
   }
+  if (findBalancedTag(html, "footer", "last")) {
+    throw new Error("chrome skip: draft still contains a <footer> landmark — re-transform with --chrome skip, or hand off with --chrome inline");
+  }
   const bodyOpen = html.match(/<body\b[^>]*>/i);
   const bodyClose = html.lastIndexOf("</body>");
   if (!bodyOpen || bodyClose < 0) throw new Error("chrome skip: draft has no <body>…</body> to wrap");

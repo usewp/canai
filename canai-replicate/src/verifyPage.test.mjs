@@ -788,3 +788,159 @@ test("buildPageReport: chrome skip prints the crop bands", () => {
   assert.equal(json.chrome, "skip");
   assert.deepEqual(json.cropBands.mobile, { top: 120, height: 3900 });
 });
+
+// ---------------------------------------------------------------------------
+// verifyPage — chrome skip end-to-end (main-band crop, offset section notes,
+// meta/report chrome fields). Reviewer finding on 707957f: the pipeline
+// wiring (readSections/mainBandCropBox/cropBands/boxOffsetTop/excludeIds/
+// meta.chrome) was only exercised by the pure mainBandCropBox + buildPageReport
+// string tests, never through verifyPage itself.
+// ---------------------------------------------------------------------------
+
+const CHROME_SKIP_DESKTOP_SECTIONS = {
+  sections: [
+    { id: "header", box: { left: 0, top: 0, width: 1440, height: 10 } },
+    { id: "hero", role: "hero", box: { left: 0, top: 10, width: 1440, height: 20 }, file: "sections-desktop/01-hero.png" },
+    { id: "footer", box: { left: 0, top: 30, width: 1440, height: 10 } },
+  ],
+};
+const CHROME_SKIP_MOBILE_SECTIONS = {
+  sections: [
+    { id: "header", box: { left: 0, top: 0, width: 390, height: 8 } },
+    { id: "hero", role: "hero", box: { left: 0, top: 8, width: 390, height: 12 }, file: "sections-mobile/01-hero.png" },
+    { id: "footer", box: { left: 0, top: 20, width: 390, height: 8 } },
+  ],
+};
+
+function chromeSkipRunJson() {
+  return JSON.stringify({
+    objective: "pixel",
+    scope: "page",
+    chrome: "skip",
+    setAt: new Date().toISOString(),
+    setBy: "user",
+  });
+}
+
+test(
+  "verifyPage: chrome skip — crops the capture to the main band, offsets section notes, and records chrome everywhere",
+  withSilencedStderr(async () => {
+    // 1440-wide desktop capture: header rows 0-9, main (hero) rows 10-29, footer rows 30-39.
+    const desktopCapture = encodePng(1440, 40, (x, y) => (y < 10 || y >= 30 ? red() : blue()));
+    // 390-wide mobile capture: header rows 0-7, main (hero) rows 8-19, footer rows 20-27.
+    const mobileCapture = encodePng(390, 28, (x, y) => (y < 8 || y >= 20 ? red() : blue()));
+    // Generated draft screenshots are <main>-only — exactly the main band, all blue.
+    const desktopGenerated = encodePng(1440, 20, blue);
+    const mobileGenerated = encodePng(390, 12, blue);
+    const heroCapDesktop = encodePng(1440, 20, blue);
+    const heroCapMobile = encodePng(390, 12, blue);
+
+    const { root, cleanup } = await mkTree({
+      "mysite/run.json": chromeSkipRunJson(),
+      "mysite/output/pages/pricing.html": "<html><body><main>m</main></body></html>",
+      "mysite/captures/pricing/fullpage-desktop.png": desktopCapture,
+      "mysite/captures/pricing/fullpage-mobile.png": mobileCapture,
+      "mysite/captures/pricing/sections-desktop.json": JSON.stringify(CHROME_SKIP_DESKTOP_SECTIONS),
+      "mysite/captures/pricing/sections-mobile.json": JSON.stringify(CHROME_SKIP_MOBILE_SECTIONS),
+      "mysite/captures/pricing/sections-desktop/01-hero.png": heroCapDesktop,
+      "mysite/captures/pricing/sections-mobile/01-hero.png": heroCapMobile,
+    });
+    try {
+      const report = await verifyPage({
+        site: "mysite",
+        runsDir: root,
+        only: "pricing",
+        screenshotFn: async ({ width }) => (width === 1440 ? desktopGenerated : mobileGenerated),
+      });
+
+      // Gate: capture is cropped to the main band before scoring, so a
+      // main-only draft that matches the band exactly passes cleanly.
+      assert.equal(report.status, "pass", JSON.stringify(report.gate));
+      assert.equal(report.desktop.mismatchPct, 0);
+      assert.equal(report.desktop.heightDeltaPct, 0);
+      assert.equal(report.mobile.mismatchPct, 0);
+      assert.equal(report.mobile.heightDeltaPct, 0);
+
+      // Report carries chrome + the exact crop bands (mainBandCropBox output).
+      assert.equal(report.chrome, "skip");
+      assert.deepEqual(report.cropBands, {
+        desktop: { top: 10, height: 20 },
+        mobile: { top: 8, height: 12 },
+      });
+
+      // sectionNotes: header/footer excluded; hero survives and scores clean
+      // — only possible if boxOffsetTop correctly re-anchored its box (top 10
+      // in the ORIGINAL capture's coordinates) to top 0 in the cropped/
+      // generated main-only image. An unshifted (wrong) offset would still
+      // slice *something* (clamped short) with mismatchPct 0 against a
+      // uniformly-blue capture, so heightDeltaPct is the assertion that
+      // actually catches it: the hero box is exactly the generated image's
+      // full height (20 desktop / 12 mobile) only when correctly re-anchored
+      // to top 0 — an unshifted box clips to a shorter overlap and reports a
+      // nonzero heightDeltaPct.
+      assert.ok(report.sectionNotes.length >= 1, "hero should survive as a note");
+      for (const n of report.sectionNotes) {
+        assert.notEqual(n.id, "header");
+        assert.notEqual(n.id, "footer");
+        assert.equal(n.id, "hero");
+        assert.equal(n.mismatchPct, 0);
+        assert.equal(n.heightDeltaPct, 0);
+      }
+      const viewports = report.sectionNotes.map((n) => n.viewport).sort();
+      assert.deepEqual(viewports, ["desktop", "mobile"]);
+
+      // page-mode.json meta carries chrome (belt-and-braces for handoff-page).
+      const meta = JSON.parse(
+        await readFile(path.join(root, "mysite", "output", "pages", "pricing.page-mode.json"), "utf8"),
+      );
+      assert.equal(meta.chrome, "skip");
+
+      // verify/page-report.json on disk matches the returned report.
+      const onDisk = JSON.parse(
+        await readFile(path.join(root, "mysite", "verify", "page-report.json"), "utf8"),
+      );
+      assert.equal(onDisk.chrome, "skip");
+      assert.deepEqual(onDisk.cropBands, report.cropBands);
+    } finally {
+      await cleanup();
+    }
+  }),
+);
+
+test(
+  "verifyPage: chrome skip — a viewport's section index missing the footer box throws loudly (not lenient)",
+  withSilencedStderr(async () => {
+    const desktopCapture = encodePng(1440, 40, (x, y) => (y < 10 || y >= 30 ? red() : blue()));
+    const mobileCapture = encodePng(390, 28, (x, y) => (y < 8 || y >= 20 ? red() : blue()));
+    const desktopGenerated = encodePng(1440, 20, blue);
+    const mobileGenerated = encodePng(390, 12, blue);
+    const heroCapDesktop = encodePng(1440, 20, blue);
+
+    const { root, cleanup } = await mkTree({
+      "mysite/run.json": chromeSkipRunJson(),
+      "mysite/output/pages/pricing.html": "<html><body><main>m</main></body></html>",
+      "mysite/captures/pricing/fullpage-desktop.png": desktopCapture,
+      "mysite/captures/pricing/fullpage-mobile.png": mobileCapture,
+      "mysite/captures/pricing/sections-desktop.json": JSON.stringify(CHROME_SKIP_DESKTOP_SECTIONS),
+      // Mobile section index is missing the footer box entirely.
+      "mysite/captures/pricing/sections-mobile.json": JSON.stringify({
+        sections: [{ id: "header", box: { left: 0, top: 0, width: 390, height: 8 } }],
+      }),
+      "mysite/captures/pricing/sections-desktop/01-hero.png": heroCapDesktop,
+    });
+    try {
+      await assert.rejects(
+        () =>
+          verifyPage({
+            site: "mysite",
+            runsDir: root,
+            only: "pricing",
+            screenshotFn: async ({ width }) => (width === 1440 ? desktopGenerated : mobileGenerated),
+          }),
+        /chrome skip: capture has no "footer" box/,
+      );
+    } finally {
+      await cleanup();
+    }
+  }),
+);

@@ -91,6 +91,13 @@ test("wrapMainWithTwigChrome: refuses a draft that still has a <header> (that is
   );
 });
 
+test("wrapMainWithTwigChrome: refuses a draft that still has a <footer> (symmetric with the <header> check)", () => {
+  assert.throws(
+    () => wrapMainWithTwigChrome(`<body><main></main><footer>x</footer></body>`),
+    /chrome skip: draft still contains a <footer> landmark/,
+  );
+});
+
 test("handoffPageHtml: chrome skip wraps, inline swaps", () => {
   const report = { status: "pass" };
   const skipped = handoffPageHtml({ html: `<body><main>m</main></body>`, report, chrome: "skip" });

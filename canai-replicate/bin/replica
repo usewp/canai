@@ -160,7 +160,7 @@ async function main() {
   switch (cmd) {
     case "objective": {
       const site = args._[0];
-      if (!site) throw new Error(`usage: objective <site> [--set <${OBJECTIVES.join("|")}>] [--scope site|page]`);
+      if (!site) throw new Error(`usage: objective <site> [--set <${OBJECTIVES.join("|")}>] [--scope site|page] [--chrome inline|skip]`);
       const runDir = path.join(runsDir, site);
       if (args.set != null) {
         if (args.set === true) throw new Error(`--set requires a value: ${OBJECTIVES.join("|")}`);
@@ -408,7 +408,7 @@ async function main() {
       if (args["min-severity-improvement"] != null) {
         thresholds.minSeverityImprovement = Number(args["min-severity-improvement"]);
       }
-      const r = await verifyPage({ site, runsDir, only, objective: runConfig.objective, thresholds });
+      const r = await verifyPage({ site, runsDir, only, objective: runConfig.objective, chrome: runConfig.chrome, thresholds });
       const mark = r.status === "pass" ? "✓" : r.status === "fail" ? "✗" : "…";
       stderr.write(
         `${mark} verify-page ${r.slug}: status=${r.status} (attempt ${r.attempts})` +
