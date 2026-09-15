@@ -54,8 +54,11 @@ export function extractStructure(html) {
       ...attrValues(src, /<source\b[^>]*\ssrc=["']([^"']+)["']/gi),
       ...attrValues(src, /<iframe\b[^>]*\ssrc=["']([^"']+)["']/gi),
     ],
-    forms: (src.match(/<form\b/gi) || []).length,
-    tables: (src.match(/<table\b/gi) || []).length,
+    // Scoped to <main>, same as sections — expectedFromContent only ever
+    // counts forms/tables out of content.main, so a header search form (or a
+    // footer newsletter table) must not mask a missing main-content one.
+    forms: (main.match(/<form\b/gi) || []).length,
+    tables: (main.match(/<table\b/gi) || []).length,
     header: /<header\b/i.test(src) || /wpcanai_template\(\s*['"]header['"]\s*\)/.test(src),
     footer: /<footer\b/i.test(src) || /wpcanai_template\(\s*['"]footer['"]\s*\)/.test(src),
   };

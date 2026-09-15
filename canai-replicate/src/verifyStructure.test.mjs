@@ -115,6 +115,25 @@ test("compareStructure: template kind — Twig heading/image slots satisfy liter
   assert.equal(r.pass, true, JSON.stringify(r.missing));
 });
 
+test("compareStructure: a form outside <main> does not satisfy an expected main-content form", () => {
+  const html = `<header><form action="/search" method="get"></form></header><main>
+    <section><h1>Simple pricing</h1><img src="https://cdn.example.com/hero.png"></section>
+    <section><h2>Compare plans</h2><iframe src="https://www.youtube.com/embed/abc"></iframe><table></table></section>
+  </main><footer></footer>`;
+  const r = compareStructure(expectedFromContent(CONTENT), extractStructure(html));
+  assert.equal(r.pass, false);
+  assert.deepEqual(r.missing.forms, { expected: 1, actual: 0 });
+});
+
+test("compareStructure: a form inside <main> satisfies the expected main-content form", () => {
+  const html = `<header></header><main>
+    <section><h1>Simple pricing</h1><img src="https://cdn.example.com/hero.png"></section>
+    <section><h2>Compare plans</h2><iframe src="https://www.youtube.com/embed/abc"></iframe><form action="/signup" method="post"></form><table></table></section>
+  </main><footer></footer>`;
+  const r = compareStructure(expectedFromContent(CONTENT), extractStructure(html));
+  assert.equal(r.pass, true, JSON.stringify(r.missing));
+});
+
 async function fixtureRun() {
   const root = await mkdtemp(path.join(tmpdir(), "verify-structure-"));
   const runDir = path.join(root, "runs", "example.com");
