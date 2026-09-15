@@ -712,7 +712,7 @@ page, re-run `transform --only <path>`, re-verify.
 
 ```
 runs/<site>/
-├── run.json                           # { objective, scope, setAt, setBy } — set by `replica objective`
+├── run.json                          # { objective, scope, setAt, setBy } — set by `replica objective`
 ├── pages.json                        # discovered pages
 ├── pagetypes.json                    # page types (post-classify) + top-level one-off `pages`
 ├── .classify/PROMPT.md               # classify review prompt — rename/prune before capturing
