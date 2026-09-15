@@ -191,6 +191,57 @@
       height: i.naturalHeight || null,
     })).filter(i => i.src);
 
+    // --- Videos / embeds. Parity copy of videoKindForSrc/buildVideoModel
+    // (capture.mjs, exported + tested) — same eval-boundary constraint as
+    // buildTableModel above. Hidden/zero-size players are dropped the same
+    // way a display:none image would be; poster/title survive so a wireframe
+    // or structure deliverable can label the box.
+    const VIDEO_HOST_KINDS = [
+      [/(^|\.)youtube(-nocookie)?\.com$/i, "youtube"],
+      [/(^|\.)youtu\.be$/i, "youtube"],
+      [/(^|\.)vimeo\.com$/i, "vimeo"],
+      [/(^|\.)wistia\.(com|net)$/i, "wistia"],
+      [/(^|\.)loom\.com$/i, "loom"],
+    ];
+    const videoKindForSrc = (tag, src) => {
+      if (String(tag).toUpperCase() === "VIDEO") return "video";
+      let host = "";
+      try { host = new URL(src).hostname; } catch { return "iframe"; }
+      for (const [re, kind] of VIDEO_HOST_KINDS) if (re.test(host)) return kind;
+      return "iframe";
+    };
+    const isRenderedEl = (el) => {
+      const cs = getComputedStyle(el);
+      const r = el.getBoundingClientRect();
+      return cs.display !== "none" && cs.visibility !== "hidden" && r.width > 0 && r.height > 0;
+    };
+    const buildVideoModel = ({ tag, src, poster, title, autoplay, width, height, rendered }) => {
+      if (!src || !rendered) return null;
+      return {
+        kind: videoKindForSrc(tag, src), src, poster: poster || null, title: title || null,
+        width: width || null, height: height || null, autoplay: Boolean(autoplay),
+      };
+    };
+    const videoEls = [
+      ...$$("video", root).map((v) => {
+        const source = v.querySelector("source[src]");
+        const r = v.getBoundingClientRect();
+        return buildVideoModel({
+          tag: "VIDEO", src: v.currentSrc || v.src || (source ? source.src : ""),
+          poster: v.poster || null, title: v.title || v.getAttribute("aria-label") || null,
+          autoplay: v.autoplay, width: Math.round(r.width), height: Math.round(r.height), rendered: isRenderedEl(v),
+        });
+      }),
+      ...$$("iframe[src]", root).map((f) => {
+        const r = f.getBoundingClientRect();
+        return buildVideoModel({
+          tag: "IFRAME", src: f.src, poster: null, title: f.title || null, autoplay: false,
+          width: Math.round(r.width), height: Math.round(r.height), rendered: isRenderedEl(f),
+        });
+      }),
+    ];
+    const videos = videoEls.filter(Boolean);
+
     const forms = $$("form", root).map(f => ({
       action: f.getAttribute("action") || null,
       method: (f.getAttribute("method") || "get").toLowerCase(),
@@ -213,7 +264,7 @@
     const labelValuePairs = extractLabelValuePairs(root);
 
     return {
-      headings, paragraphs, lists, links, images, forms, buttons,
+      headings, paragraphs, lists, links, images, videos, forms, buttons,
       tables, definitionLists, labelValuePairs,
     };
   };

@@ -35,7 +35,10 @@ below before you start; it puts you on one of two different tracks:
    render ANY of them correctly given its fields.
    - **`content.json`'s `tables` / `definitionLists` / `labelValuePairs`**
      carry content that never shows up as a plain paragraph or list — read
-     them for every sample, not just headings/paragraphs/images/links. This
+     them for every sample, not just headings/paragraphs/images/videos/links.
+     A `videos[]` entry is a field slot like an image is: map it to a `url`
+     field in CONTENT-MODEL.md (or `post.wc.*` for products) and render it
+     with `<video>` / `<iframe>` per its `kind`. This
      is exactly how a WooCommerce product's **SKU** and **attributes**
      survive capture: a real sample's `hero.labelValuePairs` is
      `[{"label":"SKU","value":"17-V2-ST-CR"}, {"label":"Category","value":"V2"}]`,

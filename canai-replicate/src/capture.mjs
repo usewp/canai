@@ -129,6 +129,48 @@ export function buildDefinitionListPairs(items) {
   return pairs.length ? { pairs } : null;
 }
 
+// Pure parity copy of CONTENT_JS's in-browser video/embed classifier — same
+// eval-boundary constraint as buildTableModel above (the payload cannot
+// import this, so the two are kept in sync by hand). A <video> is always
+// kind "video"; an <iframe> is classified by hostname against the known
+// player list, and anything else stays a generic "iframe" (still recorded —
+// a map embed is content too; chat widgets never reach here because
+// sections.js already excludes their containers).
+export const VIDEO_HOST_KINDS = [
+  [/(^|\.)youtube(-nocookie)?\.com$/i, "youtube"],
+  [/(^|\.)youtu\.be$/i, "youtube"],
+  [/(^|\.)vimeo\.com$/i, "vimeo"],
+  [/(^|\.)wistia\.(com|net)$/i, "wistia"],
+  [/(^|\.)loom\.com$/i, "loom"],
+];
+
+export function videoKindForSrc(tag, src) {
+  if (String(tag).toUpperCase() === "VIDEO") return "video";
+  let host = "";
+  try {
+    host = new URL(src).hostname;
+  } catch {
+    return "iframe";
+  }
+  for (const [re, kind] of VIDEO_HOST_KINDS) if (re.test(host)) return kind;
+  return "iframe";
+}
+
+export function buildVideoModel({
+  tag, src, poster = null, title = null, autoplay = false, width = null, height = null, rendered = true,
+} = {}) {
+  if (!src || !rendered) return null;
+  return {
+    kind: videoKindForSrc(tag, src),
+    src,
+    poster: poster || null,
+    title: title || null,
+    width: width || null,
+    height: height || null,
+    autoplay: Boolean(autoplay),
+  };
+}
+
 // Pure parity copy of CONTENT_JS's in-browser label/value span/div matcher
 // (Task 7b; same eval-boundary constraint as the two above) — this is the
 // actual anti-noise gate, so it's the piece most worth pinning with tests.

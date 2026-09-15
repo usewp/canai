@@ -34,6 +34,8 @@ import {
   buildTableModel,
   buildDefinitionListPairs,
   matchLabelValuePair,
+  videoKindForSrc,
+  buildVideoModel,
   checkUrlStatus,
   isThirdPartyWidgetContainer,
   exceedsClipLimits,
@@ -1465,7 +1467,43 @@ test("isBrowserDeathError: null/undefined never throws or matches", () => {
 // orchestration. Mirrors the existing checkStatus/captureOneImpl injection
 // pattern above (mkRun fixtures, withSilencedStderr, no real browser).
 
+// --- videos / embeds (content.json `videos`) --------------------------------
 
+test("videoKindForSrc: <video> is 'video' regardless of host", () => {
+  assert.equal(videoKindForSrc("VIDEO", "https://cdn.example.com/clip.mp4"), "video");
+});
 
+test("videoKindForSrc: known players by hostname, anything else is 'iframe'", () => {
+  assert.equal(videoKindForSrc("IFRAME", "https://www.youtube.com/embed/abc"), "youtube");
+  assert.equal(videoKindForSrc("IFRAME", "https://www.youtube-nocookie.com/embed/abc"), "youtube");
+  assert.equal(videoKindForSrc("IFRAME", "https://youtu.be/abc"), "youtube");
+  assert.equal(videoKindForSrc("IFRAME", "https://player.vimeo.com/video/123"), "vimeo");
+  assert.equal(videoKindForSrc("IFRAME", "https://fast.wistia.net/embed/iframe/x"), "wistia");
+  assert.equal(videoKindForSrc("IFRAME", "https://www.loom.com/embed/x"), "loom");
+  assert.equal(videoKindForSrc("IFRAME", "https://maps.google.com/embed?x"), "iframe");
+  assert.equal(videoKindForSrc("IFRAME", "not a url"), "iframe");
+});
 
+test("buildVideoModel: <video> with poster keeps poster/title/size/autoplay", () => {
+  const m = buildVideoModel({
+    tag: "VIDEO", src: "https://cdn.example.com/clip.mp4", poster: "https://cdn.example.com/p.jpg",
+    title: "Intro", autoplay: true, width: 1280, height: 720, rendered: true,
+  });
+  assert.deepEqual(m, {
+    kind: "video", src: "https://cdn.example.com/clip.mp4", poster: "https://cdn.example.com/p.jpg",
+    title: "Intro", width: 1280, height: 720, autoplay: true,
+  });
+});
+
+test("buildVideoModel: YouTube iframe has null poster and autoplay false", () => {
+  const m = buildVideoModel({ tag: "IFRAME", src: "https://www.youtube.com/embed/abc", title: "Demo", width: 560, height: 315 });
+  assert.equal(m.kind, "youtube");
+  assert.equal(m.poster, null);
+  assert.equal(m.autoplay, false);
+});
+
+test("buildVideoModel: hidden or src-less element is dropped (null)", () => {
+  assert.equal(buildVideoModel({ tag: "VIDEO", src: "", rendered: true }), null);
+  assert.equal(buildVideoModel({ tag: "VIDEO", src: "https://x/y.mp4", rendered: false }), null);
+});
 
