@@ -12,6 +12,7 @@ import { prepareContentModelBundle } from "../src/contentmodel.mjs";
 import { prepareTransformBundles } from "../src/transform.mjs";
 import { preparePushArtifacts } from "../src/pushprep.mjs";
 import { verifyScore, verifyBundle } from "../src/verify.mjs";
+import { verifyStructure } from "../src/verifyStructure.mjs";
 import { verifyPage, verifyPageBundle } from "../src/verifyPage.mjs";
 import { runHandoffPage } from "../src/handoffPage.mjs";
 import { DEFAULT_PAGE_GATE } from "../src/pageGate.mjs";
@@ -105,6 +106,10 @@ COMMANDS
   pushprep  <site>           Convert output/pages + output/templates into push-ready runs/<site>/output/push/<slug>.json (strips the doctype/head/body shell + preview-libs). NEVER push a raw output/pages|templates/*.html file into _canai_html — push the output/push/ artifact instead.
   verify    <site>           Write the agent-browser screenshot bundle → runs/<site>/.verify/PROMPT.md (YOU run it)
   verify-score <site>        Pixel-score the screenshots, write report.md
+  verify-structure <site>
+                       Browser-free structural gate: sections/headings/images/videos/
+                       forms/tables of every output vs its capture's content.json.
+                       Works on Twig outputs. → runs/<site>/verify/structure-report.{md,json}
   verify-page <site>         Write the page-mode screenshot bundle (requires --only <slug>)
   verify-page-score <site>   Page-mode dual full-page hard gate (requires --only <slug>)
   handoff-page <site>        After page-report pass: swap inline chrome→Twig, pushprep (requires --only <slug>)
@@ -356,6 +361,26 @@ async function main() {
       );
       if (isTotalFailure) {
         throw new Error(`verify produced 0/${r.count} successfully screenshotted pages — see ${r.reportPath} for detail`);
+      }
+      break;
+    }
+    case "verify-structure": {
+      const site = args._[0];
+      if (!site) throw new Error("usage: verify-structure <site> [--only <slug|type>]");
+      // The library defaults the objective to "styled" when run.json is
+      // absent (so tests and one-off programmatic calls don't need one) —
+      // but the CLI, like `transform`/`objective`, requires the user to have
+      // recorded a real objective first, since the report's "objective:"
+      // line and (from Task 5 on) the structure-objective branch both need
+      // to reflect what was actually asked for, not a silent default.
+      await requireRunConfig(path.join(runsDir, site), { site });
+      const r = await verifyStructure({ site, runsDir, only });
+      const ok = r.failed === 0 && r.passed > 0;
+      stderr.write(`${ok ? "✓" : "✗"} verify-structure ${site} (${r.objective}): ${r.passed} pass, ${r.failed} fail, ${r.skipped} skipped\n  report: ${r.reportPath}\n`);
+      if (!ok) {
+        throw new Error(r.passed === 0 && r.failed === 0
+          ? `verify-structure checked nothing for ${site} — every output was skipped (see report)`
+          : `verify-structure: ${r.failed} output(s) missing structure — fix the worst entry in ${r.reportPath}, re-transform, re-run`);
       }
       break;
     }

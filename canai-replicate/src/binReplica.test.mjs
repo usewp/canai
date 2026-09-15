@@ -146,7 +146,7 @@ test("every command dispatches without a dangling reference", async () => {
     ["discover"], ["classify", "x.test"], ["capture", "x.test"],
     ["slice", "x.test"], ["check", "x.test"], ["designmd", "x.test"],
     ["contentmodel", "x.test"], ["transform", "x.test"], ["pushprep", "x.test"],
-    ["verify", "x.test"], ["verify-score", "x.test"],
+    ["verify", "x.test"], ["verify-score", "x.test"], ["verify-structure", "x.test"],
     ["verify-page", "x.test", "--only", "p"],
     ["verify-page-score", "x.test", "--only", "p"],
     ["handoff-page", "x.test", "--only", "p"],
