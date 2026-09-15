@@ -109,13 +109,7 @@ to run them without it.
 "$HOME/.claude/skills/canai-replicate/bin/replica" objective example.com --set wireframe --scope page
 ```
 
-**Otherwise ask, one question at a time, before running anything else.**
-First: *"Whole site, or one URL?"* Then, as a multiple choice with the
-recommended default first (`styled` for a site, `pixel` for one URL):
-*"What should the result be — structure inventory, wireframe, styled
-migration kit, or pixel-gated page?"* Use `AskUserQuestion` when the host
-offers it; otherwise ask in chat and wait. Record the answer with
-`replica objective`, then proceed.
+**Otherwise ask before running anything else.** If scope is unclear, ask first: *"Whole site, or one URL?"* (one named URL may be taken as `page` without asking). Whenever the request has none of the phrases above, still ask the objective — multiple choice, default first (`styled` for a site, `pixel` for one URL): *"What should the result be — structure inventory, wireframe, styled migration kit, or pixel-gated page?"* — even when scope was obvious from a single URL; offer the default, don't assume it. Use `AskUserQuestion` when the host offers it, else ask in chat. Record the answer with `replica objective`, then proceed.
 
 `--page-mode` on `transform` is still accepted as an alias for `pixel` and
 seeds `run.json` when absent. A flag that contradicts `run.json` is an error.
