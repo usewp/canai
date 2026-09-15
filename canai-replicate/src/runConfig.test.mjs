@@ -7,6 +7,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import {
   OBJECTIVES,
+  CHROME_MODES,
   assertObjective,
   readRunConfig,
   writeRunConfig,
@@ -154,6 +155,23 @@ test("CLI: `replica capture <site> --page <url>` seeds run.json (objective=pixel
     assert.equal(onDisk.objective, "pixel");
     assert.equal(onDisk.scope, "page");
     assert.equal(onDisk.setBy, "capture-page");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("run.json chrome: defaults to inline, accepts skip only for pixel", async () => {
+  const { runDir, cleanup } = await tmpRun();
+  try {
+    assert.deepEqual(CHROME_MODES, ["inline", "skip"]);
+    const a = await writeRunConfig(runDir, { objective: "pixel", scope: "page" });
+    assert.equal(a.config.chrome, "inline");
+    const b = await writeRunConfig(runDir, { objective: "pixel", scope: "page", chrome: "skip" });
+    assert.equal(b.config.chrome, "skip");
+    await assert.rejects(writeRunConfig(runDir, { objective: "styled", chrome: "skip" }), /chrome "skip" is only valid for the pixel objective/);
+    await assert.rejects(writeRunConfig(runDir, { objective: "pixel", chrome: "sometimes" }), /invalid chrome "sometimes"/);
+    await writeFile(runConfigPath(runDir), JSON.stringify({ objective: "pixel", scope: "page" }));
+    assert.equal((await readRunConfig(runDir)).chrome, "inline", "legacy run.json without chrome reads as inline");
   } finally {
     await cleanup();
   }

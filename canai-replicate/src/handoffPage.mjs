@@ -3,6 +3,7 @@ import path from "node:path";
 import { assertCanHandoff } from "./pageGate.mjs";
 import { onlyToSlug } from "./slug.mjs";
 import { preparePushArtifacts } from "./pushprep.mjs";
+import { readRunConfig } from "./runConfig.mjs";
 
 async function exists(p) {
   try {
@@ -90,13 +91,36 @@ export function swapInlineChromeToTwig(html) {
 }
 
 /**
- * Gate on page-report pass, then swap inline chrome to Twig includes.
- * @param {{ html: string, report: { status?: string } }} opts
+ * Chrome-skip handoff: the draft is <main>-only, so insert the two Twig
+ * includes around it instead of swapping inline chrome.
+ */
+export function wrapMainWithTwigChrome(html) {
+  if (findBalancedTag(html, "header", "first")) {
+    throw new Error("chrome skip: draft still contains a <header> landmark — re-transform with --chrome skip, or hand off with --chrome inline");
+  }
+  const bodyOpen = html.match(/<body\b[^>]*>/i);
+  const bodyClose = html.lastIndexOf("</body>");
+  if (!bodyOpen || bodyClose < 0) throw new Error("chrome skip: draft has no <body>…</body> to wrap");
+  const openEnd = bodyOpen.index + bodyOpen[0].length;
+  return (
+    html.slice(0, openEnd) + "\n{{ wpcanai_template('header') }}\n" +
+    // Trim both ends: the leading side drops the original whitespace right
+    // after <body> (or it would double up with the \n just inserted above),
+    // the trailing side does the same before the footer include.
+    html.slice(openEnd, bodyClose).trim() + "\n{{ wpcanai_template('footer') }}\n" +
+    html.slice(bodyClose)
+  );
+}
+
+/**
+ * Gate on page-report pass, then swap inline chrome to Twig includes (or, for
+ * a chrome-skip <main>-only draft, wrap it with the Twig includes instead).
+ * @param {{ html: string, report: { status?: string }, chrome?: "inline"|"skip" }} opts
  * @returns {string}
  */
-export function handoffPageHtml({ html, report }) {
+export function handoffPageHtml({ html, report, chrome = "inline" }) {
   assertCanHandoff(report);
-  return swapInlineChromeToTwig(html);
+  return chrome === "skip" ? wrapMainWithTwigChrome(html) : swapInlineChromeToTwig(html);
 }
 
 /**
@@ -120,6 +144,21 @@ export async function runHandoffPage({ site, runsDir = "runs", only } = {}) {
   const backupPath = path.join(runDir, "output", "pages", `${slug}.page-mode.static.html`);
   const headerPath = path.join(runDir, "output", "templates", "header.html");
   const footerPath = path.join(runDir, "output", "templates", "footer.html");
+  const metaPath = path.join(runDir, "output", "pages", `${slug}.page-mode.json`);
+
+  // run.json wins; when it's missing (e.g. a hand-copied run dir) fall back to
+  // the page-mode.json meta verify-page writes (belt and braces — see
+  // verifyPage.mjs), then "inline" as the last resort.
+  const runConfig = await readRunConfig(runDir);
+  let chrome = runConfig?.chrome ?? null;
+  if (chrome == null) {
+    try {
+      chrome = JSON.parse(await readFile(metaPath, "utf8"))?.chrome ?? null;
+    } catch {
+      chrome = null;
+    }
+  }
+  chrome = chrome ?? "inline";
 
   let report;
   try {
@@ -153,7 +192,7 @@ export async function runHandoffPage({ site, runsDir = "runs", only } = {}) {
 
   const html = await readFile(htmlPath, "utf8");
   await writeFile(backupPath, html);
-  const swapped = handoffPageHtml({ html, report });
+  const swapped = handoffPageHtml({ html, report, chrome });
   await writeFile(htmlPath, swapped);
 
   const pagePush = await preparePushArtifacts({ site, runsDir, only: slug });
@@ -173,6 +212,7 @@ export async function runHandoffPage({ site, runsDir = "runs", only } = {}) {
   return {
     site,
     slug,
+    chrome,
     backupPath,
     htmlPath,
     count,

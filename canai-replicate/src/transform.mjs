@@ -141,12 +141,17 @@ After writing, confirm the file exists. Do not write anything else.
 `;
 }
 
-function buildPageModePrompt({ site, slug, url, captureDir, designMdPath, outputPath, promptTemplate, objective = "pixel" }) {
-  const modeLabel = objective === "pixel"
-    ? "page-mode (static fidelity draft — inline chrome, no Twig includes)"
-    : `${objective} (static draft — inline chrome, no Twig includes)`;
+function buildPageModePrompt({ site, slug, url, captureDir, designMdPath, outputPath, promptTemplate, objective = "pixel", chrome = "inline" }) {
+  const modeLabel = chrome === "skip"
+    ? "page-mode (main only — chrome skipped)"
+    : objective === "pixel"
+      ? "page-mode (static fidelity draft — inline chrome, no Twig includes)"
+      : `${objective} (static draft — inline chrome, no Twig includes)`;
   const designLine = objective === "pixel"
     ? `- Site-wide design system: \`${designMdPath}\` — if this file is missing, create DESIGN.md first via a one-page design pass before transforming\n`
+    : "";
+  const chromeSkipBlock = chrome === "skip"
+    ? `\n## Chrome: skipped\n\nThis run records \`chrome: skip\`. Do **not** author \`<header>\` or \`<footer>\`. Write \`<main id="main-content">\` as the first child of \`<body>\` and nothing after \`</main>\` except the preview-libs script block. Ignore \`content.json:header\` / \`:footer\` and every \`ux.json\` entry whose target is the site header or footer (nav toggle, dropdown menu, sticky header). \`verify-page\` scores this draft against the capture cropped to the band between the header and footer boxes, so a stray header here shifts every section and fails the gate. \`handoff-page\` wraps the draft with the shared Twig chrome includes afterwards.\n`
     : "";
   return `${promptTemplate}
 
@@ -172,7 +177,7 @@ function buildPageModePrompt({ site, slug, url, captureDir, designMdPath, output
 ${designLine}- UX pattern inventory: \`${path.join(captureDir, "ux.json")}\` — reproduce each pattern with its recipe from \`${ALPINE_RECIPES}\`
 - Layout composition recipes (classify each section — esp. hero — before writing HTML): \`${LAYOUT_RECIPES}\`
 - Detected libraries (hints only — never CDN-include): \`${path.join(captureDir, "libs.json")}\`
-
+${chromeSkipBlock}
 ## Output
 
 Write the single self-contained HTML file to:
@@ -369,8 +374,12 @@ export async function prepareTransformBundles({
   only = null,
   pageMode = false,
   objective = null,
+  chrome = "inline",
 }) {
   const resolved = assertObjective(objective ?? (pageMode ? "pixel" : "styled"));
+  if (chrome === "skip" && resolved !== "pixel") {
+    throw new Error(`chrome "skip" is only valid for the pixel objective (objective is "${resolved}")`);
+  }
   const inlineChrome = INLINE_CHROME_OBJECTIVES.has(resolved);
   const runDir = path.join(runsDir, site);
   const designMdPath = path.resolve(runDir, "DESIGN.md");
@@ -430,7 +439,11 @@ export async function prepareTransformBundles({
   // (`--only chrome` produces just this; `--only <anything else>` skips it;
   // a plain run always attempts it), it just lives in its own slot.
   // Page-mode drafts inline chrome for local verify — skip entirely.
-  let chrome = null;
+  // Named `chromeBundle` (not `chrome`) to avoid colliding with this
+  // function's own `chrome` parameter (the inline/skip authoring mode) —
+  // the two are unrelated: this is the site-wide header/footer bundle info
+  // returned as the `chrome` field on the result object.
+  let chromeBundle = null;
   if (!inlineChrome && resolved !== "structure" && matchesOnly(only, { typeName: "chrome" })) {
     const repUrl = pickRepresentativeCaptureUrl(chromeSource);
     if (!repUrl) {
@@ -452,7 +465,7 @@ export async function prepareTransformBundles({
         });
         const promptPath = path.join(bundleDir, "PROMPT.md");
         await writeFile(promptPath, prompt);
-        chrome = { promptPath, outputPath: headerOut, footerOutputPath: footerOut, sourceCapture: repSlug };
+        chromeBundle = { promptPath, outputPath: headerOut, footerOutputPath: footerOut, sourceCapture: repSlug };
       }
     }
   }
@@ -500,7 +513,7 @@ export async function prepareTransformBundles({
     await mkdir(bundleDir, { recursive: true });
     const outputPath = path.resolve(pagesOutDir, slug + ".html");
     const prompt = inlineChrome
-      ? buildPageModePrompt({ site, slug, url, captureDir, designMdPath, outputPath, promptTemplate: pagePrompt, objective: resolved })
+      ? buildPageModePrompt({ site, slug, url, captureDir, designMdPath, outputPath, promptTemplate: pagePrompt, objective: resolved, chrome })
       : buildPrompt({ site, slug, url, captureDir, designMdPath, outputPath, promptTemplate: pagePrompt });
     const promptPath = path.join(bundleDir, "PROMPT.md");
     await writeFile(promptPath, prompt);
@@ -585,7 +598,7 @@ export async function prepareTransformBundles({
   // --only value that legitimately matched zero page/type bundles is still
   // a real error even if chrome happened to resolve (chrome always attempts
   // to resolve regardless of --only, as long as --only isn't scoping it out).
-  if (only && bundles.length === 0 && !(only === "chrome" && chrome)) {
+  if (only && bundles.length === 0 && !(only === "chrome" && chromeBundle)) {
     throw new Error(`no pages or types match --only ${only}`);
   }
   // Page-mode always needs at least one page capture (from --only or the
@@ -598,5 +611,5 @@ export async function prepareTransformBundles({
         : `${resolved}: no capture available — pass --only <slug> or capture a page first`,
     );
   }
-  return { site, count: bundles.length, bundles, chrome, objective: resolved };
+  return { site, count: bundles.length, bundles, chrome: chromeBundle, objective: resolved };
 }

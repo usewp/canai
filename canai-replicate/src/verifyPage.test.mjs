@@ -20,7 +20,8 @@ import {
   verifyPage,
   formatSectionNote,
   scaleBoxToPng,
-  rankSectionDiffs
+  rankSectionDiffs,
+  mainBandCropBox
 } from "./verifyPage.mjs";
 import {
   nextAttemptState,
@@ -747,3 +748,43 @@ test("verifyPage: --max-* overrides are accepted (no refusal) for objective pixe
 // defaultPageScreenshotFn — open → viewport(url) → reveal/scroll → shot
 // ---------------------------------------------------------------------------
 
+
+// ---------------------------------------------------------------------------
+// mainBandCropBox / chrome skip
+// ---------------------------------------------------------------------------
+
+test("mainBandCropBox: band between header bottom and footer top, scaled to device pixels", () => {
+  const sections = [
+    { id: "header", box: { left: 0, top: 0, width: 1440, height: 80 } },
+    { id: "hero", box: { left: 0, top: 80, width: 1440, height: 600 } },
+    { id: "footer", box: { left: 0, top: 3000, width: 1440, height: 400 } },
+  ];
+  const box = mainBandCropBox({ sections, pngWidth: 2880, pngHeight: 6800, cssWidth: 1440 });
+  assert.deepEqual(box, { left: 0, top: 160, width: 2880, height: 5840 });
+});
+
+test("mainBandCropBox: throws loudly when a chrome box is missing", () => {
+  const noFooter = [{ id: "header", box: { left: 0, top: 0, width: 390, height: 60 } }];
+  assert.throws(
+    () => mainBandCropBox({ sections: noFooter, pngWidth: 390, pngHeight: 2000, cssWidth: 390 }),
+    /chrome skip: capture has no "footer" box/,
+  );
+  assert.throws(
+    () => mainBandCropBox({ sections: [], pngWidth: 390, pngHeight: 2000, cssWidth: 390 }),
+    /chrome skip: capture has no "header" box/,
+  );
+});
+
+test("buildPageReport: chrome skip prints the crop bands", () => {
+  const gate = { pass: true, reasons: [], desktop: { pass: true, reasons: [] }, mobile: { pass: true, reasons: [] } };
+  const { markdown, json } = buildPageReport({
+    site: "example.com", slug: "about",
+    desktop: { mismatchPct: 1, heightDeltaPct: 1 }, mobile: { mismatchPct: 1, heightDeltaPct: 1 },
+    gate, attemptState: { status: "pass", attempts: 1, canHandoff: true, canRetry: false },
+    chrome: "skip",
+    cropBands: { desktop: { top: 160, height: 5840 }, mobile: { top: 120, height: 3900 } },
+  });
+  assert.match(markdown, /- chrome: skip \(capture cropped to main band — desktop y 160\+5840, mobile y 120\+3900\)/);
+  assert.equal(json.chrome, "skip");
+  assert.deepEqual(json.cropBands.mobile, { top: 120, height: 3900 });
+});

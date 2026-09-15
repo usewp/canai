@@ -121,6 +121,7 @@ FLAGS
   --only <path|slug|type>    Restrict to one page (URL pathname or slug) or one page type (type name)
   --page <url>               (capture) Page-mode: capture one URL at dual widths (1440/390)
   --page-mode                (transform) Page-mode static fidelity draft (inline chrome, transform-page.md)
+  --chrome inline|skip       (objective) (pixel only) skip = author <main> only; verify-page crops the capture to the main band
   --max-mismatch <n>         (verify-page) Max mismatch % before fail (default: ${DEFAULT_PAGE_GATE.maxMismatchPct})
   --max-height-delta <n>     (verify-page) Max height delta % before fail (default: ${DEFAULT_PAGE_GATE.maxHeightDeltaPct})
   --max-attempts <n>         (verify-page) Attempts before hard fail (default: ${DEFAULT_PAGE_GATE.maxAttempts})
@@ -164,12 +165,13 @@ async function main() {
       if (args.set != null) {
         if (args.set === true) throw new Error(`--set requires a value: ${OBJECTIVES.join("|")}`);
         const scope = args.scope != null ? String(args.scope) : "site";
-        const { config, previous } = await writeRunConfig(runDir, { objective: String(args.set), scope });
-        const was = previous ? ` (was ${previous.objective}/${previous.scope})` : "";
-        stderr.write(`✓ ${site}: objective=${config.objective} scope=${config.scope}${was} → ${runConfigPath(runDir)}\n`);
+        const chrome = args.chrome != null ? String(args.chrome) : "inline";
+        const { config, previous } = await writeRunConfig(runDir, { objective: String(args.set), scope, chrome });
+        const was = previous ? ` (was ${previous.objective}/${previous.scope}/${previous.chrome})` : "";
+        stderr.write(`✓ ${site}: objective=${config.objective} scope=${config.scope} chrome=${config.chrome}${was} → ${runConfigPath(runDir)}\n`);
       } else {
         const c = await requireRunConfig(runDir, { site });
-        stderr.write(`${site}: objective=${c.objective} scope=${c.scope} (set ${c.setAt} by ${c.setBy})\n`);
+        stderr.write(`${site}: objective=${c.objective} scope=${c.scope} chrome=${c.chrome} (set ${c.setAt} by ${c.setBy})\n`);
       }
       break;
     }
@@ -288,7 +290,7 @@ async function main() {
       if (!runConfig) runConfig = await requireRunConfig(runDir, { site });
       const objective = resolveObjective({ runConfig, pageModeFlag });
       const pageMode = INLINE_CHROME_OBJECTIVES.has(objective);
-      const r = await prepareTransformBundles({ site, runsDir, only, objective });
+      const r = await prepareTransformBundles({ site, runsDir, only, objective, chrome: runConfig.chrome });
       if (r.chrome) {
         stderr.write(
           `  chrome (site-wide header/footer, from ${r.chrome.sourceCapture})\n` +
@@ -421,7 +423,7 @@ async function main() {
       const r = await runHandoffPage({ site, runsDir, only });
       const { mark, failedSuffix, isTotalFailure } = summarizeCountOutcome(r.ok, r.count);
       stderr.write(
-        `${mark} handoff-page ${r.slug}: chrome→Twig, backup ${r.backupPath}\n` +
+        `${mark} handoff-page ${r.slug}: chrome→Twig, backup ${r.backupPath} (chrome: ${r.chrome})\n` +
           `${mark} ${r.ok}/${r.count} push artifact(s)${failedSuffix} → ${r.outDir}\n`,
       );
       if (r.failures.length > 0) {

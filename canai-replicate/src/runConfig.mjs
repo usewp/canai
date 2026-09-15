@@ -12,6 +12,7 @@ import path from "node:path";
 export const OBJECTIVES = ["structure", "wireframe", "styled", "pixel"];
 export const SCOPES = ["site", "page"];
 export const DEFAULT_OBJECTIVE_BY_SCOPE = { site: "styled", page: "pixel" };
+export const CHROME_MODES = ["inline", "skip"];
 
 export function runConfigPath(runDir) {
   return path.join(runDir, "run.json");
@@ -27,6 +28,20 @@ export function assertObjective(value) {
 function assertScope(value) {
   if (!SCOPES.includes(value)) {
     throw new Error(`invalid scope "${value}" — expected one of: ${SCOPES.join(", ")}`);
+  }
+  return value;
+}
+
+// "skip" only ever makes sense for the pixel objective — verify-page's crop
+// gate and handoff's <main>-only wrap both depend on the draft having no
+// inline chrome, which is a pixel-only authoring mode (see transform.mjs's
+// INLINE_CHROME_OBJECTIVES).
+function assertChrome(value, objective) {
+  if (!CHROME_MODES.includes(value)) {
+    throw new Error(`invalid chrome "${value}" — expected one of: ${CHROME_MODES.join(", ")}`);
+  }
+  if (value === "skip" && objective !== "pixel") {
+    throw new Error(`chrome "skip" is only valid for the pixel objective (run.json objective is "${objective}")`);
   }
   return value;
 }
@@ -47,15 +62,17 @@ export async function readRunConfig(runDir) {
     throw new Error(`${runConfigPath(runDir)}: invalid JSON — ${e.message}`);
   }
   assertObjective(config.objective);
+  config.chrome = assertChrome(config.chrome ?? "inline", config.objective);
   return config;
 }
 
-export async function writeRunConfig(runDir, { objective, scope = "site", setBy = "user" } = {}) {
+export async function writeRunConfig(runDir, { objective, scope = "site", chrome = "inline", setBy = "user" } = {}) {
   assertObjective(objective);
   assertScope(scope);
+  assertChrome(chrome, objective);
   const previous = await readRunConfig(runDir);
   await mkdir(runDir, { recursive: true });
-  const config = { objective, scope, setAt: new Date().toISOString(), setBy };
+  const config = { objective, scope, chrome, setAt: new Date().toISOString(), setBy };
   await writeFile(runConfigPath(runDir), JSON.stringify(config, null, 2) + "\n");
   return { config, previous };
 }

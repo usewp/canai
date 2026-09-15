@@ -1376,3 +1376,27 @@ test("prepareTransformBundles: objective 'wireframe' uses transform-wireframe.md
     await cleanup();
   }
 });
+
+test("prepareTransformBundles: pixel + chrome skip appends the '## Chrome: skipped' block; other objectives reject it", async () => {
+  const { runDir, cleanup } = await mkRun("example.com", {
+    "DESIGN.md": "# DESIGN.md",
+    "pages.json": pagesJson(["https://example.com/pricing/"]),
+  });
+  try {
+    await stageCapture(runDir, "pricing", { main: [] });
+    await writeFile(path.join(runDir, "captures", "pricing", "fullpage-desktop.png"), "png");
+    await writeFile(path.join(runDir, "captures", "pricing", "fullpage-mobile.png"), "png");
+    const r = await withSilencedStderr(() =>
+      prepareTransformBundles({ site: "example.com", runsDir: path.dirname(runDir), objective: "pixel", chrome: "skip" }),
+    )();
+    const prompt = await readFile(r.bundles[0].promptPath, "utf8");
+    assert.match(prompt, /## Chrome: skipped/);
+    assert.match(prompt, /\*\*Mode\*\*: page-mode \(main only — chrome skipped\)/);
+    await assert.rejects(
+      prepareTransformBundles({ site: "example.com", runsDir: path.dirname(runDir), objective: "styled", chrome: "skip" }),
+      /chrome "skip" is only valid for the pixel objective/,
+    );
+  } finally {
+    await cleanup();
+  }
+});

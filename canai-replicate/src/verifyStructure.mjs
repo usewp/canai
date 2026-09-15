@@ -87,8 +87,9 @@ function isSubsequence(needle, hay) {
   return i === needle.length;
 }
 
-export function compareStructure(expected, actual, { kind = "page" } = {}) {
+export function compareStructure(expected, actual, { kind = "page", chrome = "inline" } = {}) {
   const template = kind === "template";
+  const chromeSkipped = chrome === "skip";
   const missing = { sections: null, order: null, headings: [], images: [], videos: [], forms: null, tables: null, chrome: [] };
   if (actual.sections !== expected.sectionIds.length) {
     missing.sections = { expected: expected.sectionIds.length, actual: actual.sections };
@@ -110,8 +111,8 @@ export function compareStructure(expected, actual, { kind = "page" } = {}) {
   for (const s of expected.videoSrcs) if (!actual.videoSrcs.includes(s)) missing.videos.push(s);
   if (actual.forms < expected.forms) missing.forms = { expected: expected.forms, actual: actual.forms };
   if (actual.tables < expected.tables) missing.tables = { expected: expected.tables, actual: actual.tables };
-  if (expected.hasHeader && !actual.header) missing.chrome.push("header");
-  if (expected.hasFooter && !actual.footer) missing.chrome.push("footer");
+  if (expected.hasHeader && !actual.header && !chromeSkipped) missing.chrome.push("header");
+  if (expected.hasFooter && !actual.footer && !chromeSkipped) missing.chrome.push("footer");
   const missingCount =
     (missing.sections ? 1 : 0) + (missing.order ? 1 : 0) + missing.headings.length + missing.images.length +
     missing.videos.length + (missing.forms ? 1 : 0) + (missing.tables ? 1 : 0) + missing.chrome.length;
@@ -180,7 +181,9 @@ async function sampleCaptureDirForTemplate(runDir, file) {
 export async function verifyStructure({ site, runsDir = "runs", only = null, objective = null } = {}) {
   if (!site) throw new Error("verifyStructure: site is required");
   const runDir = path.join(runsDir, site);
-  const resolved = objective ?? (await readRunConfig(runDir))?.objective ?? "styled";
+  const runConfig = await readRunConfig(runDir);
+  const resolved = objective ?? runConfig?.objective ?? "styled";
+  const chrome = runConfig?.chrome ?? "inline";
   const verifyDir = path.join(runDir, "verify");
   await mkdir(verifyDir, { recursive: true });
 
@@ -198,7 +201,7 @@ export async function verifyStructure({ site, runsDir = "runs", only = null, obj
       const slug = file.replace(/\.md$/, "");
       const contentPath = path.join(runDir, "captures", slug, "content.json");
       if (!(await exists(contentPath))) { results.push({ slug, kind: "structure", skipped: "no capture" }); continue; }
-      const cmp = compareStructure(expectedFromContent(await readJson(contentPath)), extractStructureFromDoc(await readFile(path.join(docDir, file), "utf8")));
+      const cmp = compareStructure(expectedFromContent(await readJson(contentPath)), extractStructureFromDoc(await readFile(path.join(docDir, file), "utf8")), { chrome });
       results.push({ slug, kind: "structure", ...cmp });
     }
   } else {
@@ -215,7 +218,7 @@ export async function verifyStructure({ site, runsDir = "runs", only = null, obj
       if (!(await exists(contentPath))) { results.push({ slug, kind, skipped: "no capture" }); continue; }
       const expected = expectedFromContent(await readJson(contentPath));
       const actual = extractStructure(await readFile(path.join(dir, file), "utf8"));
-      const cmp = compareStructure(expected, actual, { kind });
+      const cmp = compareStructure(expected, actual, { kind, chrome });
       results.push({ slug, kind, ...cmp });
     }
   }

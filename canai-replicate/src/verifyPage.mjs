@@ -57,6 +57,25 @@ export function scaleBoxToPng(box, pngWidth, cssWidth) {
 }
 
 /**
+ * Chrome-skip crop: the band from the header box bottom to the footer box top,
+ * in device pixels. Throws when either chrome box is missing — scoring a
+ * <main>-only draft against an uncropped capture would be silently wrong.
+ */
+export function mainBandCropBox({ sections, pngWidth, pngHeight, cssWidth }) {
+  const find = (id) => {
+    const s = (sections || []).find((x) => x && x.id === id && x.box);
+    if (!s) throw new Error(`chrome skip: capture has no "${id}" box in the section index — re-run with --chrome inline or fix the capture`);
+    return scaleBoxToPng(s.box, pngWidth, cssWidth);
+  };
+  const header = find("header");
+  const footer = find("footer");
+  const top = header.top + header.height;
+  const bottom = Math.min(footer.top, pngHeight);
+  if (!(bottom > top)) throw new Error(`chrome skip: footer top (${bottom}) is not below header bottom (${top})`);
+  return { left: 0, top, width: pngWidth, height: bottom - top };
+}
+
+/**
  * Diff generated full-page slices against capture section PNGs; return worst-first.
  * Pure (sync): pass `sectionPngs` as { [relFile]: Buffer }.
  *
@@ -69,6 +88,10 @@ export function rankSectionDiffs({
   viewport,
   topN = 5,
   sectionPngs = {},
+  // Chrome-skip: the generated PNG starts at <main>, not at the top of the
+  // capture, so every capture-relative box top must be shifted back by the
+  // crop's own top (in the same scaled/device-pixel units) before slicing.
+  boxOffsetTop = 0,
 } = {}) {
   if (!generatedPngBuf || !Array.isArray(sections) || !(cssWidth > 0)) return [];
   let genDecoded;
@@ -90,8 +113,10 @@ export function rankSectionDiffs({
       width: sec.width,
       height: sec.height,
     };
-    const scaled = scaleBoxToPng(box, genDecoded.width, cssWidth);
-    if (!scaled || scaled.width <= 0 || scaled.height <= 0) continue;
+    const scaledFull = scaleBoxToPng(box, genDecoded.width, cssWidth);
+    if (!scaledFull) continue;
+    const scaled = boxOffsetTop ? { ...scaledFull, top: scaledFull.top - boxOffsetTop } : scaledFull;
+    if (scaled.width <= 0 || scaled.height <= 0) continue;
     let genSlice;
     try {
       genSlice = slicePng(generatedPngBuf, scaled);
@@ -132,6 +157,10 @@ export async function collectSectionNotesForViewport({
   cssWidth,
   topN = 5,
   readFileFn = readFile,
+  // Chrome-skip: drop header/footer notes (they're outside the cropped
+  // capture) and shift every remaining box by the crop's own top.
+  excludeIds = [],
+  boxOffsetTop = 0,
 } = {}) {
   const jsonName = viewport === "mobile" ? "sections-mobile.json" : "sections-desktop.json";
   const jsonPath = path.join(captureDir, jsonName);
@@ -141,7 +170,7 @@ export async function collectSectionNotesForViewport({
   } catch {
     return [];
   }
-  const sections = Array.isArray(parsed?.sections) ? parsed.sections : [];
+  const sections = (Array.isArray(parsed?.sections) ? parsed.sections : []).filter((s) => !excludeIds.includes(s?.id));
   const sectionPngs = {};
   for (const sec of sections) {
     if (!sec?.file) continue;
@@ -156,6 +185,7 @@ export async function collectSectionNotesForViewport({
     sections,
     cssWidth,
     viewport,
+    boxOffsetTop,
     topN,
     sectionPngs,
   });
@@ -174,6 +204,8 @@ export function buildPageReport({
   attemptState,
   sectionNotes = [],
   thresholds = DEFAULT_PAGE_GATE,
+  chrome = "inline",
+  cropBands = null,
 }) {
   const desktopScored = {
     mismatchPct: desktop.mismatchPct,
@@ -219,6 +251,8 @@ export function buildPageReport({
       mode: thresholds.mode ?? "hard",
     },
     sectionNotes,
+    chrome,
+    cropBands,
   };
 
   const lines = [
@@ -232,6 +266,9 @@ export function buildPageReport({
     `- mode: ${json.thresholds.mode}`,
     ...(json.stagnant ? [`- stagnant: true (severity did not improve enough vs prior attempt)`] : []),
     ...(json.failReason ? [`- failReason: ${json.failReason}`] : []),
+    ...(chrome === "skip"
+      ? [`- chrome: skip (capture cropped to main band — desktop y ${cropBands.desktop.top}+${cropBands.desktop.height}, mobile y ${cropBands.mobile.top}+${cropBands.mobile.height})`]
+      : []),
     "",
     "## Hard gate",
     "",
@@ -274,8 +311,10 @@ export function buildPageReport({
   return { markdown: lines.join("\n"), json };
 }
 
-async function scoreAgainstCapture(originalPath, generatedBuf) {
-  const score = diffScore(decodePng(await readFile(originalPath)), decodePng(generatedBuf));
+async function scoreAgainstCapture(originalPath, generatedBuf, { cropBox = null } = {}) {
+  let originalBuf = await readFile(originalPath);
+  if (cropBox) originalBuf = slicePng(originalBuf, cropBox);
+  const score = diffScore(decodePng(originalBuf), decodePng(generatedBuf));
   return {
     mismatchPct: roundPct(score.mismatchPct),
     heightDeltaPct: roundPct(score.heightDeltaPct),
@@ -312,6 +351,7 @@ export async function verifyPage({
   runsDir = "runs",
   only = null,
   objective = null,
+  chrome = null,
   thresholds = {},
   screenshotFn = null,
   /** When null/undefined, auto-rank section diffs. Pass an array to override. */
@@ -327,7 +367,9 @@ export async function verifyPage({
   }
 
   const runDir = path.join(runsDir, site);
-  const resolvedObjective = objective ?? (await readRunConfig(runDir))?.objective ?? "pixel";
+  const runConfig = await readRunConfig(runDir);
+  const resolvedObjective = objective ?? runConfig?.objective ?? "pixel";
+  const resolvedChrome = chrome ?? runConfig?.chrome ?? "inline";
   const preset = gatePresetFor(resolvedObjective);
   if (resolvedObjective !== "pixel" && Object.keys(thresholds).length > 0) {
     throw new Error(`--max-* overrides apply to the pixel objective only (run.json objective is "${resolvedObjective}")`);
@@ -399,13 +441,25 @@ export async function verifyPage({
   });
   await writeFile(mobileGenerated, mobileBuf);
 
-  const desktop = await scoreAgainstCapture(desktopCapture, desktopBuf);
-  const mobile = await scoreAgainstCapture(mobileCapture, mobileBuf);
+  let cropBands = null;
+  let desktopCrop = null;
+  let mobileCrop = null;
+  if (resolvedChrome === "skip") {
+    const readSections = async (name) => JSON.parse(await readFile(path.join(captureDir, name), "utf8"))?.sections ?? [];
+    const dPng = decodePng(await readFile(desktopCapture));
+    const mPng = decodePng(await readFile(mobileCapture));
+    desktopCrop = mainBandCropBox({ sections: await readSections("sections-desktop.json"), pngWidth: dPng.width, pngHeight: dPng.height, cssWidth: PAGE_WIDTHS.desktop });
+    mobileCrop = mainBandCropBox({ sections: await readSections("sections-mobile.json"), pngWidth: mPng.width, pngHeight: mPng.height, cssWidth: PAGE_WIDTHS.mobile });
+    cropBands = { desktop: { top: desktopCrop.top, height: desktopCrop.height }, mobile: { top: mobileCrop.top, height: mobileCrop.height } };
+  }
+  const desktop = await scoreAgainstCapture(desktopCapture, desktopBuf, { cropBox: desktopCrop });
+  const mobile = await scoreAgainstCapture(mobileCapture, mobileBuf, { cropBox: mobileCrop });
   let gate = evaluatePageGate({ desktop, mobile }, gateThresholds);
   if (gateThresholds.mode === "advisory") {
     gate = { ...gate, advisory: true, advisoryReasons: gate.reasons, reasons: [], pass: true };
   }
 
+  const excludeIds = resolvedChrome === "skip" ? ["header", "footer"] : [];
   let notes = sectionNotes;
   if (notes == null) {
     const desktopNotes = await collectSectionNotesForViewport({
@@ -414,6 +468,8 @@ export async function verifyPage({
       viewport: "desktop",
       cssWidth: PAGE_WIDTHS.desktop,
       topN: sectionTopN,
+      excludeIds,
+      boxOffsetTop: desktopCrop?.top ?? 0,
     });
     const mobileNotes = await collectSectionNotesForViewport({
       captureDir,
@@ -421,6 +477,8 @@ export async function verifyPage({
       viewport: "mobile",
       cssWidth: PAGE_WIDTHS.mobile,
       topN: sectionTopN,
+      excludeIds,
+      boxOffsetTop: mobileCrop?.top ?? 0,
     });
     // Merge, re-sort by severity, keep topN overall so the agent sees the worst slices.
     notes = [...desktopNotes, ...mobileNotes]
@@ -449,6 +507,8 @@ export async function verifyPage({
     attemptState,
     sectionNotes: notes,
     thresholds: gateThresholds,
+    chrome: resolvedChrome,
+    cropBands,
   });
 
   await writeFile(path.join(verifyDir, "page-report.md"), markdown);
@@ -471,6 +531,8 @@ export async function verifyPage({
     combinedSeverity: Number(currentSev.toFixed(2)),
     stagnant: Boolean(attemptState.stagnant),
     failReason: attemptState.failReason ?? null,
+    // Belt and braces: handoff-page reads this when run.json is unavailable.
+    chrome: resolvedChrome,
     history,
   };
   await writeFile(metaPath, JSON.stringify(pageMode, null, 2));

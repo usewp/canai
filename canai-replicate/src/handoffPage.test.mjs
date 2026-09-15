@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, mkdir, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { swapInlineChromeToTwig, handoffPageHtml, runHandoffPage } from "./handoffPage.mjs";
+import { swapInlineChromeToTwig, handoffPageHtml, runHandoffPage, wrapMainWithTwigChrome } from "./handoffPage.mjs";
 
 const DRAFT = `<!DOCTYPE html>
 <html lang="en">
@@ -74,6 +74,29 @@ test("handoffPageHtml refuses non-pass report", () => {
 test("handoffPageHtml swaps when pass", () => {
   const out = handoffPageHtml({ html: DRAFT, report: { status: "pass" } });
   assert.match(out, /wpcanai_template\('header'\)/);
+});
+
+test("wrapMainWithTwigChrome: inserts header include after <body> and footer include before </body>", () => {
+  const html = `<!DOCTYPE html><html><body class="antialiased">\n<main id="main-content"><section>Hi</section></main>\n</body></html>`;
+  const out = wrapMainWithTwigChrome(html);
+  assert.match(out, /<body class="antialiased">\n\{\{ wpcanai_template\('header'\) \}\}\n<main/);
+  assert.match(out, /<\/main>\n\{\{ wpcanai_template\('footer'\) \}\}\n<\/body>/);
+  assert.equal((out.match(/wpcanai_template\('header'\)/g) || []).length, 1);
+});
+
+test("wrapMainWithTwigChrome: refuses a draft that still has a <header> (that is inline mode's job)", () => {
+  assert.throws(
+    () => wrapMainWithTwigChrome(`<body><header>x</header><main></main></body>`),
+    /chrome skip: draft still contains a <header> landmark/,
+  );
+});
+
+test("handoffPageHtml: chrome skip wraps, inline swaps", () => {
+  const report = { status: "pass" };
+  const skipped = handoffPageHtml({ html: `<body><main>m</main></body>`, report, chrome: "skip" });
+  assert.match(skipped, /header'\) \}\}\n<main>m<\/main>\n\{\{ wpcanai_template\('footer/);
+  const inline = handoffPageHtml({ html: `<body><header>h</header><main>m</main><footer>f</footer></body>`, report, chrome: "inline" });
+  assert.match(inline, /\{\{ wpcanai_template\('header'\) \}\}<main>m<\/main>\{\{ wpcanai_template\('footer'\) \}\}/);
 });
 
 test("runHandoffPage: pass report → backup static, swap in place, pushprep page+chrome", async () => {

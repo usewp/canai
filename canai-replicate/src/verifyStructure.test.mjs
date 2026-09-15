@@ -200,3 +200,10 @@ test("verifyStructure: --only narrows and throws when nothing matches", async ()
     await cleanup();
   }
 });
+
+test("compareStructure: chrome skip ignores missing header/footer landmarks", () => {
+  const html = `<main><section><h1>Simple pricing</h1><img src="https://cdn.example.com/hero.png"></section>
+    <section><h2>Compare plans</h2><iframe src="https://www.youtube.com/embed/abc"></iframe><form></form><table></table></section></main>`;
+  const r = compareStructure(expectedFromContent(CONTENT), extractStructure(html), { chrome: "skip" });
+  assert.equal(r.pass, true, JSON.stringify(r.missing));
+});
