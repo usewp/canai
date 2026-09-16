@@ -13,7 +13,7 @@ description: >
   "blog post", "write a blog post", "write post", "wpcanai-write-post".
 metadata:
   author: canai
-  version: "1.26.2"
+  version: "1.27.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -179,7 +179,7 @@ When converting a static HTML file (e.g. `index.html`) into CanAI via MCP tools:
 5. **Auto-detect and sideload local media BEFORE writing HTML.** Static site folders almost always reference local assets (`./images/hero.jpg`, `assets/logo.svg`, `videos/intro.mp4`, favicons, OG images, CSS `url(...)` backgrounds). If you push the HTML/CSS as-is, every one of those references 404s on the live site. Run the **Static-site asset sideload pre-pass** (next subsection) before any `wpcanai-create-page` / `wpcanai-write-meta` call so the HTML you write resolves media **by ID** through `{{ image_attrs(...) }}` / `{{ media_url(...) }}`, not relative paths or pinned upload URLs.
 6. **Rewrite internal links to CanAI helpers** (instance of the principle above). Static sources keep `<a href="about.html">` / `href="/about">`; these break on the live site (wrong base path, non-permalink, moved slugs). Rewrite each internal link to the matching helper: cross-page links → `{{ slug_url('<slug>') }}` (or `{{ id_url(<id>) }}` when the target page id is known from `wpcanai-create-page`); term / archive links → `{{ term_url(<term_id>) }}`. **Leave untouched:** external / absolute (`https://other.com`), protocol-relative (`//cdn…`), and anchor-only (`#section`) links. Report the rewrites in the manifest.
 7. **Normalize section comments to Twig navigation labels.** Convert every HTML nav comment that `canai-prepare` emitted into the exact form `{# Type / Short Label #}` — for example, `{# Section / Hero #}`. **Never** carry HTML nav comments into `_canai_html` (they pollute rendered output and are view-source reconnaissance). Guarantee every landmark has its matching type immediately before the opening tag: `<main>` → `Container`, `<section>` → `Section`, `<header>` → `Header`, `<footer>` → `Footer`, `<nav>` → `Navigation`, `<aside>` → `Sidebar`. Follow [references/STRUCTURE-NAVIGATION.md](references/STRUCTURE-NAVIGATION.md) for the controlled vocabulary and exact conversion. Ordinary implementation notes use `{# @dev … #}` and stay out of the editor's Structure outline. A canai-replicate `pushprep` artifact may use the older convention; normalize it before writing.
-8. **After any meta write, run `wpcanai-scan` and clear content findings before claiming done.** Treat `missing_structure_comment`, `invalid_structure_comment`, `leaky_comment`, and `leaky_secret` like broken layouts: add or correct Twig navigation labels, convert HTML/`/* */` comments to Twig, and remove secret-shaped literals from meta. For a full-site pass, use the **Comment / secret security sweep** recipe below.
+8. **After authoring writes (create-page / create-template / implement / import / preset), run `wpcanai-scan` and clear content findings before claiming done.** A surgical edit through `wpcanai-replace-in-meta` (a class, a string, a URL) does not need a scan — skip it. Treat `missing_structure_comment`, `invalid_structure_comment`, `leaky_comment`, and `leaky_secret` like broken layouts: add or correct Twig navigation labels, convert HTML/`/* */` comments to Twig, and remove secret-shaped literals from meta. For a full-site pass, use the **Comment / secret security sweep** recipe below.
 
 ### Blog posts (not CanAI pages)
 
@@ -266,6 +266,7 @@ Ability IDs use slashes; MCP tool names use **hyphens** (`wpcanai/read-meta` →
 - **Returns:** object with any of `html`, `css`, `js`, `context` (strings), `layout` (int), `format` (`"twig"`|`"blocks"`), `blocks` (string, raw block markup), `tailwind_build` (string), `tailwind_hash` (string), `hashes` (object).
 - **(v1.58.0) `hashes`.** Whenever `fields` includes, or defaults to, `html`, `css`, and/or `js`, the response also carries `hashes` — a SHA-1 per requested content field, e.g. `{ "html": "<sha1>" }`. Absent from metadata-only reads (no `html`/`css`/`js` requested). Feed these straight into `wpcanai-write-meta`'s `expected_hash` to make your next write conditional on that field not having changed since this read.
 - **(v1.65.0) `format` and `blocks`.** `format` is in the default set. `blocks` returns the raw block markup and is only valid on a blocks page (`format_mismatch` otherwise); it is not hashed.
+- **(v1.71.0) `lines`.** `"lines": [from, to]` (1-based, inclusive, ≤ 400 lines) returns only that slice of the **single** requested content field — `fields` must name exactly one of `html`/`css`/`js` (non-content fields like `layout` may ride along) — and adds `line_counts: { html: 1240 }`. `hashes` are still computed over the **full** field, so they remain valid for `write-meta`'s `expected_hash`. Use it to inspect a region a `grep-content` hit points at instead of pulling the whole document.
 
 ### `wpcanai-write-meta`
 
@@ -282,8 +283,10 @@ Ability IDs use slashes; MCP tool names use **hyphens** (`wpcanai/read-meta` →
 
 ### `wpcanai-replace-in-meta`
 
-- **Args:** `{ "post_id": int, "field"?: "html"|"css"|"js", "replacements": [{ "from": string, "to": string }], "require_all"?: bool, "lang"?: string }` — `post_id` and `replacements` required; `field` defaults to `html`. Applies literal (non-regex) string replacements to one content surface **server-side** — the document never crosses the wire, only the `{from,to}` pairs do. Pairs apply in order; each `from` is replaced everywhere it occurs. `require_all: true` errors (status 422, nothing written) if any `from` matches 0× — use it to catch typo'd `from` strings. Same `lang_mismatch` enforcement as `write-meta`.
-- **Returns:** `{ "success": bool, "post_id": int, "field": string, "total": int, "replacements": [{ "from", "to", "count" }] }` — check each `count` to confirm the replacement applied.
+- **Args:** `{ "post_id": int, "field"?: "html"|"css"|"js", "replacements": [{ "from": string, "to": string }], "require_all"?: bool, "ignore_whitespace"?: bool, "regex"?: bool, "scope"?: { "text": string, "occurrence"?: int }, "dry_run"?: bool, "lang"?: string }` — `post_id` and `replacements` required; `field` defaults to `html`. Replacements apply server-side, in order, everywhere `from` occurs — the document never crosses the wire. **(v1.71.0)** `ignore_whitespace` makes every whitespace run in `from` match any whitespace run (indentation- and wrap-tolerant; `to` is written literally). `regex` treats `from` as PCRE and `to` as a `preg_replace` template (`$1`); exclusive with `ignore_whitespace`. `scope.text` restricts all replacements to the **nearest enclosing element** of the n-th literal occurrence of that text (`occurrence`, default 1) — the way to say "the heading that says *conference*" without knowing its markup. `dry_run` computes counts and diagnostics and writes nothing. `require_all: true` errors (422, nothing written) if any `from` matches 0×. Same `lang_mismatch` enforcement as `write-meta`.
+- **Returns:** `{ "success": bool, "post_id": int, "field": string, "total": int, "dry_run": bool, "scope"?: { "text", "occurrences", "used", "start", "end", "line" }, "replacements": [{ "from", "to", "count", "suggestion"? }] }`. A zero-count pair (without `require_all`) carries a `suggestion` explaining the miss.
+- **(v1.71.0) Miss diagnostics.** A `require_all` miss returns `replace_no_match` and the **error message itself** carries the diagnosis — over MCP you only ever see the message, never `data`: `"from" at index 1 not found, nothing written: <from>. Nearest match: <kind> at line 227, column 13 — <snippet> — <hint>. Pairs before it: 1 (counts: 3).` (`index` is 0-based; the same fields exist as `data.failed_index`, `data.results`, `data.suggestion` for REST callers). Kinds, in the order the server checks them: `whitespace_only` — the exact bytes differ only in whitespace **inside your scope** — retry the *same* call with `ignore_whitespace: true`, keeping `scope`. `outside_scope` — the literal exists only in a *different* element than the one `scope.text` selected — pick `scope.text` (or `scope.occurrence`) from that other element; **do not drop `scope`** to make it match, that rewrites the wrong element (and if the target really is the scoped element, re-check its exact bytes with a scoped `grep-content` — it is probably a whitespace or attribute-order difference). `partial` points at the longest token of your `from`. `none` — the anchor is absent from the field/scope; check `post_id`/`field`. Never fall back to a local copy of the document to "see the bytes" — the suggestion snippet and a scoped `grep-content` with `max_length: 1000` give you the exact line.
+- **Errors:** `scope_not_found`, `scope_no_element` (422, nothing written), `invalid_regex` (pattern does not compile), `regex_error` (422, nothing written — the pattern compiled but the PCRE engine hit a backtrack/JIT limit while running it, on a `regex` or `ignore_whitespace` pair; simplify the pattern, no rewrite was applied), `invalid_input` (regex + ignore_whitespace together).
 - **When to use:** targeted edits to an existing large page (e.g. fixing broken asset URLs) — one small call instead of `read-meta` + a full `write-meta` round-trip. Slash-sensitive content (escaped Tailwind selectors like `.md\:flex`) is preserved; editing `html`/`css`/`js` marks the layout's Tailwind build stale exactly as `write-meta` does.
 
 ### `wpcanai-create-template`
@@ -327,8 +330,8 @@ Ability IDs use slashes; MCP tool names use **hyphens** (`wpcanai/read-meta` →
 
 ### `wpcanai-grep-content`
 
-- **Args:** `{ "pattern": string, "regex"?: bool, "fields"?: string[], "limit"?: int }` — `pattern` required. Literal substring match by default; `regex: true` treats `pattern` as PCRE (delimiters optional). `fields` is a subset of `html`|`css`|`js` (default all three). `limit` 1–100 (default 100).
-- **Returns:** `{ "matches": [{ "post_id", "field", "line", "match" }], "truncated": bool }` — `match` is a trimmed line snippet (≤200 chars). Error `invalid_regex` / `invalid_input` on bad input.
+- **Args:** `{ "pattern": string, "regex"?: bool, "fields"?: string[], "limit"?: int, "post_id"?: int, "max_length"?: int, "context_lines"?: int }` — `pattern` required. Literal substring match by default; `regex: true` treats `pattern` as PCRE. `fields` is a subset of `html`|`css`|`js` (default all three). `limit` 1–100 (default 100). **(v1.71.0)** `post_id` scopes the search to one post (skips the site-wide sweep — always pass it when you know the page). `max_length` (1–2000, default 200) caps the snippet; `context_lines` (0–10) adds surrounding lines. Error `invalid_regex` / `invalid_input` on bad input.
+- **Returns:** `{ "matches": [{ "post_id", "field", "line", "column", "line_length", "match", "before"?, "after"? }], "truncated": bool }` — `match` is a window of `max_length` bytes **centred on the hit** (`…` marks cut ends); when `line_length ≤ max_length` it is the whole raw line, byte-exact, and can be pasted straight into `replace-in-meta` as `from`. Dense Tailwind lines run 300–400 bytes: pass `max_length: 1000` when you need an anchor.
 - **Use for** site-wide sweeps (leaky comments, broken asset URLs, renaming a class) when listing every post and `read-meta`-ing by hand would not scale. Drive fixes with `wpcanai-replace-in-meta` from the returned matches.
 
 ### `wpcanai-get-wc-page-ids`
@@ -741,12 +744,28 @@ CanAI exposes `current_language()`, `language_switcher()`, `__()`, `_x()`, `_n()
 
 Use **tool name + JSON arguments**; map to your host's MCP call syntax. Examples below omit `lang` for clarity; **on Polylang sites add `"lang": "<slug>"` to every call** (and `read-meta`/`write-meta` will reject mismatches).
 
+### Apply a style tweak from DevTools (three calls)
+
+The user experimented in the browser and hands you a page URL, a visible text, and a property
+(e.g. "text *conference*, set line-height 1.15"). Do **not** read the whole page and do **not**
+mirror it locally — three calls:
+
+1. **Resolve the post id.** `wpcanai-list-pages {}` and match the URL's slug/title (the home
+   URL is the static front page — read `page_on_front` via `wpcanai-get-option` if the title is
+   ambiguous); WooCommerce routes → `wpcanai-resolve-content-id { "type": "shop" }` etc.
+2. **Find the element.** `wpcanai-grep-content { "post_id": <id>, "pattern": "conference", "max_length": 1000, "context_lines": 2 }` → the row's `match` is the byte-exact line holding the element's classes.
+3. **Edit inside that element only.**
+   `wpcanai-replace-in-meta { "post_id": <id>, "scope": { "text": "conference" }, "replacements": [{ "from": "leading-none", "to": "leading-[1.15]" }], "require_all": true }`.
+   Prefer an arbitrary-value Tailwind utility (`leading-[1.15]`, `text-[17px]`, `tracking-[-0.01em]`) when the element already carries utilities; if it has no class attribute, use `from: "<h1"` → `to: "<h1 class=\"leading-[1.15]\""` inside the same scope. Add a CSS rule via `field: "css"` only when the property has no utility.
+
+If step 3 returns `replace_no_match`, read the **message** (`Nearest match: <kind> at line …`) — `whitespace_only` → retry the same scoped call with `ignore_whitespace: true`; `outside_scope` → the class lives on a *different* element (typically a parent), so choose a `scope.text` that appears in that element — never drop `scope` to make it match, that rewrites the other element; if you are sure the target is the scoped element, try `ignore_whitespace: true` first, then a scoped `grep-content` (`max_length: 1000`) to see its exact bytes. Choose `scope.text` from the element's own first text or an attribute value: the server scopes to the *nearest* opening tag before the text, so text inside a child `<span>` scopes to the span, not the heading. Never `read-meta` the whole field for a single-property change. No `wpcanai-scan` and no Tailwind recompile are needed afterwards (see **When to re-run**).
+
 ### Edit or remove a section in existing HTML
 
 1. **Resolve ID** — `wpcanai-list-pages` `{ }` or `wpcanai-resolve-content-id` `{ "type": "shop" }` (etc.). Use returned `content_post_id` (or row `id` from list-pages).
 2. **Read** — `wpcanai-read-meta` `{ "post_id": <id>, "fields": ["html"] }` (add other fields if needed).
-3. **Edit in place** — change the HTML string in your reasoning/response (see **HTML manipulation** below). No Python or shell required.
-4. **Write** — `wpcanai-write-meta` `{ "post_id": <id>, "html": "<full updated HTML>" }`. When updating HTML, typically send the **complete** new `_canai_html` string (this is supported at any size). For small, surgical changes — swapping a handful of substrings like asset URLs — prefer `wpcanai-replace-in-meta` instead (next recipe) so you don't resend the whole document.
+3. **Prefer a targeted replace.** Build `{from, to}` pairs anchored on the byte-exact lines from `grep-content` (`post_id`, `max_length: 1000`) and call `wpcanai-replace-in-meta` with `require_all: true` — add `dry_run: true` first when the pairs are many. Use `ignore_whitespace: true` when the source wraps attributes across lines.
+4. **Fall back to a full write only for structural rewrites** — `wpcanai-read-meta` `{ "post_id": <id>, "fields": ["html"] }` (or a `lines` slice), edit, then `wpcanai-write-meta` `{ "post_id": <id>, "html": "<full updated HTML>" }` with `expected_hash`.
 
 ### Fix broken asset URLs on an existing page
 
@@ -854,6 +873,8 @@ A blocks page rendered through a compiled layout shows the same `<style id="wpca
 ### When to re-run
 
 Whenever any input to a layout's build changes: the layout's own `_canai_html` (**including its inline `tailwind.config = {…}` block** — new tokens there are invisible at runtime once compiled, since the server skips the Play CDN), **any consumer page/template's `_canai_html`**, **a blocks page's body (any Gutenberg save by the owner, or `wpcanai-write-page`)**, a change to a page's format mark, a shared partial (header/footer), `_canai_layout` assignments, or the plugin set in `wpcanai_tailwind_settings`. Note the per-layout tradeoff: **editing any single consumer re-stales the whole layout build.** The hash check in step 5 makes "always re-run" cheap — it only recompiles layouts whose union actually moved.
+
+**A surgical edit never *requires* a recompile.** The server stamps each layout build with a freshness epoch and, at render time, drops a build that is stale relative to its sources and falls back to the Play CDN (`AssetManager::output_assets_head`). So after a `replace-in-meta` the page renders correctly — new utilities like `leading-[1.15]` come from the runtime CDN — and the only cost is that the page serves the CDN until the next deliberate compile. Recompile when the user asks to optimise for production, not after every content tweak.
 
 ### Runtime behavior after compile
 
