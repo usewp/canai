@@ -751,8 +751,9 @@ The user experimented in the browser and hands you a page URL, a visible text, a
 mirror it locally — three calls:
 
 1. **Resolve the post id.** `wpcanai-list-pages {}` and match the URL's slug/title (the home
-   URL is the static front page — read `page_on_front` via `wpcanai-get-option` if the title is
-   ambiguous); WooCommerce routes → `wpcanai-resolve-content-id { "type": "shop" }` etc.
+   URL is the static front page — read `page_on_front` via
+   `wpcanai-read-settings { "keys": ["page_on_front"] }` if the title is ambiguous);
+   WooCommerce routes → `wpcanai-resolve-content-id { "type": "shop" }` etc.
 2. **Find the element.** `wpcanai-grep-content { "post_id": <id>, "pattern": "conference", "max_length": 1000, "context_lines": 2 }` → the row's `match` is the byte-exact line holding the element's classes.
 3. **Edit inside that element only.**
    `wpcanai-replace-in-meta { "post_id": <id>, "scope": { "text": "conference" }, "replacements": [{ "from": "leading-none", "to": "leading-[1.15]" }], "require_all": true }`.
