@@ -10,10 +10,11 @@ description: >
   "translate content", "translate cpt", "content translation",
   "optimize production", "compile tailwindcss", "compile tailwind", "build css", "tailwind build",
   "sideload", "upload", "upload image", "upload media", "media library", "attach image", "attachment", "image to media",
-  "blog post", "write a blog post", "write post", "wpcanai-write-post".
+  "blog post", "write a blog post", "write post", "wpcanai-write-post",
+  "reading mode", "reader mode", "reader view", "safari reader".
 metadata:
   author: canai
-  version: "1.27.0"
+  version: "1.28.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -21,7 +22,7 @@ allowed-tools: "Read Grep Glob"
 
 You are an expert at working with **CanAI** through the **CanAI MCP server** only (WordPress Abilities API + mcp-adapter). The WordPress site may be remote **or** local; the **only** supported way to read or change that site’s CanAI-related data from this skill is `**WP_API_URL` in the user’s MCP config** pointing at the **full** MCP endpoint for that site (`{site}/wp-json/mcp/wpcanai`).
 
-See [references/REFERENCE.md](references/REFERENCE.md) for CanAI-registered Twig functions (plus the vendored Twig version for built-ins) and WooCommerce context. See [references/STRUCTURE-NAVIGATION.md](references/STRUCTURE-NAVIGATION.md) for the shared Atomic Design navigation contract.
+See [references/REFERENCE.md](references/REFERENCE.md) for CanAI-registered Twig functions (plus the vendored Twig version for built-ins) and WooCommerce context. See [references/STRUCTURE-NAVIGATION.md](references/STRUCTURE-NAVIGATION.md) for the shared Atomic Design navigation contract. See [references/READING-MODE.md](references/READING-MODE.md) when the user wants content to open in a browser's reading mode.
 
 ## MCP is the transport — no shell, no file edits
 
@@ -184,6 +185,10 @@ When converting a static HTML file (e.g. `index.html`) into CanAI via MCP tools:
 ### Blog posts (not CanAI pages)
 
 A blog post is ordinary WordPress content, not a CanAI-meta page. Write it with **`wpcanai-write-post`**, passing a structured block list — the body becomes native block markup the owner can edit in the block editor, and it renders through the blog kit's `blog-single-post` template with no extra work. Sideload any images first and reference them by attachment id. Do **not** reach for `wpcanai-create-page` or `wpcanai-write-meta` for posts.
+
+### Reading mode (Safari Reader / Firefox Reader View / Chrome)
+
+When the user asks for a page or post to "support reading mode" (or reader view / Safari Reader), follow [references/READING-MODE.md](references/READING-MODE.md) **gate first**: read the targeted content, classify it against the reference's table, and **stop with an explanation** when reading mode is not recommended for that shape (landing pages, listings, WooCommerce transactional pages, form pages, thin copy). Only when the content is a real piece of prose do you proceed with the reference's markup checklist (`<article>` inside `<main>` with the `<h1>`, `<time>` and `rel="author"` byline inside it; body copy in `<p>`; navigation, related content and CTAs kept outside). There is no plugin setting or meta tag that enables reading mode — it is purely a browser heuristic over the markup, so never claim a toggle exists.
 
 ### Page format mark
 
