@@ -14,7 +14,7 @@ description: >
   "reading mode", "reader mode", "reader view", "safari reader".
 metadata:
   author: canai
-  version: "1.28.0"
+  version: "1.29.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -189,6 +189,10 @@ A blog post is ordinary WordPress content, not a CanAI-meta page. Write it with 
 ### Reading mode (Safari Reader / Firefox Reader View / Chrome)
 
 When the user asks for a page or post to "support reading mode" (or reader view / Safari Reader), follow [references/READING-MODE.md](references/READING-MODE.md) **gate first**: read the targeted content, classify it against the reference's table, and **stop with an explanation** when reading mode is not recommended for that shape (landing pages, listings, WooCommerce transactional pages, form pages, thin copy). Only when the content is a real piece of prose do you proceed with the reference's markup checklist (`<article>` inside `<main>` with the `<h1>`, `<time>` and `rel="author"` byline inside it; body copy in `<p>`; navigation, related content and CTAs kept outside). There is no plugin setting or meta tag that enables reading mode — it is purely a browser heuristic over the markup, so never claim a toggle exists.
+
+### Markdown for agents (`Accept: text/markdown`)
+
+When the user asks whether the site serves Markdown to AI agents and crawlers, wants a page readable by one, asks about `Accept: text/markdown` / `?format=markdown`, or wants the behaviour switched off, follow [references/MARKDOWN-FOR-AGENTS.md](references/MARKDOWN-FOR-AGENTS.md) (plugin v1.76.0). A CanAI takeover page answers a Markdown request with the page's **content slot** — never the layout — as YAML front matter plus the converted body, so the markup discipline in READING-MODE.md is what makes the Markdown clean. Negotiation is per-request and a browser never sees it, so a normal visit is unaffected. The only control is the site-wide option `wpcanai_markdown_negotiation` (default on), a first-class settings key read with `**wpcanai-read-settings`** and changed with `**wpcanai-update-settings`** — never the generic option allowlist. WooCommerce cart / checkout / my-account / order pages always stay HTML, and there is **no per-page override and no way to force Markdown** on an excluded page, so never claim one exists.
 
 ### Page format mark
 
