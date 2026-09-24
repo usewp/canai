@@ -11,10 +11,11 @@ description: >
   "optimize production", "compile tailwindcss", "compile tailwind", "build css", "tailwind build",
   "sideload", "upload", "upload image", "upload media", "media library", "attach image", "attachment", "image to media",
   "blog post", "write a blog post", "write post", "wpcanai-write-post",
+  "chart", "bar chart", "line chart", "graph", "data visualization", "chart.js",
   "reading mode", "reader mode", "reader view", "safari reader".
 metadata:
   author: canai
-  version: "1.29.0"
+  version: "1.30.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -185,6 +186,8 @@ When converting a static HTML file (e.g. `index.html`) into CanAI via MCP tools:
 ### Blog posts (not CanAI pages)
 
 A blog post is ordinary WordPress content, not a CanAI-meta page. Write it with **`wpcanai-write-post`**, passing a structured block list — the body becomes native block markup the owner can edit in the block editor, and it renders through the blog kit's `blog-single-post` template with no extra work. Sideload any images first and reference them by attachment id. Do **not** reach for `wpcanai-create-page` or `wpcanai-write-meta` for posts.
+
+- **Charts in posts (plugin v1.77.0).** A chart is **data, not an image**: pass a `chart` block (see the block table) with `labels` and up to **8** `datasets` — fold a 9th series into "Other" rather than splitting the chart — and never sideload a rendered chart picture instead. Set `unit` (`ms`, `%`, `MB`) so ticks, tooltips and the table read "12 ms", not "12". Every chart also renders its numbers as an accessible data table (a collapsed `<details>` by default; `table: "open"` shows it expanded, `"hidden"` keeps it for screen readers and Markdown only), so no-JS, reader-mode, RSS and `Accept: text/markdown` readers get the figures without you adding a `table` block. The site owner can turn the runtime off under **Settings → Libraries → Chart.js** — option `wpcanai_chart_settings` (`load_chart` `auto`|`yes`|`no`, `source` `plugin`|`cdn`), a first-class settings key read with `**wpcanai-read-settings`** and changed with `**wpcanai-update-settings`**; with `no` the figure shows the table only, so read that setting before reporting a missing chart as a bug.
 
 ### Reading mode (Safari Reader / Firefox Reader View / Chrome)
 
@@ -388,6 +391,7 @@ Ability IDs use slashes; MCP tool names use **hyphens** (`wpcanai/read-meta` →
 | `cover` | `image` (required, attachment id), `overlay_opacity` (10–100 step 10, default 50), `blocks` (required), `className` |
 | `media_text` | `image` (required, attachment id), `side` (`left`/`right`), `blocks` (required), `className` |
 | `spacer` | `height` px (1–1000, default 100), `className` |
+| `chart` | `chart` (required: `bar`/`horizontal-bar`/`line`/`area`/`pie`/`doughnut`/`scatter`/`radar`), `labels` string[] (required except `scatter` — one per data point), `datasets` (required, 1–8 of `{ label, data }`; `data` is finite numbers with `null` for a gap, exactly one per label; for `scatter` it is `[{ x, y }]` and `labels` is ignored with a warning; `pie`/`doughnut` take exactly one dataset), `title`, `caption`, `unit` (tick/tooltip/table suffix, e.g. `ms`, `%`), `stacked` bool, `y_min` / `y_max` number, `height` px (160–800, default 320), `source` `{ text?, url? }` (rendered as "Source: …"), `table` (`collapsed` default / `open` / `hidden`), `className`. Strings are plain text (inline HTML stripped). `labels` + `datasets` are capped at 64 KB serialised. Plugin v1.77.0; also accepted by `wpcanai-write-page` on blocks pages |
 
 Every type except `embed` accepts `className` (Tailwind classes on the block's root element); `embed` rewrites its own class list on first save. Nesting is capped at 4 levels. Nested errors report a dotted `path` (e.g. `"2.blocks.0"`).
 
@@ -399,7 +403,7 @@ Every type except `embed` accepts `className` (Tailwind classes on the block's r
 
 - **Args:** `{ "keys"?: string[] }` — omit `keys` to read all whitelisted options.
 - **Returns:** object of option key → value.
-- **Whitelisted keys:** `show_on_front`, `page_on_front`, `page_for_posts`, `blogname`, `blogdescription`, `users_can_register`, `wpcanai_default_layout`, `wpcanai_tailwind_settings` (object: `load_tailwind` `yes`|`no`, `source` `cdn`|`plugin` (default `plugin` since v1.58.2), `plugins` string[]), `woocommerce_enable_signup_and_login_from_checkout`, `woocommerce_enable_myaccount_registration`, `woocommerce_cart_page_id`, `woocommerce_checkout_page_id`, `woocommerce_myaccount_page_id`, `woocommerce_shop_page_id`.
+- **Whitelisted keys:** `show_on_front`, `page_on_front`, `page_for_posts`, `blogname`, `blogdescription`, `users_can_register`, `wpcanai_default_layout`, `wpcanai_tailwind_settings` (object: `load_tailwind` `yes`|`no`, `source` `cdn`|`plugin` (default `plugin` since v1.58.2), `plugins` string[]), `wpcanai_chart_settings` (object, plugin v1.77.0: `load_chart` `auto`|`yes`|`no` (default `auto` — Chart.js loads only on requests that render a chart; `yes` loads it on every CanAI page; `no` never, charts show their table only), `source` `plugin`|`cdn` (default `plugin`); a partial object merges with the stored one and unknown values land as the defaults), `woocommerce_enable_signup_and_login_from_checkout`, `woocommerce_enable_myaccount_registration`, `woocommerce_cart_page_id`, `woocommerce_checkout_page_id`, `woocommerce_myaccount_page_id`, `woocommerce_shop_page_id`.
 
 ### `wpcanai-update-settings`
 

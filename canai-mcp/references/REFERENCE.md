@@ -106,6 +106,38 @@ Use these for **main-query** archives so URLs respect **pretty permalinks**, CPT
 {{ slug_url('my-post', 'post') }}        {# Any post type URL by slug #}
 ```
 
+### Charts (plugin v1.77.0)
+```twig
+{# Native chart — the Twig mirror of the write-post `chart` block type, same keys (snake_case) #}
+{{ wpcanai_chart({
+  chart: 'line',                                   {# bar | horizontal-bar | line | area | pie | doughnut | scatter | radar #}
+  title: 'p95 latency',
+  labels: ['Cold start', 'Warm', 'Cached'],
+  datasets: [
+    { label: 'v1.76', data: [120, 45, 12] },
+    { label: 'v1.77', data: [98, null, 9] }        {# null = a gap; 1–8 datasets, pie/doughnut exactly 1 #}
+  ],
+  unit: 'ms',                                      {# suffix on ticks, tooltips and the table #}
+  stacked: false,
+  y_min: 0,                                        {# camelCase yMin / yMax are accepted too #}
+  height: 320,                                     {# 160–800 px #}
+  caption: 'Median of five runs',
+  source: { text: 'Internal benchmark', url: 'https://example.com/bench' },
+  table: 'collapsed'                               {# collapsed | open | hidden (screen readers + Markdown only) #}
+}) }}
+
+{# Scatter: points carry their own x, labels are ignored #}
+{{ wpcanai_chart({ chart: 'scatter', datasets: [{ label: 'Sample', data: [{ x: 1, y: 2 }, { x: 3, y: 5 }] }] }) }}
+```
+
+- **Returns the figure HTML** — the same `<figure class="canai-chart" data-canai-chart="…">` the `canai/chart` block renders: title, `<canvas role="img">`, the data `<table>` inside `<details>`, and a `<figcaption>` with the source link. It is already safe HTML: no `|raw`.
+- **Requests the runtime.** The call enqueues the vendored Chart.js 4.5.1 UMD build plus the `wpcanai-charts.js` mount script for the footer and prints the chart CSS once per request with the first figure, so under the default loader `auto` (Settings → Libraries → Chart.js) a page loads Chart.js only when it renders a chart. The layout must call `{{ wp_footer() }}`. With the loader on `no` the figure renders its table only, with an HTML comment `<!-- CanAI: Chart.js loader is off -->` in place of the canvas.
+- **Validation is BlockBuilder's**, the same rules as `wpcanai-write-post`: kind allowlist, 1–8 datasets, pie/doughnut = 1, exactly one finite number (or `null`) per label, scatter `[{x, y}]`, `height` 160–800, `table` enum, `source.url` protocol, 64 KB cap on labels + datasets. **Invalid input returns an HTML comment** `<!-- CanAI wpcanai_chart(): <error> -->` instead of a figure (also logged under `WP_DEBUG`) — check view-source when a chart is missing.
+- **Styling** is the plugin's, not the theme's: text and grid follow the figure's `currentColor`; the categorical palette is `--canai-chart-1` … `--canai-chart-8` on `.canai-chart` (dark values under `prefers-color-scheme: dark` and `.dark` / `[data-theme="dark"]` on `<html>`); plot height is `--canai-chart-h`. One `.canai-chart { … }` rule in `_canai_css` restyles every chart.
+- **Dynamic markup.** After Alpine or fetch inserts a figure, dispatch `wpcanai:charts:mount` on the container so it mounts; `wpcanai:chart:config` (`detail: { el, attrs, config }`) fires on each figure before `new Chart()` for config tweaks.
+
+**Raw Chart.js instead.** When a template needs something the block schema does not expose (dual axes, mixed types, plugins), set `wpcanai_chart_settings.load_chart` to `yes` (Settings → Libraries → Chart.js, or `wpcanai-update-settings { "settings": { "wpcanai_chart_settings": { "load_chart": "yes" } } }`) so the runtime loads on every CanAI page, put `<canvas id="bench"></canvas>` in `_canai_html`, and call `new Chart(document.getElementById('bench'), { type: 'bar', data: {…}, options: {…} })` in `_canai_js` — it prints on `wp_footer` after the enqueued footer scripts, so `window.Chart` is already defined. Under `auto` a page with no `wpcanai_chart()` call or chart block has no `window.Chart`. This path gives you no data table and no house styling — add both yourself, and keep the numbers in a real `<table>` so reader mode and Markdown consumers still get them.
+
 ### Internationalization (i18n)
 
 Three families: **Polylang-only** helpers (`current_language()`, `language_switcher()`), the **WordPress gettext** family (`__`, `_x`, `_n`), and **CanAI native i18n** helpers (`t()`, `tmedia()`, `current_lang()`, `languages()`, `lang_url()`, plugin 1.22.0+) which need no extra plugin once languages are configured (CanAI → Translations, or `wpcanai-i18n-set-settings` over MCP). On native-i18n sites use `t()` for user-facing strings and `current_lang()` / `languages()` for switchers; `current_language()` falls back to `get_locale()` and `language_switcher()` returns `[]` without Polylang. Gettext strings without an explicit domain default to `wpcanai`.
