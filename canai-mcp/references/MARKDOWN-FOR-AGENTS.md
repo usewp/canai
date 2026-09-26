@@ -97,11 +97,18 @@ On the **Markdown** response:
 | `Vary` | `Accept` |
 | `X-Markdown-Tokens` | estimated token count of the Markdown document |
 | `X-Original-Tokens` | estimated token count of the HTML the Markdown replaced |
+| `Cache-Control` | **(v1.80.0)** `private, no-store, max-age=0` when the `Accept` header chose Markdown (plus `X-LiteSpeed-Cache-Control: no-cache`); normal caching when `?format=markdown` chose it |
+
+**Caching (v1.80.0).** A page cache keys on the URL, not on `Accept`, so an `Accept`-negotiated
+Markdown answer is marked no-store — otherwise the cache could hand Markdown to the next browser.
+`?format=markdown` is its own URL and therefore its own cache entry, so it is the **cacheable**
+form: give that URL to crawlers, feeds and users.
 
 On the **HTML** response for a page that has a Markdown representation: `Vary: Accept`, a
 `Link: <url>; rel="alternate"; type="text/markdown"` header, and a matching
 `<link rel="alternate" type="text/markdown" href="…">` in the document head. That is how an agent
-discovers the representation exists without guessing.
+discovers the representation exists without guessing. **(v1.80.0)** both point at the page's
+`?format=markdown` URL, so following them never depends on a cache honouring `Vary: Accept`.
 
 ## Which plugin answered
 
@@ -128,7 +135,8 @@ needs:
   `view-order`, `downloads`, `edit-account`, `edit-address`, `payment-methods`, `lost-password`.
 
 Also skipped: 404s, password-protected posts, editor preview requests, and any page CanAI does not
-render (no `_canai_html` and not marked as a blocks page). ToSAI may still answer some of these —
+render (no `_canai_html`, not marked as a blocks page, and — since v1.80.0 — not a post a CanAI
+`single-{type}` template renders; those blog posts now answer Markdown from CanAI). ToSAI may still answer some of these —
 check the headers above before reporting that a URL "does not support Markdown".
 
 ## The toggle

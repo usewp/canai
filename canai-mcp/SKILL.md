@@ -5,7 +5,7 @@ description: >
   REST/curl, or wp-content edits. FluentSnippets belongs to the opt-in canai-yolo skill.
   Triggers on: "/canai-mcp", "wpcanai mcp", "canai mcp", "canai-mcp", "wpcanai remote",
   "canai remote", "remote wpcanai", "remote canai", "staging", "production", "remote site",
-  "mcp", "api key", "deploy template",
+  "mcp", "api key", "deploy template", "purge cache", "page cache", "tool labels",
   "translate", "translation", "translate the site", "i18n", "multilingual", "string translation", "native translation", "/canai-mcp translate",
   "translate content", "translate cpt", "content translation",
   "optimize production", "compile tailwindcss", "compile tailwind", "build css", "tailwind build",
@@ -15,7 +15,7 @@ description: >
   "reading mode", "reader mode", "reader view", "safari reader".
 metadata:
   author: canai
-  version: "1.30.1"
+  version: "1.31.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -29,7 +29,7 @@ See [references/REFERENCE.md](references/REFERENCE.md) for CanAI-registered Twig
 
 This skill is **only** the **CanAI MCP server** and its tools. **Never** substitute terminal `wp`, `curl`, raw REST, or repo edits for interacting with the user’s WordPress. The site may be local or remote; either way it is reached over MCP.
 
-**FluentSnippets** lives in the separate opt-in skill **`canai-yolo`**. This skill stays content-focused (templates, pages, blog posts, settings, i18n, media, Tailwind). If the user needs snippet authoring, install/use `canai-yolo` — do not improvise those workflows from this skill. There is **no eval escape hatch**: the `wpcanai/eval` ability was **removed in plugin v1.59.0**, so every capability must be a real `wpcanai/*` ability.
+**FluentSnippets** lives in the separate opt-in skill **`canai-yolo`**. This skill stays content-focused (templates, pages, blog posts, settings, i18n, media, Tailwind). If the user needs snippet authoring, install/use `canai-yolo` — do not improvise those workflows from this skill. That includes the snippet deploy loop (`wpcanai-replace-in-snippet` → sha256 check → `purged`, plugin v1.80.0). There is **no eval escape hatch**: the `wpcanai/eval` ability was **removed in plugin v1.59.0**, so every capability must be a real `wpcanai/*` ability.
 
 ---
 
@@ -195,7 +195,7 @@ When the user asks for a page or post to "support reading mode" (or reader view 
 
 ### Markdown for agents (`Accept: text/markdown`)
 
-When the user asks whether the site serves Markdown to AI agents and crawlers, wants a page readable by one, asks about `Accept: text/markdown` / `?format=markdown`, or wants the behaviour switched off, follow [references/MARKDOWN-FOR-AGENTS.md](references/MARKDOWN-FOR-AGENTS.md) (plugin v1.76.0). A CanAI takeover page answers a Markdown request with the page's **content slot** — never the layout — as YAML front matter plus the converted body, so the markup discipline in READING-MODE.md is what makes the Markdown clean. Negotiation is per-request and a browser never sees it, so a normal visit is unaffected. The only control is the site-wide option `wpcanai_markdown_negotiation` (default on), a first-class settings key read with `**wpcanai-read-settings`** and changed with `**wpcanai-update-settings`** — never the generic option allowlist. WooCommerce cart / checkout / my-account / order pages always stay HTML, and there is **no per-page override and no way to force Markdown** on an excluded page, so never claim one exists.
+When the user asks whether the site serves Markdown to AI agents and crawlers, wants a page readable by one, asks about `Accept: text/markdown` / `?format=markdown`, or wants the behaviour switched off, follow [references/MARKDOWN-FOR-AGENTS.md](references/MARKDOWN-FOR-AGENTS.md) (plugin v1.76.0). A CanAI takeover page answers a Markdown request with the page's **content slot** — never the layout — as YAML front matter plus the converted body, so the markup discipline in READING-MODE.md is what makes the Markdown clean. Negotiation is per-request and a browser never sees it, so a normal visit is unaffected. The only control is the site-wide option `wpcanai_markdown_negotiation` (default on), a first-class settings key read with `**wpcanai-read-settings`** and changed with `**wpcanai-update-settings`** — never the generic option allowlist. WooCommerce cart / checkout / my-account / order pages always stay HTML, and there is **no per-page override and no way to force Markdown** on an excluded page, so never claim one exists. **(v1.80.0) Caching:** a Markdown answer chosen by the `Accept` header is sent `Cache-Control: private, no-store` (and LiteSpeed `no-cache`), so a page cache never serves it to a browser; `?format=markdown` is the **cacheable** URL, and the advertised `rel="alternate"` link points at it. Give crawlers and users the `?format=markdown` URL when caching matters.
 
 ### Page format mark
 
@@ -261,6 +261,42 @@ Ability IDs use slashes; MCP tool names use **hyphens** (`wpcanai/read-meta` →
 
 **`lang` parameter (Polylang):** the 11 tools below that target a post or page (`list-templates`, `list-pages`, `read-meta`, `write-meta`, `replace-in-meta`, `create-template`, `resolve-content-id`, `scan`, `get-wc-page-ids`, `create-page`, `write-post`) accept an optional `"lang": string` (Polylang language slug). When Polylang is active, `lang` is **required** unless `WPCANAI_MCP_LANG_OPTIONAL` is defined in `wp-config.php`. Calls without `lang` return `WP_Error('lang_required')`; unknown slugs return `WP_Error('unknown_lang')`. See the **CRITICAL: Multi-language (Polylang)** section for details. Settings/options tools further down are unchanged.
 
+### Tool labels (plugin v1.80.0)
+
+Every CanAI tool description starts with a bracket prefix naming what the tool touches **outside CanAI's own data**, e.g. `[fluent-snippets, filesystem] Update a snippet …`. Read it before calling an unfamiliar tool; `annotations.readonly` still says whether it writes, and `uninstall-preset`, `restore-snapshot` and `restore-operation` are marked destructive.
+
+| Label | The tool reads or writes |
+|---|---|
+| `canai` | CanAI's own data: `wpcanai_template`, `_canai_*` meta, `wpcanai_*` options, snapshots, presets |
+| `core` | WordPress data outside CanAI: posts, pages, post meta, options, media |
+| `woocommerce` | WooCommerce pages and settings |
+| `polylang` | Polylang languages and translations (the `i18n-*` tools) |
+| `fluent-snippets` | Fluent Snippets files and index (canai-yolo tools) |
+| `cache` | A page-cache plugin's purge hooks (LiteSpeed Cache, WP Rocket, W3 Total Cache, WP Super Cache) |
+| `filesystem` | Files under `wp-content` (snippet storage, uploads) |
+| `http` | Outbound requests from the server (sideload, preset download, network diagnostics) |
+
+The prefix you see is **resolved for the site**: a third-party label (`woocommerce`, `polylang`, `fluent-snippets`) appears only when that plugin is active — without it the tool is not registered at all — and `cache` appears only when **Guardrails → Page cache → purge after writes** (`wpcanai_purge_after_write`, default on) is enabled **and** a supported cache plugin is detected (`purge-cache` and `diagnostics` always carry it). So `write-meta` reads `[canai]` on a bare site and `[canai, cache]` behind LiteSpeed. Declared labels (plugin v1.80.0):
+
+| Labels | Tools |
+|---|---|
+| `canai` | `list-templates`, `read-meta`, `grep-content`, `resolve-content-id`, `scan`, `get-pending`, `export`, `list-presets`, `list-snapshots`, `list-operations`, `get-snapshot`, `pin-snapshot`, `pin-current` |
+| `canai, cache` | `write-meta`, `replace-in-meta`, `create-template`, `import`, `restore-snapshot`, `restore-operation` |
+| `canai, core` | `list-pages`, `list-media`, `get-media`, `read-settings`, `update-settings`, `get-option`, `update-options`, `uninstall-preset` |
+| `canai, core, cache` | `create-page`, `write-post`, `write-page` |
+| `canai, core, http, cache` | `diagnostics` |
+| `canai, core, woocommerce` | `setup` |
+| `canai, core, woocommerce, http` | `install-preset` |
+| `canai, core, polylang` | every `i18n-*` tool |
+| `core, filesystem, http` | `sideload-url` |
+| `core, filesystem, cache` | `update-media` |
+| `woocommerce` | `get-wc-page-ids`, `get-wc-css-reference` |
+| `cache` | `purge-cache` |
+| `fluent-snippets` | `list-snippets`, `get-snippet` |
+| `fluent-snippets, filesystem, cache` | `create-snippet`, `update-snippet`, `replace-in-snippet`, `set-snippet-status` |
+
+A write tool carrying `cache` returns **`purged`** in its response: `{ "scope": "all"|"post", "plugin": "litespeed"|"wp-rocket"|"w3tc"|"wp-super-cache" }` when a purge is queued for the end of the request, `null` when none is (auto-purge off, no cache plugin, nothing written). The site owner can disable tools by label under **AI Client → Tools** (Touches column); a disabled tool simply isn't in your list.
+
 ### `wpcanai-list-templates`
 
 - **Args:** `{ "status"?: string, "lang"?: string }` — post status filter (default `"publish"`); `lang` filters to that Polylang language.
@@ -279,6 +315,7 @@ Ability IDs use slashes; MCP tool names use **hyphens** (`wpcanai/read-meta` →
 - **(v1.58.0) `hashes`.** Whenever `fields` includes, or defaults to, `html`, `css`, and/or `js`, the response also carries `hashes` — a SHA-1 per requested content field, e.g. `{ "html": "<sha1>" }`. Absent from metadata-only reads (no `html`/`css`/`js` requested). Feed these straight into `wpcanai-write-meta`'s `expected_hash` to make your next write conditional on that field not having changed since this read.
 - **(v1.65.0) `format` and `blocks`.** `format` is in the default set. `blocks` returns the raw block markup and is only valid on a blocks page (`format_mismatch` otherwise); it is not hashed.
 - **(v1.71.0) `lines`.** `"lines": [from, to]` (1-based, inclusive, ≤ 400 lines) returns only that slice of the **single** requested content field — `fields` must name exactly one of `html`/`css`/`js` (non-content fields like `layout` may ride along) — and adds `line_counts: { html: 1240 }`. `hashes` are still computed over the **full** field, so they remain valid for `write-meta`'s `expected_hash`. Use it to inspect a region a `grep-content` hit points at instead of pulling the whole document.
+- **(v1.80.0) `hash_only`.** `"hash_only": true` returns only `hashes` and `line_counts` for the content fields named in `fields` (`html`/`css`/`js`; all three when none is named), plus `format` and `layout` — **no content**. It is the cheap way to confirm a write landed or to get an `expected_hash` before a `write-meta`. Cannot be combined with `lines`.
 
 ### `wpcanai-write-meta`
 
@@ -403,13 +440,14 @@ Every type except `embed` accepts `className` (Tailwind classes on the block's r
 
 - **Args:** `{ "keys"?: string[] }` — omit `keys` to read all whitelisted options.
 - **Returns:** object of option key → value.
-- **Whitelisted keys:** `show_on_front`, `page_on_front`, `page_for_posts`, `blogname`, `blogdescription`, `users_can_register`, `wpcanai_default_layout`, `wpcanai_tailwind_settings` (object: `load_tailwind` `yes`|`no`, `source` `cdn`|`plugin` (default `plugin` since v1.58.2), `plugins` string[]), `wpcanai_chart_settings` (object, plugin v1.77.0: `load_chart` `auto`|`yes`|`no` (default `auto` — Chart.js loads only on requests that render a chart; `yes` loads it on every CanAI page; `no` never, charts show their table only), `source` `plugin`|`cdn` (default `plugin`); a partial object merges with the stored one and unknown values land as the defaults), `woocommerce_enable_signup_and_login_from_checkout`, `woocommerce_enable_myaccount_registration`, `woocommerce_cart_page_id`, `woocommerce_checkout_page_id`, `woocommerce_myaccount_page_id`, `woocommerce_shop_page_id`.
+- **Whitelisted keys:** `show_on_front`, `page_on_front`, `page_for_posts`, `blogname`, `blogdescription`, `users_can_register`, `wpcanai_default_layout`, `wpcanai_tailwind_settings` (object: `load_tailwind` `yes`|`no`, `source` `cdn`|`plugin` (default `plugin` since v1.58.2), `plugins` string[]), `wpcanai_chart_settings` (object, plugin v1.77.0: `load_chart` `auto`|`yes`|`no` (default `auto` — Chart.js loads only on requests that render a chart; `yes` loads it on every CanAI page; `no` never, charts show their table only), `source` `plugin`|`cdn` (default `plugin`); a partial object merges with the stored one and unknown values land as the defaults), `wpcanai_markdown_negotiation` (`"1"`|`"0"`, see **Markdown for agents**), `wpcanai_purge_after_write` (`"1"`|`"0"`, plugin v1.80.0, default on — purge the page cache after CanAI writes), `woocommerce_enable_signup_and_login_from_checkout`, `woocommerce_enable_myaccount_registration`, `woocommerce_cart_page_id`, `woocommerce_checkout_page_id`, `woocommerce_myaccount_page_id`, `woocommerce_shop_page_id`.
 
 ### `wpcanai-update-settings`
 
 - **Args:** `{ "settings": { "<key>": <value>, ... } }` — only whitelisted keys (same as `wpcanai-read-settings`); setting `page_on_front` also sets `show_on_front` to `"page"` when appropriate.
-- **Returns:** `{ "success": bool, "updated": string[] }`.
-- **Whitelist is silent.** `read-settings` given only non-whitelisted keys returns the FULL whitelist (no error) — a data-bearing response is not confirmation your key exists. `update-settings` silently skips non-whitelisted keys and still returns `success: true`; verify against the returned `updated` list.
+- **Returns:** `{ "success": bool, "updated": string[], "rejected": [{ "key", "reason" }] }` — **(v1.80.0)** `reason` is `not_whitelisted`, `invalid_type` or `invalid_value`. When nothing was updated the call fails and the error message lists every rejected key; when some keys land, `success` is `true` and the rest are in `rejected` — always read it.
+- **(v1.80.0) Booleans.** On/off settings (`users_can_register`, `wpcanai_markdown_negotiation`, `wpcanai_purge_after_write`, the WooCommerce registration toggles) accept `true`/`false`, `1`/`0`, `"1"`/`"0"`, `"yes"`/`"no"`. The string `"false"` is false, on this and every other tool's boolean input.
+- **Read side is still lenient.** `read-settings` given only non-whitelisted keys returns the FULL whitelist (no error) — a data-bearing response is not confirmation your key exists. Check `rejected` on the write instead.
 
 ### `wpcanai-setup`
 
@@ -525,13 +563,20 @@ Site name, tagline, and archive/search/404 SEO title+description live in a per-l
 
 ### `wpcanai-export` / `wpcanai-import`
 
-- **`wpcanai-export`** → a JSON bundle of CanAI templates + pages (meta `_canai_html/css/js/context/layout`), and a per-row `i18n_meta` key round-tripping every `_canai_i18n_{lang}` content-override blob. **(v1.39.0)** rows that have a compiled build also carry the precompiled Tailwind cache (`_canai_tailwind_build` / `_hash` / `_built_at`; only non-empty builds export, and the source-relative `_canai_tailwind_epoch` stamp is excluded) so an imported layout renders inline instead of falling back to the Play CDN. **Media binaries are NOT included** — attachment IDs are flagged for re-sideload, never remapped automatically. **(v1.65.0) Blocks pages are NOT included either** — the export only matches posts with a non-empty `_canai_html`, so a blocks-authored page (body in `post_content`) never appears in a bundle; don't promise it full backup coverage.
+- **`wpcanai-export`** → a JSON bundle of CanAI templates + pages (meta `_canai_html/css/js/context/layout`), and a per-row `i18n_meta` key round-tripping every `_canai_i18n_{lang}` content-override blob. **(v1.39.0)** rows that have a compiled build also carry the precompiled Tailwind cache (`_canai_tailwind_build` / `_hash` / `_built_at`; only non-empty builds export, and the source-relative `_canai_tailwind_epoch` stamp is excluded) so an imported layout renders inline instead of falling back to the Play CDN. **Media binaries are NOT included** — attachment IDs are flagged for re-sideload, never remapped automatically. **(v1.65.0) Blocks pages are NOT included either** — the export only matches posts with a non-empty `_canai_html`, so a blocks-authored page (body in `post_content`) never appears in a bundle; don't promise it full backup coverage. **(v1.80.0)** `{ "summary": true }` returns an inventory instead of the bundle — `{ templates: [{ id, title, type, status, hashes }], pages: [{ id, title, format, hashes }], counts: { templates, pages, terms }, version }`, the same SHA-1 `hashes` `read-meta` returns, no content. Use it to compare two sites or check what changed before pulling anything.
 - **`wpcanai-import`** — `{ "data": object | "json": string, "dry_run"?: bool }`. `dry_run: true` reports what would change without writing. Override blobs are re-sanitized on import. **Auth gate:** import performs `unfiltered_html`-level writes and returns a 403 `forbidden` unless the caller has the `unfiltered_html` capability (administrators do on single-site) or the request carries a valid CanAI API key (Bearer / `X-WPCanAI-API-Key`).
 
 ### `wpcanai-diagnostics`
 
 - **Args:** `{ "include_network"?: bool }` (default `false`). → a health report mirroring the wp-admin **Diagnostics** page (PHP/WP/plugin versions, capability + endpoint checks, Tailwind build status, WooCommerce presence + HPOS-safety note).
 - `include_network: true` additionally makes **real outbound HTTP requests** (outbound HTTPS, REST loopback, skills-endpoint reachability, auth-header pass-through) — slower; use it when connectivity or environment issues are suspected instead of guessing.
+- **(v1.80.0)** a `page_cache` check (plugin detected, purge hooks, auto-purge on/off) and an `integrations` group (one row per tool label: present, tools registered, disabled).
+
+### `wpcanai-purge-cache` (plugin v1.80.0)
+
+- **Args:** `{ "scope": "all"|"url"|"post", "target"?: string|int }` — `target` is the URL for `url` (must be on this site) or the post ID for `post`; ignored for `all`.
+- **Returns:** `{ "purged": [{ "scope", "target" }], "plugin": "litespeed"|"wp-rocket"|"w3tc"|"wp-super-cache"|null, "note"? }`. `plugin: null` means no supported cache plugin was detected — **not an error**; then only `post` does anything (it clears the WordPress post cache) and `all`/`url` return a note.
+- **You usually don't need it.** With purge after writes on (`wpcanai_purge_after_write`, default on), every CanAI write purges once at the end of the request — a template change purges the whole site, a page change purges that page — and says so in the write's `purged` field (see **Tool labels**). Call `purge-cache` only when `purged` came back `null` while a cache plugin is present (auto-purge off), or for a URL the write didn't cover (e.g. an archive that lists the page you edited).
 
 ---
 
@@ -1029,13 +1074,15 @@ If the damage spans several posts (a bad preset install or import), skip straigh
 | Diagnose                         | `wpcanai-scan`               |
 | Grep `_canai_*` meta             | `wpcanai-grep-content`       |
 | Diagnose environment / network    | `wpcanai-diagnostics`        |
+| Purge the page cache (when a write's `purged` didn't cover it) | `wpcanai-purge-cache` |
+| Inventory + hashes, no content    | `wpcanai-export` `{ "summary": true }` / `wpcanai-read-meta` `{ "hash_only": true }` |
 | List / install / remove a preset  | `wpcanai-list-presets` / `wpcanai-install-preset` (⚠ `clean_slate`) / `wpcanai-uninstall-preset` |
 | Export / import CanAI content    | `wpcanai-export` / `wpcanai-import` |
 | Undo a bad write (one post)        | `wpcanai-list-snapshots` → `wpcanai-restore-snapshot` |
 | Undo a whole operation (many posts) | `wpcanai-list-operations` → `wpcanai-restore-operation` |
 | Read one snapshot's payload        | `wpcanai-get-snapshot`       |
 | Checkpoint verified content        | `wpcanai-pin-current` (pin/unpin: `wpcanai-pin-snapshot`) |
-| FluentSnippets (opt-in) | **`canai-yolo`** skill — not documented here |
+| FluentSnippets (opt-in), incl. `wpcanai-replace-in-snippet` | **`canai-yolo`** skill — not documented here |
 | Precompile Tailwind for production | `wpcanai-write-meta` with `tailwind_build` + `tailwind_hash` (see **Compile Tailwind for Production**) |
 | Translate a site (native i18n)   | see **Native string translation** workflow |
 | Read / set native i18n languages | `wpcanai-i18n-get-settings` / `wpcanai-i18n-set-settings` |
