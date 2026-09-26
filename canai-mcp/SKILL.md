@@ -15,7 +15,7 @@ description: >
   "reading mode", "reader mode", "reader view", "safari reader".
 metadata:
   author: canai
-  version: "1.30.0"
+  version: "1.30.1"
 allowed-tools: "Read Grep Glob"
 ---
 
