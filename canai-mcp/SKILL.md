@@ -15,7 +15,7 @@ description: >
   "reading mode", "reader mode", "reader view", "safari reader".
 metadata:
   author: canai
-  version: "1.35.0"
+  version: "1.35.1"
   declaration_key: "40b93de2"
 allowed-tools: "Read Grep Glob"
 ---
@@ -98,7 +98,7 @@ Verify with `**wpcanai-list-templates`** (or your client’s tool list for the C
 Call **`wpcanai-hello` first**, before any other CanAI tool, and tell it which skills you have loaded:
 
 ```json
-wpcanai-hello { "skills": { "canai-mcp": "1.35.0+k40b93de2" } }
+wpcanai-hello { "skills": { "canai-mcp": "1.35.1+k40b93de2" } }
 ```
 
 **Copy this line exactly.** The part after `+` is this file's declaration key: the site accepts a declaration only with it, so a guessed version opens nothing. Never invent a key, never reuse one from another skill, another session or a server reply (no reply ever contains one), and never send a bare version.
@@ -111,6 +111,7 @@ Add every attached companion skill with its own line — `canai-blocks` and `can
 - **`rejected`** maps names to the reason a declaration was refused: a missing or wrong declaration key, a skill with no MCP part (`canai-prepare`, `canai-replicate`, `canai-eeat` never declare themselves), or a version that is the CanAI plugin version rather than the skill's `metadata.version`. **Declare only skills you actually loaded, each with the exact line from its SKILL.md.** The site owner sees every declaration, and every refused one, on the Connections tab, and nothing in the server's replies tells you which version or key to send.
 - **`keyless` → stop.** On a site in *grace* key mode, a declaration without a key (an older skill release) is recorded here as `{ "have", "update" }` instead of being refused, but it opens nothing: no write in `strict`, no opt-in tool. Tell the user to run the `update` command, restart the AI client and say "hello canai mcp" again.
 - **`action_required` → stop and relay it.** It comes first in the reply when the session has no keyed CanAI skill declared (none sent, only unknown names, only keyless or refused declarations, or malformed input), together with `install` (the commands to run). Pass the message to the user as written: they install the skill, restart the AI client, and say "hello canai mcp" again. Do not try to work around it.
+- **The install lines are chat-ready.** Every install or update command the site returns has the form `npx -y skills add usewp/canai --skill <name> -p -y`: no prompts, so the user can send it as a message in this chat instead of opening a terminal. When the user sends such a line, run it, then tell them to start a new chat (or restart the AI client) so the skill loads, and to say "hello canai mcp" again.
 - **`skill_required` on any tool** means the user has not attached that opt-in skill in this session. Say so and name the skill. **Never work around it** — for example, do not hand-build block markup through `write-meta` because `write-page` refused.
 - **`skill_notice`** at the end of a write result means this session has no declared skill, or declared an outdated one. The fix is the `hello` call above.
 
@@ -352,7 +353,7 @@ The site checks the skills your session declared through `wpcanai-hello`. The ow
 
 Opt-in tools are `write-page`, `create-page` with `format: "blocks"` and `write-meta` with `convert: true` (skill `canai-blocks`), and every Snippets tool (skill `canai-yolo`). Reads are never gated; `hello`, `diagnostics` and `manage-tools` are exempt in every mode. A tool the owner hid still fails with `tool_disabled` first — the owner's decision comes before the skill check.
 
-- **Denial.** Code `skill_required`, status 403. The message names the skill and its install command, for example: `Access denied: MCP tool "write-page" needs the canai-blocks skill loaded in this session. Install it (npx skills add usewp/canai --skill canai-blocks), then follow its start-of-session step. Without that skill, pages are Twig: use create-page / write-meta instead.` Relay it to the user; do not retry or route around it.
+- **Denial.** Code `skill_required`, status 403. The message names the skill and its install command, for example: `Access denied: MCP tool "write-page" needs the canai-blocks skill loaded in this session. Install it (npx -y skills add usewp/canai --skill canai-blocks -p -y), then follow its start-of-session step. Without that skill, pages are Twig: use create-page / write-meta instead.` Relay it to the user; do not retry or route around it.
 - **Notice.** `skill_notice` is one short string, with the install command, added to write results in a session that has not declared a skill, or that lacks the opt-in skill for that tool. It appears at most three times per session. With an `outdated` declaration it carries the update line instead, once.
 - **Description prefix.** A gated tool's description carries `[skill: <name>]` after its label prefix, e.g. `[canai, core, cache] [skill: canai-blocks] …` on `write-page`, so you see the requirement before calling it.
 
@@ -372,9 +373,9 @@ Change the key mode only when the user asks you to — never lower it to get pas
 
 ```json
 {
-  "accepted": { "canai-mcp": "1.35.0" },
+  "accepted": { "canai-mcp": "1.35.1" },
   "unknown":  [],
-  "outdated": { "canai-blocks": { "have": "1.2.0", "update": "npx skills add usewp/canai --skill canai-blocks" } },
+  "outdated": { "canai-blocks": { "have": "1.2.0", "update": "npx -y skills add usewp/canai --skill canai-blocks -p -y" } },
   "rejected": {},
   "keyless":  {},
   "gate":     "opt-in",
@@ -393,7 +394,7 @@ Change the key mode only when the user asks you to — never lower it to get pas
 
 - `unlocked` lists the opt-in tools this declaration unlocked **and** that the owner exposes; a tool the owner hides is never listed and still answers `tool_disabled`. `reconnect_required` is always `false`: the session's permission changed, not the tool list.
 - A second call adds to the declaration; it never removes a skill.
-- **(plugin v1.83.3) No skill declared.** When the session still has no keyed known skill after the call, the reply starts with `action_required` (a message for the user, worded for the gate mode and for whether the skill is missing or out of date) and `install` (e.g. `["npx skills add usewp/canai --skill canai-mcp"]`), before the fields above. Malformed input also carries `error`. Stop and relay `action_required`.
+- **(plugin v1.83.3) No skill declared.** When the session still has no keyed known skill after the call, the reply starts with `action_required` (a message for the user, worded for the gate mode and for whether the skill is missing or out of date) and `install` (e.g. `["npx -y skills add usewp/canai --skill canai-mcp -p -y"]`), before the fields above. Malformed input also carries `error`. Stop and relay `action_required`.
 - **(plugin v1.84.0) Keys.** `rejected` covers a missing key (in `required` key mode), a wrong key (always), the plugin version and non-declarable skills; `keyless` holds keyless declarations in `grace` key mode as `{ "have", "update" }`. Neither opens anything.
 
 ### `wpcanai-list-templates`
