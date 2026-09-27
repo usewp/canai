@@ -15,7 +15,7 @@ description: >
   "reading mode", "reader mode", "reader view", "safari reader".
 metadata:
   author: canai
-  version: "1.34.2"
+  version: "1.34.3"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -97,14 +97,15 @@ Verify with `**wpcanai-list-templates`** (or your client’s tool list for the C
 Call **`wpcanai-hello` first**, before any other CanAI tool, and tell it which skills you have loaded:
 
 ```json
-wpcanai-hello { "skills": { "canai-mcp": "1.34.2" } }
+wpcanai-hello { "skills": { "canai-mcp": "1.34.3" } }
 ```
 
 Add every attached companion skill with its own version — `canai-blocks` and `canai-yolo` each give you their line. If a companion is attached after the session started, call `hello` again with all of them: it **adds** to the declaration and never removes. `hello` is never hidden and never errors; a wrong or empty `skills` object still returns the site facts.
 
 - **Its `site` block replaces the prerequisite checks.** `plugin_version`, `setup_finished`, `tools { exposed, hidden }`, `languages { configured, tools_exposed }`, `integrations_absent`, `page_cache`. Call `wpcanai-diagnostics` only when `hello` shows a problem or the user asks for the full report.
-- **`outdated` → stop.** Each entry is `{ "have", "min", "update" }`: the skill you have is older than this site's tools were documented for. Tell the user, give them the `update` command from the response, and do not keep working from argument docs that may be wrong.
+- **`outdated` → stop.** Each entry is `{ "have", "update" }`: the skill you have is older than this site's tools were documented for. Tell the user, give them the `update` command from the response, and do not keep working from argument docs that may be wrong.
 - **`unknown`** lists names the site does not recognise. Harmless; they are just not counted.
+- **`rejected`** maps names to the reason a declaration was refused: a skill with no MCP part (`canai-prepare`, `canai-replicate`, `canai-eeat` never declare themselves), or a version that is the CanAI plugin version rather than the skill's `metadata.version`. **Declare only skills you actually loaded, each with its own `metadata.version`.** The site owner sees every declaration on the Connections tab, and nothing in the server's replies tells you which version to send.
 - **`action_required` → stop and relay it.** It comes first in the reply when the session has no CanAI skill declared (none sent, only unknown names, or malformed input), together with `install` (the commands to run). Pass the message to the user as written: they install the skill, restart the AI client, and say "hello canai mcp" again. Do not try to work around it.
 - **`skill_required` on any tool** means the user has not attached that opt-in skill in this session. Say so and name the skill. **Never work around it** — for example, do not hand-build block markup through `write-meta` because `write-page` refused.
 - **`skill_notice`** at the end of a write result means this session has no declared skill, or declared an outdated one. The fix is the `hello` call above.
@@ -358,9 +359,10 @@ Opt-in tools are `write-page`, `create-page` with `format: "blocks"` and `write-
 
 ```json
 {
-  "accepted": { "canai-mcp": "1.34.2" },
+  "accepted": { "canai-mcp": "1.34.3" },
   "unknown":  [],
-  "outdated": { "canai-blocks": { "have": "1.2.0", "min": "1.4.0", "update": "npx skills add usewp/canai --skill canai-blocks" } },
+  "outdated": { "canai-blocks": { "have": "1.2.0", "update": "npx skills add usewp/canai --skill canai-blocks" } },
+  "rejected": {},
   "gate":     "opt-in",
   "unlocked": [ "write-page" ],
   "site": {
