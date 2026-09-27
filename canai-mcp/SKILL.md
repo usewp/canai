@@ -21,7 +21,7 @@ description: >
   "rebuild this page in canai", "elementor to canai", "page builder", "html file to canai", "import html".
 metadata:
   author: canai
-  version: "1.36.1"
+  version: "1.36.2"
   declaration_key: "40b93de2"
 allowed-tools: "Read Grep Glob"
 ---
@@ -157,7 +157,7 @@ Verify with `**wpcanai-list-templates`** (or your client’s tool list for the C
 Call **`wpcanai-hello` first**, before any other CanAI tool, and tell it which skills you have loaded:
 
 ```json
-wpcanai-hello { "skills": { "canai-mcp": "1.36.1+k40b93de2" } }
+wpcanai-hello { "skills": { "canai-mcp": "1.36.2+k40b93de2" } }
 ```
 
 **Copy this line exactly.** The part after `+` is this file's declaration key: the site accepts a declaration only with it, so a guessed version opens nothing. Never invent a key, never reuse one from another skill, another session or a server reply (no reply ever contains one), and never send a bare version.
@@ -170,6 +170,7 @@ Add every attached companion skill with its own line — `canai-blocks` and `can
 - **`rejected`** maps names to the reason a declaration was refused: a missing or wrong declaration key, a skill with no MCP part (`canai-prepare`, `canai-replicate`, `canai-eeat` never declare themselves), or a version that is the CanAI plugin version rather than the skill's `metadata.version`. **Declare only skills you actually loaded, each with the exact line from its SKILL.md.** The site owner sees every declaration, and every refused one, on the Connections tab, and nothing in the server's replies tells you which version or key to send.
 - **`keyless` → stop.** On a site in *grace* key mode, a declaration without a key (an older skill release) is recorded here as `{ "have", "update" }` instead of being refused, but it opens nothing: no write in `strict`, no opt-in tool. Tell the user to run the `update` command, restart the AI client and say "hello canai mcp" again.
 - **`action_required` → stop and relay it.** It comes first in the reply when the session has no keyed CanAI skill declared (none sent, only unknown names, only keyless or refused declarations, or malformed input), together with `install` (the commands to run). Pass the message to the user as written: they install the skill, restart the AI client, and say "hello canai mcp" again. Do not try to work around it.
+- **(plugin v1.85.2) It is not only `hello`.** On a site whose skill gate is `opt-in` or `strict`, **every** CanAI tool reply leads with the same `action_required` and `install` while this session has no keyed skill — whatever tool you called first, and even if the user never said "hello canai mcp". Reads still return their data (a list reply moves under `result`), but stop and relay the message before doing anything else.
 - **`if_needed`** (plugin v1.85.1) maps each routed skill this session has not loaded — `canai-yolo`, `canai-blocks`, `canai-replicate`, `canai-prepare` — to `{ "for", "install" }`, with `if_needed_rule` spelling out the stop-install-retry script. Match the user's request against `for`; if one fits, follow **A request needs a skill you have not loaded → STOP**.
 - **The install lines are chat-ready.** Every install or update command the site returns has the form `npx -y skills add usewp/canai --skill <name> -p -y`: no prompts, so the user can send it as a message in this chat instead of opening a terminal. When the user sends such a line, run it, then tell them to start a new chat (or restart the AI client) so the skill loads, and to say "hello canai mcp" again.
 - **`skill_required` on any tool** means the user has not attached that opt-in skill in this session. Say so and name the skill. **Never work around it** — for example, do not hand-build block markup through `write-meta` because `write-page` refused.
@@ -447,7 +448,7 @@ Change the key mode only when the user asks you to — never lower it to get pas
 
 ```json
 {
-  "accepted": { "canai-mcp": "1.36.1" },
+  "accepted": { "canai-mcp": "1.36.2" },
   "unknown":  [],
   "outdated": { "canai-blocks": { "have": "1.2.0", "update": "npx -y skills add usewp/canai --skill canai-blocks -p -y" } },
   "rejected": {},
