@@ -15,7 +15,7 @@ description: >
   "reading mode", "reader mode", "reader view", "safari reader".
 metadata:
   author: canai
-  version: "1.34.1"
+  version: "1.34.2"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -97,7 +97,7 @@ Verify with `**wpcanai-list-templates`** (or your client’s tool list for the C
 Call **`wpcanai-hello` first**, before any other CanAI tool, and tell it which skills you have loaded:
 
 ```json
-wpcanai-hello { "skills": { "canai-mcp": "1.34.1" } }
+wpcanai-hello { "skills": { "canai-mcp": "1.34.2" } }
 ```
 
 Add every attached companion skill with its own version — `canai-blocks` and `canai-yolo` each give you their line. If a companion is attached after the session started, call `hello` again with all of them: it **adds** to the declaration and never removes. `hello` is never hidden and never errors; a wrong or empty `skills` object still returns the site facts.
@@ -105,6 +105,7 @@ Add every attached companion skill with its own version — `canai-blocks` and `
 - **Its `site` block replaces the prerequisite checks.** `plugin_version`, `setup_finished`, `tools { exposed, hidden }`, `languages { configured, tools_exposed }`, `integrations_absent`, `page_cache`. Call `wpcanai-diagnostics` only when `hello` shows a problem or the user asks for the full report.
 - **`outdated` → stop.** Each entry is `{ "have", "min", "update" }`: the skill you have is older than this site's tools were documented for. Tell the user, give them the `update` command from the response, and do not keep working from argument docs that may be wrong.
 - **`unknown`** lists names the site does not recognise. Harmless; they are just not counted.
+- **`action_required` → stop and relay it.** It comes first in the reply when the session has no CanAI skill declared (none sent, only unknown names, or malformed input), together with `install` (the commands to run). Pass the message to the user as written: they install the skill, restart the AI client, and say "hello canai mcp" again. Do not try to work around it.
 - **`skill_required` on any tool** means the user has not attached that opt-in skill in this session. Say so and name the skill. **Never work around it** — for example, do not hand-build block markup through `write-meta` because `write-page` refused.
 - **`skill_notice`** at the end of a write result means this session has no declared skill, or declared an outdated one. The fix is the `hello` call above.
 
@@ -357,7 +358,7 @@ Opt-in tools are `write-page`, `create-page` with `format: "blocks"` and `write-
 
 ```json
 {
-  "accepted": { "canai-mcp": "1.34.1" },
+  "accepted": { "canai-mcp": "1.34.2" },
   "unknown":  [],
   "outdated": { "canai-blocks": { "have": "1.2.0", "min": "1.4.0", "update": "npx skills add usewp/canai --skill canai-blocks" } },
   "gate":     "opt-in",
@@ -376,6 +377,7 @@ Opt-in tools are `write-page`, `create-page` with `format: "blocks"` and `write-
 
 - `unlocked` lists the opt-in tools this declaration unlocked **and** that the owner exposes; a tool the owner hides is never listed and still answers `tool_disabled`. `reconnect_required` is always `false`: the session's permission changed, not the tool list.
 - A second call adds to the declaration; it never removes a skill.
+- **(plugin v1.83.3) No skill declared.** When the session still has no known skill after the call, the reply starts with `action_required` (a message for the user, worded for the gate mode) and `install` (e.g. `["npx skills add usewp/canai --skill canai-mcp"]`), before the fields above. Malformed input also carries `error`. Stop and relay `action_required`.
 
 ### `wpcanai-list-templates`
 
