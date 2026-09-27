@@ -15,7 +15,7 @@ description: >
   "reading mode", "reader mode", "reader view", "safari reader".
 metadata:
   author: canai
-  version: "1.32.0"
+  version: "1.33.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -269,7 +269,7 @@ Every CanAI tool description starts with a bracket prefix naming what the tool t
 | `core` | WordPress data outside CanAI: posts, pages, post meta, options, media |
 | `woocommerce` | WooCommerce pages and settings |
 | `fluent-snippets` | Fluent Snippets files and index (canai-yolo tools) |
-| `cache` | A page-cache plugin's purge hooks (LiteSpeed Cache, WP Rocket, W3 Total Cache, WP Super Cache) |
+| `cache` | A page-cache plugin's purge hooks (LiteSpeed Cache, WP Rocket, W3 Total Cache, WP Super Cache, WP-Optimize — v1.82.0) |
 | `filesystem` | Files under `wp-content` (snippet storage, uploads) |
 | `http` | Outbound requests from the server (sideload, preset download, network diagnostics) |
 
@@ -291,7 +291,30 @@ The prefix you see is **resolved for the site**: a third-party label (`woocommer
 | `fluent-snippets` | `list-snippets`, `get-snippet` |
 | `fluent-snippets, filesystem, cache` | `create-snippet`, `update-snippet`, `replace-in-snippet`, `set-snippet-status` |
 
-A write tool carrying `cache` returns **`purged`** in its response: `{ "scope": "all"|"post", "plugin": "litespeed"|"wp-rocket"|"w3tc"|"wp-super-cache" }` when a purge is queued for the end of the request, `null` when none is (auto-purge off, no cache plugin, nothing written). The site owner can disable tools by label under **AI Client → Tools** (Touches column); a disabled tool simply isn't in your list.
+A write tool carrying `cache` returns **`purged`** in its response: `{ "scope": "all"|"post", "plugin": "litespeed"|"wp-rocket"|"w3tc"|"wp-super-cache"|"wp-optimize" }` when a purge is queued for the end of the request, `null` when none is (auto-purge off, no cache plugin, nothing written).
+
+**Requires (v1.82.0).** Separate from `touches`, a tool may declare `meta.mcp.requires`: the labels without which it cannot do its job. Today only `purge-cache` requires `cache`. A tool whose required integration is absent is *recommended off* and hidden from your list (see **Tool exposure** next).
+
+### Tool exposure — which tools you see (plugin v1.82.0)
+
+The list a client gets from `tools/list` is **not** "everything registered". Each tool has a live *recommendation* for this site, the owner can override it per tool under **AI Client → Tools** (Auto / On / Off), and a **Follow recommendations** switch decides whether Auto means "follow the recommendation" (new installs) or "on" (sites upgraded from ≤1.81, so nothing changed for them). Overrides always win. Rules, first match wins:
+
+| Rule | Hidden when | Tools |
+|---|---|---|
+| R1 | a required integration is absent | `purge-cache` without a cache plugin |
+| R2 | always — **translation tools are opt-in** | every `i18n-*` tool (group **Languages**) |
+| R3 | another registered MCP ability duplicates it (site filter, empty by default) | `get-option`, `list-media`, `get-media`, `sideload-url` |
+| R4 | setup has run — *advice only, never applied automatically* | `setup`, presets, `import`, `export` |
+
+`diagnostics` and `manage-tools` are never hidden: they are how you find out what is hidden and turn it back on.
+
+**A tool you expected is missing from your list?** Do not conclude the site lacks the feature. Call `wpcanai-manage-tools { "action": "list" }` — it lists **every** registered tool including hidden ones, with `exposed`, `override`, `recommendation`, `reason` and `rule` — then, if the user wants it, switch it on and **reconnect** (HTTP clients cache `tools/list`; the new tool appears after the reconnect). A direct call to a hidden tool fails with `tool_disabled`, and the message names the exact `manage-tools` call.
+
+### `wpcanai-manage-tools` (plugin v1.82.0)
+
+- **Args:** `{ "action": "list" }` or `{ "action": "set", "overrides"?: { "<short>": "on"|"off"|null }, "groups"?: { "<group>": "on"|"off"|null }, "follow_recommendations"?: bool, "apply_advisory"?: bool }`. `null` clears an override so the recommendation applies again. `groups` expands to every registered tool in a Tools-tab group — `Templates & code`, `Pages & posts`, `Media`, `Snippets`, `Languages`, `History & restore`, `Site & settings`, `WooCommerce` (or the slug, e.g. `languages`). `apply_advisory: true` writes the R4 advice as `off` overrides. Unknown tool names → `invalid_tool` (an existing override for an unregistered tool may still be cleared); unknown group → `invalid_group`; `diagnostics` / `manage-tools` → `exempt_tool`.
+- **Returns:** `{ "follow_recommendations": bool, "tools": [{ "name", "group", "touches", "requires", "exposed", "override", "recommendation", "reason", "rule", "advisory", "bytes" }], "totals": { "exposed", "total", "exposed_bytes", "total_bytes", "exposed_tokens", "total_tokens" } }`; after `set` also `"reconnect_required": true` and a `note`. `bytes` is description + input schema — what the tool costs you per turn.
+- **Translation tools are hidden by default.** When the user asks for anything translation-shaped and the `i18n-*` tools are not in your list: run `manage-tools list`, **confirm with the user** that translations are wanted on this site, then `{ "action": "set", "groups": { "Languages": "on" } }`, reconnect, and continue with the **Translation model router** below (`i18n-set-settings` adds the first language if none exists — the group must be on *before* that call). The override persists across requests and reconnects until someone clears it.
 
 ### `wpcanai-list-templates`
 
@@ -566,12 +589,14 @@ Site name, tagline, and archive/search/404 SEO title+description live in a per-l
 
 - **Args:** `{ "include_network"?: bool }` (default `false`). → a health report mirroring the wp-admin **Diagnostics** page (PHP/WP/plugin versions, capability + endpoint checks, Tailwind build status, WooCommerce presence + HPOS-safety note).
 - `include_network: true` additionally makes **real outbound HTTP requests** (outbound HTTPS, REST loopback, skills-endpoint reachability, auth-header pass-through) — slower; use it when connectivity or environment issues are suspected instead of guessing.
-- **(v1.80.0)** a `page_cache` check (plugin detected, purge hooks, auto-purge on/off) and an `integrations` group (one row per tool label: present, tools registered, disabled).
+- **(v1.80.0)** a `page_cache` check (plugin detected, purge hooks, auto-purge on/off) and an `integrations` group (one row per tool label: present, tools registered, disabled). **(v1.82.0)** `integrations` rows count tools by their *declared* labels (`touches` + `requires`), so an absent integration still reports how many tools declare it, and carry `hidden_by_recommendation`.
+- **(v1.82.0)** group `tools`: `tool_budget` (exposed vs total tools, bytes, ~tokens) and `tool_recommendations` (warn when "Follow recommendations" is off and a recommendation differs from the current state; the `fix` is the exact `manage-tools` call). Group `languages`: `languages` (the configured native languages, or none) and `translation_tools` — the language list paired with the Languages tool group: none/off → pass (not in use), none/on → **warn** (add a language with `i18n-set-settings` or switch the group off), some/on → pass, some/off → info (a legitimate owner choice; opt in with `manage-tools` if translations are wanted). This is the only place diagnostics mentions translation; without an opt-in nothing else does.
 
-### `wpcanai-purge-cache` (plugin v1.80.0)
+### `wpcanai-purge-cache` (plugin v1.80.0; requires `cache`)
 
+- **Only usable while a supported cache plugin is active** (LiteSpeed Cache, WP Rocket, W3 Total Cache, WP Super Cache, WP-Optimize with its page cache switched on — v1.82.0). Without one it is recommended off and normally not in your list (rule R1). It purges the *third-party page cache* only: CanAI's Twig compile cache and Tailwind builds invalidate themselves on every source change and need no purge.
 - **Args:** `{ "scope": "all"|"url"|"post", "target"?: string|int }` — `target` is the URL for `url` (must be on this site) or the post ID for `post`; ignored for `all`.
-- **Returns:** `{ "purged": [{ "scope", "target" }], "plugin": "litespeed"|"wp-rocket"|"w3tc"|"wp-super-cache"|null, "note"? }`. `plugin: null` means no supported cache plugin was detected — **not an error**; then only `post` does anything (it clears the WordPress post cache) and `all`/`url` return a note.
+- **Returns:** `{ "purged": [{ "scope", "target" }], "plugin": "litespeed"|"wp-rocket"|"w3tc"|"wp-super-cache"|"wp-optimize"|null, "note"? }`. `plugin: null` means no supported cache plugin was detected — **not an error**; then only `post` does anything (it clears the WordPress post cache) and `all`/`url` return a note.
 - **You usually don't need it.** With purge after writes on (`wpcanai_purge_after_write`, default on), every CanAI write purges once at the end of the request — a template change purges the whole site, a page change purges that page — and says so in the write's `purged` field (see **Tool labels**). Call `purge-cache` only when `purged` came back `null` while a cache plugin is present (auto-purge off), or for a URL the write didn't cover (e.g. an archive that lists the page you edited).
 
 ---
@@ -660,6 +685,7 @@ WC shop/cart/checkout/my-account/product-category content often lives on **WC pa
 
 CanAI has one translation model: **native string translation** (one post per page, site-wide string table, plugin 1.22.0+). Per-language post copies are not a CanAI model — templates and pages are not scoped by language. The post-targeting tools (`list-templates`, `read-meta`, `write-meta`, `create-page`, `write-post`, …) take no `lang` argument (a stray one is ignored) and return no `lang` key; `lang` appears only on the `i18n-*` tools, where it names the language being translated. On ANY translation request — "translate this site/page", "add a language", "multilingual", "localize" — check the settings FIRST:
 
+0. **(v1.82.0) The `i18n-*` tools are opt-in and hidden by default.** If `wpcanai-i18n-get-settings` is not in your list, do not report that translation is unsupported: `wpcanai-manage-tools { "action": "list" }`, confirm with the user that they want translations on this site, `{ "action": "set", "groups": { "Languages": "on" } }`, reconnect, then continue.
 1. Call `wpcanai-i18n-get-settings { }`.
    - `enabled: true` → follow **Native string translation** below. Do NOT create per-language post copies.
    - `enabled: false` → native translation is off. Confirm the language list with the user — slugs, native names, hreflang codes, and which one is the default — then bootstrap with `wpcanai-i18n-set-settings` and continue with the native workflow.
@@ -764,6 +790,7 @@ When a live page references the wrong asset URLs (e.g. relative paths left over 
 ### Diagnose configuration
 
 - `wpcanai-scan` `{ }` — delegate, layout, template, structure-navigation, and content-leak issues (`missing_structure_comment` / `invalid_structure_comment` / `leaky_comment` / `leaky_secret`).
+- `wpcanai-manage-tools { "action": "list" }` — every tool including hidden ones, why each is hidden, and the token budget of the exposed set; `wpcanai-diagnostics` groups `tools` and `languages` summarise the same.
 
 ### Comment / secret security sweep
 
