@@ -21,7 +21,7 @@ description: >
   "rebuild this page in canai", "elementor to canai", "page builder", "html file to canai", "import html".
 metadata:
   author: canai
-  version: "1.36.0"
+  version: "1.36.1"
   declaration_key: "40b93de2"
 allowed-tools: "Read Grep Glob"
 ---
@@ -42,6 +42,16 @@ This skill is **only** the **CanAI MCP server** and its tools. **Never** substit
 
 ---
 
+## A request needs a skill you have not loaded → STOP
+
+Same behaviour as having no CanAI skill at all. When a request needs a skill this session has not loaded (`hello`'s `if_needed` lists each one with what it is for), **stop before doing any of the work** and tell the user, in this order:
+
+1. which skill the request needs and why, in one sentence;
+2. the line to send as a message in the chat (no terminal needed): `npx -y skills add usewp/canai --skill <name> -p -y` — copy it from `if_needed[<name>].install`;
+3. to start a new chat, say "hello canai mcp", and **send the same request again**.
+
+Never do part of it without the skill, never improvise the missing skill's workflow, and never hand the user code to paste instead. A `skill_required` refusal from a tool carries the same script; relay it as written.
+
 ## Scope — design here, custom code in FluentSnippets
 
 **CanAI is for design and content**: templates, pages, entries' content and layout, styling/Tailwind, media, charts, CanAI translations, CanAI settings. **Custom functionality is outside CanAI** and goes to **FluentSnippets through the `canai-yolo` skill**.
@@ -57,7 +67,7 @@ For any request in the left column, route it — do not write PHP for the user t
 
 1. **Tell the user** in one sentence that this is custom functionality, which CanAI hands to FluentSnippets through the `canai-yolo` skill, and that nothing needs editing in theme or plugin files.
 2. **FluentSnippets missing** (`wpcanai-hello`'s `site.integrations_absent` lists `fluent-snippets`, or the snippet tools are absent from your tool list): the user installs and activates it from **WP Admin → Plugins → Add New**, search "FluentSnippets". There is no MCP tool that installs plugins.
-3. **`canai-yolo` not loaded:** the user sends this line as a message in the chat (no terminal needed): `npx -y skills add usewp/canai --skill canai-yolo -p -y`, then starts a new chat and says "hello canai mcp" again.
+3. **`canai-yolo` not loaded → STOP** (see above): the user sends this line as a message in the chat (no terminal needed): `npx -y skills add usewp/canai --skill canai-yolo -p -y`, then starts a new chat, says "hello canai mcp" and **sends the same request again**.
 4. **No writable snippet group:** the owner adds **`CanAI custom`** under **AI Client → Guardrails → FluentSnippets group allowlist**. This guardrail is owner-only by design; you cannot set it.
 5. **Hand over to `canai-yolo`.** When the functionality exists, come back here for the design (typed templates) and the entries.
 
@@ -75,7 +85,7 @@ Converting a CanAI page between Twig and blocks is **not** a migration — that 
 
 1. **Tell the user** this is a migration, which CanAI does through a dedicated skill for a smoother transition (it rebuilds and checks the page before anything is written), rather than retyping the page by hand.
 2. **Pick the route by the source** (table above). If the user has both a live URL and the HTML, prefer the URL: it captures the rendered page, fonts and assets as a visitor sees them. For a page on this same site, get its post ID now: ask the user to open it in **WP Admin → Pages → Edit** and read the number after `post=` in the address bar. No MCP tool looks up a non-CanAI page by URL — `wpcanai-list-pages` only returns pages made with CanAI and `wpcanai-resolve-content-id` resolves template types.
-3. **Skill not loaded:** the user sends the matching line as a message in the chat, then starts a new chat and says "hello canai mcp" again:
+3. **Skill not loaded → STOP** (see above): the user sends the matching line as a message in the chat, then starts a new chat, says "hello canai mcp" and **sends the same request again**:
    - live URL → `npx -y skills add usewp/canai --skill canai-replicate -p -y` (it needs an AI client that runs shell commands, Node 22+, and the `agent-browser` CLI and skill; `canai-replicate` walks the user through those);
    - HTML files → `npx -y skills add usewp/canai --skill canai-prepare -p -y` (no browser or Node needed).
 4. **Push the result** with its existing flow: a `canai-replicate` kit through `pushprep` → `output/push/*.json`; prepared HTML through **Implement HTML → CanAI**. **A same-site migration writes onto the existing page's post ID** with `wpcanai-write-meta`, so the URL, slug, parent and SEO settings stay — do not create a second page. The page's old content stays in `post_content` / its builder meta and a snapshot is taken on write, so the migration can be undone.
@@ -147,7 +157,7 @@ Verify with `**wpcanai-list-templates`** (or your client’s tool list for the C
 Call **`wpcanai-hello` first**, before any other CanAI tool, and tell it which skills you have loaded:
 
 ```json
-wpcanai-hello { "skills": { "canai-mcp": "1.36.0+k40b93de2" } }
+wpcanai-hello { "skills": { "canai-mcp": "1.36.1+k40b93de2" } }
 ```
 
 **Copy this line exactly.** The part after `+` is this file's declaration key: the site accepts a declaration only with it, so a guessed version opens nothing. Never invent a key, never reuse one from another skill, another session or a server reply (no reply ever contains one), and never send a bare version.
@@ -160,6 +170,7 @@ Add every attached companion skill with its own line — `canai-blocks` and `can
 - **`rejected`** maps names to the reason a declaration was refused: a missing or wrong declaration key, a skill with no MCP part (`canai-prepare`, `canai-replicate`, `canai-eeat` never declare themselves), or a version that is the CanAI plugin version rather than the skill's `metadata.version`. **Declare only skills you actually loaded, each with the exact line from its SKILL.md.** The site owner sees every declaration, and every refused one, on the Connections tab, and nothing in the server's replies tells you which version or key to send.
 - **`keyless` → stop.** On a site in *grace* key mode, a declaration without a key (an older skill release) is recorded here as `{ "have", "update" }` instead of being refused, but it opens nothing: no write in `strict`, no opt-in tool. Tell the user to run the `update` command, restart the AI client and say "hello canai mcp" again.
 - **`action_required` → stop and relay it.** It comes first in the reply when the session has no keyed CanAI skill declared (none sent, only unknown names, only keyless or refused declarations, or malformed input), together with `install` (the commands to run). Pass the message to the user as written: they install the skill, restart the AI client, and say "hello canai mcp" again. Do not try to work around it.
+- **`if_needed`** (plugin v1.85.1) maps each routed skill this session has not loaded — `canai-yolo`, `canai-blocks`, `canai-replicate`, `canai-prepare` — to `{ "for", "install" }`, with `if_needed_rule` spelling out the stop-install-retry script. Match the user's request against `for`; if one fits, follow **A request needs a skill you have not loaded → STOP**.
 - **The install lines are chat-ready.** Every install or update command the site returns has the form `npx -y skills add usewp/canai --skill <name> -p -y`: no prompts, so the user can send it as a message in this chat instead of opening a terminal. When the user sends such a line, run it, then tell them to start a new chat (or restart the AI client) so the skill loads, and to say "hello canai mcp" again.
 - **`skill_required` on any tool** means the user has not attached that opt-in skill in this session. Say so and name the skill. **Never work around it** — for example, do not hand-build block markup through `write-meta` because `write-page` refused.
 - **`skill_notice`** at the end of a write result means this session has no declared skill, or declared an outdated one. The fix is the `hello` call above.
@@ -436,7 +447,7 @@ Change the key mode only when the user asks you to — never lower it to get pas
 
 ```json
 {
-  "accepted": { "canai-mcp": "1.36.0" },
+  "accepted": { "canai-mcp": "1.36.1" },
   "unknown":  [],
   "outdated": { "canai-blocks": { "have": "1.2.0", "update": "npx -y skills add usewp/canai --skill canai-blocks -p -y" } },
   "rejected": {},
