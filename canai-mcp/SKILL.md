@@ -15,7 +15,7 @@ description: >
   "reading mode", "reader mode", "reader view", "safari reader".
 metadata:
   author: canai
-  version: "1.31.0"
+  version: "1.32.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -168,7 +168,7 @@ When converting a static HTML file (e.g. `index.html`) into CanAI via MCP tools:
 > |---|---|
 > | `<img src="…">`, `srcset`, CSS `url(…)` | `{{ image_attrs(id, 'src,alt') }}` / `{{ media_url(id, size) }}` |
 > | internal `<a href="/about">` / `href="about.html">` | `{{ slug_url('about') }}` / `{{ id_url(id) }}` / `{{ post_url() }}` / `{{ term_url(id) }}` |
-> | literal user-facing strings | `{{ t('…') }}` on **native-i18n** sites (see **Native string translation**); `{{ __('…') }}` / `{{ _x() }}` / `{{ _n() }}` on Polylang/gettext sites |
+> | literal user-facing strings | `{{ t('…') }}` for page strings (see **Native string translation**); `{{ __('…') }}` / `{{ _x() }}` / `{{ _n() }}` only for strings a theme or plugin already ships in its gettext catalogue |
 > | static post/markup that should be dynamic | `{{ the_content() }}` / `{{ shortcode('[…]') }}` |
 > | shared header/footer/partials duplicated per page | `{{ wpcanai_template('slug') }}` |
 >
@@ -259,9 +259,7 @@ This is read-only static analysis: nothing is rendered, and no order, cart, or c
 
 Ability IDs use slashes; MCP tool names use **hyphens** (`wpcanai/read-meta` → `wpcanai-read-meta`).
 
-**`lang` parameter (Polylang):** the 11 tools below that target a post or page (`list-templates`, `list-pages`, `read-meta`, `write-meta`, `replace-in-meta`, `create-template`, `resolve-content-id`, `scan`, `get-wc-page-ids`, `create-page`, `write-post`) accept an optional `"lang": string` (Polylang language slug). When Polylang is active, `lang` is **required** unless `WPCANAI_MCP_LANG_OPTIONAL` is defined in `wp-config.php`. Calls without `lang` return `WP_Error('lang_required')`; unknown slugs return `WP_Error('unknown_lang')`. See the **CRITICAL: Multi-language (Polylang)** section for details. Settings/options tools further down are unchanged.
-
-### Tool labels (plugin v1.80.0)
+### Tool labels (plugin v1.80.0; seven labels since v1.81.0)
 
 Every CanAI tool description starts with a bracket prefix naming what the tool touches **outside CanAI's own data**, e.g. `[fluent-snippets, filesystem] Update a snippet …`. Read it before calling an unfamiliar tool; `annotations.readonly` still says whether it writes, and `uninstall-preset`, `restore-snapshot` and `restore-operation` are marked destructive.
 
@@ -270,24 +268,22 @@ Every CanAI tool description starts with a bracket prefix naming what the tool t
 | `canai` | CanAI's own data: `wpcanai_template`, `_canai_*` meta, `wpcanai_*` options, snapshots, presets |
 | `core` | WordPress data outside CanAI: posts, pages, post meta, options, media |
 | `woocommerce` | WooCommerce pages and settings |
-| `polylang` | Polylang languages and translations (the `i18n-*` tools) |
 | `fluent-snippets` | Fluent Snippets files and index (canai-yolo tools) |
 | `cache` | A page-cache plugin's purge hooks (LiteSpeed Cache, WP Rocket, W3 Total Cache, WP Super Cache) |
 | `filesystem` | Files under `wp-content` (snippet storage, uploads) |
 | `http` | Outbound requests from the server (sideload, preset download, network diagnostics) |
 
-The prefix you see is **resolved for the site**: a third-party label (`woocommerce`, `polylang`, `fluent-snippets`) appears only when that plugin is active — without it the tool is not registered at all — and `cache` appears only when **Guardrails → Page cache → purge after writes** (`wpcanai_purge_after_write`, default on) is enabled **and** a supported cache plugin is detected (`purge-cache` and `diagnostics` always carry it). So `write-meta` reads `[canai]` on a bare site and `[canai, cache]` behind LiteSpeed. Declared labels (plugin v1.80.0):
+The prefix you see is **resolved for the site**: a third-party label (`woocommerce`, `fluent-snippets`) appears only when that plugin is active — without it the tool is not registered at all — and `cache` appears only when **Guardrails → Page cache → purge after writes** (`wpcanai_purge_after_write`, default on) is enabled **and** a supported cache plugin is detected (`purge-cache` and `diagnostics` always carry it). So `write-meta` reads `[canai]` on a bare site and `[canai, cache]` behind LiteSpeed. Declared labels (plugin v1.81.0):
 
 | Labels | Tools |
 |---|---|
 | `canai` | `list-templates`, `read-meta`, `grep-content`, `resolve-content-id`, `scan`, `get-pending`, `export`, `list-presets`, `list-snapshots`, `list-operations`, `get-snapshot`, `pin-snapshot`, `pin-current` |
 | `canai, cache` | `write-meta`, `replace-in-meta`, `create-template`, `import`, `restore-snapshot`, `restore-operation` |
-| `canai, core` | `list-pages`, `list-media`, `get-media`, `read-settings`, `update-settings`, `get-option`, `update-options`, `uninstall-preset` |
+| `canai, core` | `list-pages`, `list-media`, `get-media`, `read-settings`, `update-settings`, `get-option`, `update-options`, `uninstall-preset`, every `i18n-*` tool |
 | `canai, core, cache` | `create-page`, `write-post`, `write-page` |
 | `canai, core, http, cache` | `diagnostics` |
 | `canai, core, woocommerce` | `setup` |
 | `canai, core, woocommerce, http` | `install-preset` |
-| `canai, core, polylang` | every `i18n-*` tool |
 | `core, filesystem, http` | `sideload-url` |
 | `core, filesystem, cache` | `update-media` |
 | `woocommerce` | `get-wc-page-ids`, `get-wc-css-reference` |
@@ -299,18 +295,18 @@ A write tool carrying `cache` returns **`purged`** in its response: `{ "scope": 
 
 ### `wpcanai-list-templates`
 
-- **Args:** `{ "status"?: string, "lang"?: string }` — post status filter (default `"publish"`); `lang` filters to that Polylang language.
-- **Returns:** `array` of objects: `id`, `title`, `slug`, `status`, `type` (template_type names), `layout_id` (int or null), `lang` (slug or null).
+- **Args:** `{ "status"?: string }` — post status filter (default `"publish"`).
+- **Returns:** `array` of objects: `id`, `title`, `slug`, `status`, `type` (template_type names), `layout_id` (int or null).
 
 ### `wpcanai-list-pages`
 
-- **Args:** `{ "lang"?: string }` — `lang` filters to that Polylang language.
-- **Returns:** `array` of objects: `id`, `title`, `post_type`, `layout_id` (int or null), `format` (`"twig"`|`"blocks"`), `lang` (slug or null) for posts/pages that have `_canai_html`, or pages marked blocks.
+- **Args:** `{ }` — no arguments.
+- **Returns:** `array` of objects: `id`, `title`, `post_type`, `layout_id` (int or null), `format` (`"twig"`|`"blocks"`) for posts/pages that have `_canai_html`, or pages marked blocks.
 - **Published only.** Returns posts with status `publish`. A page created via `wpcanai-create-page` with `status: "draft"` will NOT appear here — re-resolve it by id, don't assume it was lost.
 
 ### `wpcanai-read-meta`
 
-- **Args:** `{ "post_id": int, "fields"?: ["html"|"css"|"js"|"context"|"layout"|"format"|"blocks"|"tailwind_build"|"tailwind_hash"], "lang"?: string }` — `post_id` required; omit `fields` to read the default set (`html`, `css`, `js`, `context`, `layout`, `format`). Pass `tailwind_build` / `tailwind_hash` explicitly when you need them — they are excluded from the default set because the build CSS can be large. When `lang` is set and Polylang is active, errors with `lang_mismatch` if `post_id` is in a different language (no auto-translate — pass the language-specific id).
+- **Args:** `{ "post_id": int, "fields"?: ["html"|"css"|"js"|"context"|"layout"|"format"|"blocks"|"tailwind_build"|"tailwind_hash"] }` — `post_id` required; omit `fields` to read the default set (`html`, `css`, `js`, `context`, `layout`, `format`). Pass `tailwind_build` / `tailwind_hash` explicitly when you need them — they are excluded from the default set because the build CSS can be large.
 - **Returns:** object with any of `html`, `css`, `js`, `context` (strings), `layout` (int), `format` (`"twig"`|`"blocks"`), `blocks` (string, raw block markup), `tailwind_build` (string), `tailwind_hash` (string), `hashes` (object).
 - **(v1.58.0) `hashes`.** Whenever `fields` includes, or defaults to, `html`, `css`, and/or `js`, the response also carries `hashes` — a SHA-1 per requested content field, e.g. `{ "html": "<sha1>" }`. Absent from metadata-only reads (no `html`/`css`/`js` requested). Feed these straight into `wpcanai-write-meta`'s `expected_hash` to make your next write conditional on that field not having changed since this read.
 - **(v1.65.0) `format` and `blocks`.** `format` is in the default set. `blocks` returns the raw block markup and is only valid on a blocks page (`format_mismatch` otherwise); it is not hashed.
@@ -319,7 +315,7 @@ A write tool carrying `cache` returns **`purged`** in its response: `{ "scope": 
 
 ### `wpcanai-write-meta`
 
-- **Args:** `{ "post_id": int, "html"?: string, "css"?: string, "js"?: string, "context"?: string, "layout"?: int, "tailwind_build"?: string, "tailwind_hash"?: string, "lang"?: string, "confirm_truncate"?: bool, "expected_hash"?: object, "convert"?: bool, "ignore_syntax_error"?: bool }` — `post_id` required; include only keys you want to update. `tailwind_build` writes the precompiled per-page Tailwind CSS to `_canai_tailwind_build`; `tailwind_hash` writes the input hash to `_canai_tailwind_hash` (paired — see **Compile Tailwind for Production**). Same `lang_mismatch` enforcement as `read-meta` — write is rejected (no DB change) if the post's actual language differs from the declared `lang`.
+- **Args:** `{ "post_id": int, "html"?: string, "css"?: string, "js"?: string, "context"?: string, "layout"?: int, "tailwind_build"?: string, "tailwind_hash"?: string, "confirm_truncate"?: bool, "expected_hash"?: object, "convert"?: bool, "ignore_syntax_error"?: bool }` — `post_id` required; include only keys you want to update. `tailwind_build` writes the precompiled per-page Tailwind CSS to `_canai_tailwind_build`; `tailwind_hash` writes the input hash to `_canai_tailwind_hash` (paired — see **Compile Tailwind for Production**).
 - **Returns:** `{ "success": bool, "post_id": int }` — on the convert-to-Twig path (`convert: true`) also `converted: true` and a `warnings` array noting the block body stays in `post_content`, unrendered.
 - **Note:** passing the **complete** `html`/`css`/`js` string is fully supported **at any size** — large pages are fine. A big payload is **never** a reason to fall back to raw HTTP/Python/curl against the MCP endpoint (it has no MCP session/auth and will 403). When you only need to change specific substrings (asset URLs, a class name, a string), prefer **`wpcanai-replace-in-meta`** below.
 - **Don't bundle `tailwind_build` with source edits.** A `tailwind_build` written in the SAME call as `html`/`css`/`js` is stamped with the pre-write epoch and stays conservatively stale. Write source first, then `tailwind_build`/`tailwind_hash` in a SEPARATE call.
@@ -332,7 +328,7 @@ A write tool carrying `cache` returns **`purged`** in its response: `{ "scope": 
 
 ### `wpcanai-replace-in-meta`
 
-- **Args:** `{ "post_id": int, "field"?: "html"|"css"|"js", "replacements": [{ "from": string, "to": string }], "require_all"?: bool, "ignore_whitespace"?: bool, "regex"?: bool, "scope"?: { "text": string, "occurrence"?: int }, "dry_run"?: bool, "lang"?: string }` — `post_id` and `replacements` required; `field` defaults to `html`. Replacements apply server-side, in order, everywhere `from` occurs — the document never crosses the wire. **(v1.71.0)** `ignore_whitespace` makes every whitespace run in `from` match any whitespace run (indentation- and wrap-tolerant; `to` is written literally). `regex` treats `from` as PCRE and `to` as a `preg_replace` template (`$1`); exclusive with `ignore_whitespace`. `scope.text` restricts all replacements to the **nearest enclosing element** of the n-th literal occurrence of that text (`occurrence`, default 1) — the way to say "the heading that says *conference*" without knowing its markup. `dry_run` computes counts and diagnostics and writes nothing. `require_all: true` errors (422, nothing written) if any `from` matches 0×. Same `lang_mismatch` enforcement as `write-meta`.
+- **Args:** `{ "post_id": int, "field"?: "html"|"css"|"js", "replacements": [{ "from": string, "to": string }], "require_all"?: bool, "ignore_whitespace"?: bool, "regex"?: bool, "scope"?: { "text": string, "occurrence"?: int }, "dry_run"?: bool }` — `post_id` and `replacements` required; `field` defaults to `html`. Replacements apply server-side, in order, everywhere `from` occurs — the document never crosses the wire. **(v1.71.0)** `ignore_whitespace` makes every whitespace run in `from` match any whitespace run (indentation- and wrap-tolerant; `to` is written literally). `regex` treats `from` as PCRE and `to` as a `preg_replace` template (`$1`); exclusive with `ignore_whitespace`. `scope.text` restricts all replacements to the **nearest enclosing element** of the n-th literal occurrence of that text (`occurrence`, default 1) — the way to say "the heading that says *conference*" without knowing its markup. `dry_run` computes counts and diagnostics and writes nothing. `require_all: true` errors (422, nothing written) if any `from` matches 0×. Same `lang_mismatch` enforcement as `write-meta`.
 - **Returns:** `{ "success": bool, "post_id": int, "field": string, "total": int, "dry_run": bool, "scope"?: { "text", "occurrences", "used", "start", "end", "line" }, "replacements": [{ "from", "to", "count", "suggestion"? }] }`. A zero-count pair (without `require_all`) carries a `suggestion` explaining the miss.
 - **(v1.71.0) Miss diagnostics.** A `require_all` miss returns `replace_no_match` and the **error message itself** carries the diagnosis — over MCP you only ever see the message, never `data`: `"from" at index 1 not found, nothing written: <from>. Nearest match: <kind> at line 227, column 13 — <snippet> — <hint>. Pairs before it: 1 (counts: 3).` (`index` is 0-based; the same fields exist as `data.failed_index`, `data.results`, `data.suggestion` for REST callers). Kinds, in the order the server checks them: `whitespace_only` — the exact bytes differ only in whitespace **inside your scope** — retry the *same* call with `ignore_whitespace: true`, keeping `scope`. `outside_scope` — the literal exists only in a *different* element than the one `scope.text` selected — pick `scope.text` (or `scope.occurrence`) from that other element; **do not drop `scope`** to make it match, that rewrites the wrong element (and if the target really is the scoped element, re-check its exact bytes with a scoped `grep-content` — it is probably a whitespace or attribute-order difference). `partial` points at the longest token of your `from`. `none` — the anchor is absent from the field/scope; check `post_id`/`field`. Never fall back to a local copy of the document to "see the bytes" — the suggestion snippet and a scoped `grep-content` with `max_length: 1000` give you the exact line.
 - **Errors:** `scope_not_found`, `scope_no_element` (422, nothing written), `invalid_regex` (pattern does not compile), `regex_error` (422, nothing written — the pattern compiled but the PCRE engine hit a backtrack/JIT limit while running it, on a `regex` or `ignore_whitespace` pair; simplify the pattern, no rewrite was applied), `invalid_input` (regex + ignore_whitespace together).
@@ -340,22 +336,22 @@ A write tool carrying `cache` returns **`purged`** in its response: `{ "scope": 
 
 ### `wpcanai-create-template`
 
-- **Args:** `{ "title": string, "type": string, "html"?: string, "css"?: string, "js"?: string, "layout"?: int, "lang"?: string, "translation_of"?: int }` — `title` and `type` (template_type slug) required. `lang` sets the new post's Polylang language. `translation_of` is the source post id; when provided, the new template is merged into the source's translation group via `pll_save_post_translations` (preserves existing translations on the source).
-- **Returns:** `{ "post_id": int, "slug": string, "lang": string|null }`.
+- **Args:** `{ "title": string, "type": string, "html"?: string, "css"?: string, "js"?: string, "layout"?: int }` — `title` and `type` (template_type slug) required.
+- **Returns:** `{ "post_id": int, "slug": string }`.
 - **Typed CPT templates (v1.24+).** A published `wpcanai_template` whose `template_type` term is `single-<post_type>` or `archive-<post_type>` claims that CPT's singular / archive rendering on the frontend — e.g. create one with type `single-service` to own the `service` detail page, `archive-service` for its archive. `single-post` (pre-seeded since 1.60.0) does the same for blog posts written in the WordPress editor: `{{ the_content(post.post_content) }}` inside a `prose` container, with `post.featured_image.*` available on typed `single-*` takeovers and `post.author.*` available since 1.68.15. Existence-gated: with no such template, CanAI falls through byte-identically to the theme. Pages keep their own meta path; WooCommerce products keep the WC block.
 
 ### `wpcanai-resolve-content-id`
 
-- **Args:** `{ "type": string, "lang"?: string }` — `type` required. Accepts the base types (`cart`, `checkout`, `my-account`, `shop`, `product-category`, `product`, `product-loop`, `404`, `search`, `category`, `tag`, `author`, `archive`), the 10 WooCommerce endpoint types (`order-received`, `order-pay`, `add-payment-method`, `orders`, `view-order`, `downloads`, `edit-account`, `edit-address`, `payment-methods`, `lost-password`), and **(v1.50.0)** types registered through the `wpcanai_template_types` filter. When `lang` is set, ids are mapped through `pll_get_post(..., lang)`.
+- **Args:** `{ "type": string }` — `type` required. Accepts the base types (`cart`, `checkout`, `my-account`, `shop`, `product-category`, `product`, `product-loop`, `404`, `search`, `category`, `tag`, `author`, `archive`), the 10 WooCommerce endpoint types (`order-received`, `order-pay`, `add-payment-method`, `orders`, `view-order`, `downloads`, `edit-account`, `edit-address`, `payment-methods`, `lost-password`), and **(v1.50.0)** types registered through the `wpcanai_template_types` filter.
 - **Registered-type caveat.** The enum is built when the ability registers, on `wp_abilities_api_init` (fired from `init` priority 1). A `wpcanai_template_types` filter added at **file scope** — the documented way, and what the resolver's own docs show — is live by then and its types are accepted. One added *inside* an `init` callback at the default priority 10 is not yet registered, so the schema rejects the type even though the resolver would resolve it fine. Register at file scope.
-- **Returns:** `{ "content_post_id": int, "content_post_type": string, "rendering_mode": string, "template_post_id": int|null, "unreachable_post_id": int, "resolution_reason": string, "lang": string|null }`.
+- **Returns:** `{ "content_post_id": int, "content_post_type": string, "rendering_mode": string, "template_post_id": int|null, "unreachable_post_id": int, "resolution_reason": string }`.
 - **(v1.50.0) `content_post_id` is the post that actually renders.** *Delegate-body*: a layout wrapper is in effect, so the WooCommerce page supplies the body — `content_post_id` is that page, `rendering_mode` is `page-rendered`. *Template-body*: the type's template is not a layout wrapper, so it renders the whole page itself — `content_post_id` is the **template**, `rendering_mode` is `template-rendered`, and the delegate page's `_canai_html` (if any) is dead content reported as `unreachable_post_id`. `resolution_reason` states which applied. Edit `content_post_id`; before v1.50.0 this returned the delegate page even when the template rendered, so edits could land on meta that never renders.
 - **`rendering_mode` has five values** — `page-rendered` (delegate-body), `template-rendered` (template-body), **(v1.50.1)** `blank` and `none`, and **(v1.58.0)** `page-rendered-unwrapped`. *Blank* = the layout pointer names a post that no longer exists **and** the delegate page has no `_canai_html` of its own, so nothing CanAI-specific renders; fix the dangling pointer (`wpcanai-scan` reports it as `broken_layout`, warning). *Page-rendered-unwrapped* (v1.58.0) = the layout pointer is dangling, but the delegate page DOES carry its own `_canai_html` — CanAI falls back to rendering that content directly, without the layout's wrapper/chrome, rather than losing it; `content_post_id`/`content_post_type` name the delegate page just like `page-rendered` does, and the dangling pointer is still worth fixing (`wpcanai-scan` reports the same `broken_layout`, warning). *None* = CanAI does not render this type at all. `blank` and `none` both carry `content_post_id: 0` and `content_post_type: ""`, and `resolution_reason` says which. Before v1.50.1 both reported `template-rendered` / `wpcanai_template`, naming a renderer that did not exist — do not treat those two fields as meaningful unless `content_post_id` is non-zero. Before v1.58.0, a dangling layout pointer was always reported as `blank` even when the delegate page's own content in fact rendered unwrapped.
 - **(v1.50.1) Endpoint types inherit their parent's template.** A WooCommerce endpoint claims a request only when a published template of that type exists; otherwise the request renders through the parent type (`checkout` for `order-received`/`order-pay`, `my-account` for the other eight). `resolve-content-id` mirrors that, so an endpoint with no template of its own reports the **parent's** template under template-body rather than a delegate page that can never render. Before v1.50.1 it reported that page, contradicting `wpcanai-scan`'s own `unreachable_content` warning about the same post.
 
 ### `wpcanai-scan`
 
-- **Args:** `{ "lang"?: string }` — when set, scopes the scan to that Polylang language; finding `message` strings are prefixed with `[<lang>] `.
+- **Args:** `{ }` — no arguments.
 - **Returns:** `array` of findings: `severity`, `type`, `message`, optional `post_id`.
 - **Finding types (v1.50.0).** The WooCommerce block (the five base structural types `shop`, `product-category`, `cart`, `checkout`, `my-account`) validates each type against the shape the site is actually in — neither shape is an error:
 
@@ -363,9 +359,9 @@ A write tool carrying `cache` returns **`purged`** in its response: `{ "scope": 
   |---|---|---|
   | warning | `unreachable_content` | Authored `_canai_html` that can never render, in either direction. *Template-body*: the WooCommerce page still carries a body while the template renders. *(v1.50.1)* *Delegate-body*: the type template was displaced by the page's own `_canai_layout` and still carries a body. Names both the dead post and the post that wins. |
   | warning | `broken_layout` | **(v1.58.0)** A layout pointer references a post that no longer exists. CanAI resolves that as "no layout" and falls back to rendering the delegate page's own `_canai_html` directly, unwrapped (no layout chrome) — not blank when the delegate has a body; if it doesn't, nothing CanAI-specific renders. Either way, fix or clear the dangling pointer. Before v1.58.0 this was `critical`, on the (now-fixed) assumption that the page always rendered blank. |
-  | warning | `delegate_mismatch` | The template's **declared** `_canai_delegate_page_id` is itself broken — the post no longer exists, isn't a `page`, or (Polylang) has no translation for the requested language. Checked independently of shape: a broken declared override can itself be why the resolved shape isn't delegate-body. Fix the declared override; do not repoint it at whatever id currently resolves — that id is *derived from* the same declared value and comparing the two never finds a real defect. |
+  | warning | `delegate_mismatch` | The template's **declared** `_canai_delegate_page_id` is itself broken — the post no longer exists, or isn't a `page`. Checked independently of shape: a broken declared override can itself be why the resolved shape isn't delegate-body. Fix the declared override; do not repoint it at whatever id currently resolves — that id is *derived from* the same declared value and comparing the two never finds a real defect. |
   | warning | `empty_delegate_page` | *Delegate-body*, **and a `wpcanai_template` exists for this type**: the page that should hold the body has no `_canai_html`. Someone deliberately configured this type, so an empty page is a real gap. |
-  | warning | `duplicate_type_template` | More than one published template carries the same `template_type` term — only the first renders, the rest are inert. |
+  | warning | `duplicate_type_template` | More than one published template carries the same `template_type` term — only the first renders, the rest are inert. Templates are not scoped by language (one template per type serves every language), so a site that once kept a copy per language shows those copies here — trash the extras and translate strings with `t()` instead. |
   | ok | `template_body_ok` | *Template-body*: the template renders this type directly. Distinct from the generic sweep's own `template_ok` below — same word, different meaning. |
   | ok | `delegate_ok` | *Delegate-body*: the page has content and its resolved layout. |
   | info | `no_template` / `wc_page` | Nothing authored for this type yet — either *delegate-body* with no `wpcanai_template` at all (the WC page renders wrapped in the site layout; common on a fresh install, **not** a misconfiguration), or shape `none` (no WC page resolves either). |
@@ -385,8 +381,8 @@ A write tool carrying `cache` returns **`purged`** in its response: `{ "scope": 
 
 ### `wpcanai-get-wc-page-ids`
 
-- **Args:** `{ "lang"?: string }` — when set, returns the per-language WC page ids via `pll_get_post`.
-- **Returns:** `{ "cart": int, "checkout": int, "myaccount": int, "shop": int, "lang": string|null }` (WooCommerce page IDs; `0` if unset or no translation exists for that lang).
+- **Args:** `{ }` — no arguments.
+- **Returns:** `{ "cart": int, "checkout": int, "myaccount": int, "shop": int }` (WooCommerce page IDs; `0` if unset).
 
 ### `wpcanai-get-wc-css-reference`
 
@@ -396,17 +392,17 @@ A write tool carrying `cache` returns **`purged`** in its response: `{ "scope": 
 
 ### `wpcanai-create-page`
 
-- **Args:** `{ "title": string, "slug"?: string, "status"?: string, "html"?: string, "css"?: string, "js"?: string, "layout"?: int, "lang"?: string, "translation_of"?: int }` — `title` required; creates a `page` post with optional `_canai_*` meta. `lang` sets the new page's Polylang language. `translation_of` is the source page id; when provided, the new page is merged into the source's translation group.
-- **Returns:** `{ "post_id": int, "slug": string, "lang": string|null, "format": string, "warnings": string[] }`.
+- **Args:** `{ "title": string, "slug"?: string, "status"?: string, "html"?: string, "css"?: string, "js"?: string, "layout"?: int }` — `title` required; creates a `page` post with optional `_canai_*` meta.
+- **Returns:** `{ "post_id": int, "slug": string, "format": string, "warnings": string[] }`.
 
 ### `wpcanai-write-post`
 
-- **Args:** `{ "post_id"?: int, "title"?: string, "blocks"?: object[], "slug"?: string, "status"?: string, "excerpt"?: string, "date"?: string, "featured_image"?: int, "categories"?: string[], "tags"?: string[], "lang"?: string, "translation_of"?: int }`.
+- **Args:** `{ "post_id"?: int, "title"?: string, "blocks"?: object[], "slug"?: string, "status"?: string, "excerpt"?: string, "date"?: string, "featured_image"?: int, "categories"?: string[], "tags"?: string[] }`.
   - **Create** (no `post_id`): `title` and `blocks` are required. **Update** (`post_id` given): only the fields you send change; the id must be a `post`, not a page — a page id returns `WP_Error('not_a_post')`.
   - **Default status is `draft`**, not `publish` — unlike `wpcanai-create-page`. The owner is expected to read the prose in the editor first. Valid: `draft`, `publish`, `pending`, `private`, `future`.
   - `blocks` **replaces the entire body**. There is no partial edit; re-send the whole list. WordPress revisions are the undo path.
   - `categories` / `tags` take names or slugs, create anything missing, and replace the whole set on update.
-- **Returns:** `{ "post_id": int, "slug": string, "status": string, "url": string, "edit_url": string, "lang": string|null, "block_count": int, "warnings": string[] }`. `warnings` is non-fatal (unresolvable embed provider, image with no alt text, a classic-editor body that was converted). Fatal problems return `WP_Error` and write nothing.
+- **Returns:** `{ "post_id": int, "slug": string, "status": string, "url": string, "edit_url": string, "block_count": int, "warnings": string[] }`. `warnings` is non-fatal (unresolvable embed provider, image with no alt text, a classic-editor body that was converted). Fatal problems return `WP_Error` and write nothing.
 - **This is for blog posts only.** Pages stay on `wpcanai-create-page` + `wpcanai-write-meta` (CanAI HTML/CSS/JS meta). `write-post` writes native block markup into a post's `post_content` and does not touch CanAI meta.
 
 **Block types.** Each item in `blocks` is `{ "type": …, …fields }`:
@@ -662,13 +658,11 @@ WC shop/cart/checkout/my-account/product-category content often lives on **WC pa
 
 ## Translation model router
 
-CanAI sites can be multilingual in one of **two mutually exclusive models**: **native string translation** (one post per page, site-wide string table, plugin 1.22.0+) or **Polylang** (per-language post copies). On ANY translation request — "translate this site/page", "add a language", "multilingual", "localize" — determine the model FIRST; do not assume Polylang:
+CanAI has one translation model: **native string translation** (one post per page, site-wide string table, plugin 1.22.0+). Per-language post copies are not a CanAI model — templates and pages are not scoped by language. The post-targeting tools (`list-templates`, `read-meta`, `write-meta`, `create-page`, `write-post`, …) take no `lang` argument (a stray one is ignored) and return no `lang` key; `lang` appears only on the `i18n-*` tools, where it names the language being translated. On ANY translation request — "translate this site/page", "add a language", "multilingual", "localize" — check the settings FIRST:
 
 1. Call `wpcanai-i18n-get-settings { }`.
-   - `enabled: true` → the site uses **native string translation** — follow **Native string translation** below. Do NOT create per-language post copies or pass `translation_of`. (If Polylang is *also* active, that's the unexpected both-active case — see step 3.)
-   - `enabled: false` → check Polylang: if post-targeting tools (e.g. `wpcanai-list-templates { }`) error with `lang_required`, or the user says Polylang is installed → follow **CRITICAL: Multi-language (Polylang)** below.
-2. **Neither active** → propose **native string translation** (no extra plugin needed). Confirm the language list with the user — slugs, native names, hreflang codes, and which one is the default — then bootstrap with `wpcanai-i18n-set-settings` and continue with the native workflow.
-3. **Both active** (unexpected) → stop and ask the user which model governs the site.
+   - `enabled: true` → follow **Native string translation** below. Do NOT create per-language post copies.
+   - `enabled: false` → native translation is off. Confirm the language list with the user — slugs, native names, hreflang codes, and which one is the default — then bootstrap with `wpcanai-i18n-set-settings` and continue with the native workflow.
 
 ---
 
@@ -696,7 +690,7 @@ CanAI sites can be multilingual in one of **two mutually exclusive models**: **n
    - `wpcanai-i18n-list-content { "lang": "ms", "untranslated": true }` → the work queue of posts whose title/body/fields still render in the default language.
    - Per post: `wpcanai-i18n-get-content { "post_id": <id>, "fields": ["subtitle", ...] }` returns the raw default-language `source` (`title`, `content`, `excerpt`, named custom `fields`). Translate it, then one `wpcanai-i18n-set-post-overrides { "post_id": <id>, "lang": "ms", "overrides": { "title": "…", "content": "…", "excerpt": "…", "fields": { "subtitle": "…" } } }`. (Pass `"lang": "ms"` to `i18n-get-content` to also see any existing override side-by-side.) Use the dedicated i18n tools — do not reach for PHP eval for content translation.
    - Taxonomy terms shown in loops/archives: `wpcanai-i18n-set-term-overrides` per term.
-   - Report a per-post coverage table (id → status before/after). URLs don't change — the same post serves `/ms/…` with overridden fields (no per-language copies, no `translation_of`).
+   - Report a per-post coverage table (id → status before/after). URLs don't change — the same post serves `/ms/…` with overridden fields (no per-language copies).
    - SEO metadata (title/description) translates via `seo_title`/`seo_description` override keys — read the source with `i18n-get-content` (see [references/REFERENCE.md](references/REFERENCE.md#internationalization-i18n) for the full SEO-bridge behavior). **You only need these keys when the SEO copy must differ from the visible title/body** — otherwise, on a non-default page, `seo_title`/`seo_description` auto-derive from the translated `title`/`name` and `excerpt`/stripped `content` (description truncated to ≤160 chars on a word boundary).
 
 6. **Site-level strings (site name / tagline / archive SEO) — per non-default language:**
@@ -721,86 +715,13 @@ CanAI sites can be multilingual in one of **two mutually exclusive models**: **n
 
 ### Twig helpers
 
-`t()`, `tmedia()`, `current_lang()`, `languages()`, `lang_url()` — see [references/REFERENCE.md](references/REFERENCE.md#internationalization-i18n). (`current_language()` / `language_switcher()` are Polylang-only.)
-
----
-
-## CRITICAL: Multi-language (Polylang)
-
-**This section applies only when the Translation model router (above) resolved to Polylang.** For the native single-post model, use **Native string translation** instead.
-
-When **Polylang** is active, every `_canai_*` post lives in **per-language copies** linked into a translation group. As of plugin **1.8.6**, the MCP enforces a `lang` parameter on every tool that touches a post — calls without `lang` are **rejected** with `WP_Error('lang_required')`, and calls with a `lang` that doesn't match the post's actual language are **rejected** with `WP_Error('lang_mismatch')`. No silent default-language fallback, no auto-translation.
-
-### Translation model
-
-- **`wpcanai_template` posts are translatable** — each language has its own post.
-- **`template_type` taxonomy is NOT translatable** — EN and MS templates share the term `shop` (intentional; type markers are shared).
-- **`_canai_html`, `_canai_css`, `_canai_js`, `_canai_context`, `_canai_context_mode`, `_canai_format` are COPIED** on translation. **`_canai_layout` and `_canai_delegate_page_id` are TRANSLATED.**
-- **WC delegate pages are per-language.** Frontend reads the current-language delegate's `_canai_html`.
-
-### The `lang` contract
-
-When `function_exists('pll_current_language')` is true:
-
-- **10 abilities require `lang`:** `list-templates`, `list-pages`, `read-meta`, `write-meta`, `replace-in-meta`, `create-template`, `resolve-content-id`, `scan`, `get-wc-page-ids`, `create-page`. Missing → `lang_required`. Unknown slug (not in `pll_languages_list()`) → `unknown_lang`.
-- **Mismatch is a hard error.** `read-meta` and `write-meta` compare `lang` against the post's actual Polylang language and return `lang_mismatch` if they disagree. There is **no auto-translate** — pass the language-specific `post_id`.
-- **Returned objects expose language.** `list-templates` and `list-pages` rows now include a `lang` field; `resolve-content-id` and `get-wc-page-ids` echo `lang` in their response so you can confirm what language was resolved.
-- **Polylang inactive → `lang` ignored.** The same MCP client code works against monolingual installs without changes.
-- **Escape hatch.** `define('WPCANAI_MCP_LANG_OPTIONAL', true)` in `wp-config.php` short-circuits the rejection (legacy blind behavior). Use only for emergencies or single-language Polylang installs.
-
-### Recommended workflow
-
-1. **Confirm the language** with the user before any write ("are we editing the EN or MS shop page?").
-2. **Resolve the right post ID** with `lang`:
-
-   ```js
-   wpcanai-resolve-content-id { "type": "shop", "lang": "ms" }
-   // → { content_post_id: <MS shop page id>, ..., lang: "ms" }
-
-   wpcanai-list-templates { "lang": "ms" }
-   // → only MS rows, each row has lang: "ms"
-   ```
-
-3. **Read / write with `lang`:**
-
-   ```js
-   wpcanai-read-meta { "post_id": <MS id>, "lang": "ms", "fields": ["html"] }
-   wpcanai-write-meta { "post_id": <MS id>, "lang": "ms", "html": "..." }
-   ```
-
-   Mismatched lang (`{post_id: <EN id>, lang: "ms"}`) → `lang_mismatch` error, no write.
-
-4. **Create a new translation linked into the source group** in one call:
-
-   ```js
-   wpcanai-create-template {
-     "title": "Shop MS",
-     "type": "shop",
-     "lang": "ms",
-     "translation_of": <EN-shop-template-id>
-   }
-   ```
-
-   `translation_of` (also on `create-page`) sets the new post's language and merges it into the source post's existing translation group via `pll_save_post_translations`. Without `translation_of`, the new post just gets its language assigned (no translation links).
-
-5. **Audit missing translations** with `wpcanai-scan` per language:
-
-   ```js
-   wpcanai-scan { "lang": "ms" }   // findings tagged "[ms] ..."
-   wpcanai-scan { "lang": "en" }
-   ```
-
-   Compare the two outputs to spot templates / delegates present in EN but absent in MS.
-
-### Twig helpers in templates
-
-CanAI exposes `current_language()`, `language_switcher()`, `__()`, `_x()`, `_n()` for language-aware markup — see [references/REFERENCE.md](references/REFERENCE.md#internationalization-i18n).
+`t()`, `tmedia()`, `current_lang()`, `languages()`, `lang_url()` — see [references/REFERENCE.md](references/REFERENCE.md#internationalization-i18n). `current_language()` and `language_switcher()` still work as aliases of `current_lang()` and `languages()` (for templates that already use them); write new templates with the native names.
 
 ---
 
 ## Common workflows (generic notation)
 
-Use **tool name + JSON arguments**; map to your host's MCP call syntax. Examples below omit `lang` for clarity; **on Polylang sites add `"lang": "<slug>"` to every call** (and `read-meta`/`write-meta` will reject mismatches).
+Use **tool name + JSON arguments**; map to your host's MCP call syntax.
 
 ### Apply a style tweak from DevTools (three calls)
 
@@ -839,11 +760,10 @@ When a live page references the wrong asset URLs (e.g. relative paths left over 
 
 1. `wpcanai-create-template` `{ "title": "...", "type": "component", "html": "...", "css": "..." }`
 2. If layout is needed: `wpcanai-write-meta` `{ "post_id": <new_id>, "layout": <layout_post_id> }`
-3. **Polylang sites:** to create the MS counterpart linked to the EN source, pass `lang` and `translation_of` in one call: `wpcanai-create-template { ..., "lang": "ms", "translation_of": <EN-id> }`.
 
 ### Diagnose configuration
 
-- `wpcanai-scan` `{ }` — delegate, layout, template, structure-navigation, and content-leak issues (`missing_structure_comment` / `invalid_structure_comment` / `leaky_comment` / `leaky_secret`). On Polylang sites, run once per language (`{ "lang": "en" }`, `{ "lang": "ms" }`) and diff to spot missing translations.
+- `wpcanai-scan` `{ }` — delegate, layout, template, structure-navigation, and content-leak issues (`missing_structure_comment` / `invalid_structure_comment` / `leaky_comment` / `leaky_secret`).
 
 ### Comment / secret security sweep
 
@@ -890,7 +810,7 @@ Empty / missing → server falls back to Play CDN. **Dedup guard:** if a layout 
 
    Use the returned `plugins` array (e.g. `["forms", "container-queries"]`) when invoking the compiler. If `load_tailwind` is `no`, stop and tell the user to enable it first (there is no Tailwind to compile).
 
-2. **Enumerate layouts** — `wpcanai-list-templates {}`, keep rows where `type` is `layout`. Each layout is one compile target. On Polylang sites, run once per language (layouts are per-language) and treat each language's layout as independent.
+2. **Enumerate layouts** — `wpcanai-list-templates {}`, keep rows where `type` is `layout`. Each layout is one compile target.
 
 3. **Resolve each layout's consumer set** — every post whose effective layout is this one:
    - `wpcanai-list-pages {}` and `wpcanai-list-templates {}` rows whose `layout_id` equals this layout's id.
@@ -919,13 +839,13 @@ Empty / missing → server falls back to Play CDN. **Dedup guard:** if a layout 
    }
    ```
 
-   Then **clear stale per-page builds** on consumers that still carry one (from older per-page compiles): `wpcanai-write-meta { "post_id": <consumer_id>, "tailwind_build": "", "tailwind_hash": "" }`. The dedup guard already ignores them, but clearing keeps the data honest and the panels accurate. On Polylang sites, include `"lang": "<slug>"` and use the language-specific layout id. Only `wpcanai-write-meta` persists these fields — do not use other write paths.
+   Then **clear stale per-page builds** on consumers that still carry one (from older per-page compiles): `wpcanai-write-meta { "post_id": <consumer_id>, "tailwind_build": "", "tailwind_hash": "" }`. The dedup guard already ignores them, but clearing keeps the data honest and the panels accurate. Only `wpcanai-write-meta` persists these fields — do not use other write paths.
 
 8. **Report** — `X layouts compiled, Y skipped (already current), Z failed`, plus how many consumer per-page builds were cleared. List failures with the layout id and reason.
 
 ### Verifying the result
 
-View a frontend page in the browser. The `<head>` should contain `<style id="wpcanai-tailwind-css">…</style>` and **no** `<script src=".../tailwind.min.js">`. If the Play CDN script still appears: the page's layout has an empty `_canai_tailwind_build` (re-check step 7 wrote to the right **layout** id — including the per-language layout on Polylang), the page renders through a *different* layout than the one you compiled, or `load_tailwind` is `no`.
+View a frontend page in the browser. The `<head>` should contain `<style id="wpcanai-tailwind-css">…</style>` and **no** `<script src=".../tailwind.min.js">`. If the Play CDN script still appears: the page's layout has an empty `_canai_tailwind_build` (re-check step 7 wrote to the right **layout** id), the page renders through a *different* layout than the one you compiled, or `load_tailwind` is `no`.
 
 A blocks page rendered through a compiled layout shows the same `<style id="wpcanai-tailwind-css">` and no `tailwind.min.js`. If it still loads the CDN while its Twig siblings do not, the build is stale: a block page's body changes on every Gutenberg save (see **When to re-run**).
 

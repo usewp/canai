@@ -12,7 +12,7 @@ description: >
   "wpcanai-write-page", "convert to blocks", "convert to twig", "page css", "block page css".
 metadata:
   author: canai
-  version: "1.2.0"
+  version: "1.3.0"
 allowed-tools: "Read Write Edit Grep Glob"
 ---
 
@@ -39,13 +39,6 @@ only about *pages*, where blocks are a choice against Twig.
 There is no eval escape hatch here either: the `wpcanai/eval` ability was removed in plugin
 v1.59.0. Every capability is a real `wpcanai/*` ability.
 
-**`lang` parameter (Polylang).** `wpcanai-write-page` accepts an optional `"lang": string`,
-enforced exactly like `canai-mcp`'s post/page tools — required when Polylang is active (unless
-`WPCANAI_MCP_LANG_OPTIONAL` is defined), `WP_Error('lang_required')` without it,
-`WP_Error('unknown_lang')` for an unrecognized slug, and `lang_mismatch` if the page is actually
-in a different language. See `canai-mcp`'s **CRITICAL: Multi-language (Polylang)** section for
-the full rule; it isn't repeated here.
-
 ---
 
 ## Page format — Twig or blocks (plugin v1.65.0)
@@ -64,8 +57,7 @@ MCP sets; the admin UI shows the owner a prompt to paste to you instead of a tog
 | Page CSS | `_canai_css` (Twig-rendered) | `_canai_css` via write-page `css` — plain CSS, emitted raw after the layout's CSS |
 | Snapshots / `replace-in-meta` / `grep-content` / `scan` | yes | no — WordPress revisions are the history |
 | Export / import (`wpcanai-export` / `-import`) | yes | **no** — the exporter only finds pages with non-empty `_canai_html`, so a block page is never in a bundle |
-| Polylang translation | copies CanAI meta | copies the format mark too, so a translation stays blocks-authored |
-| Native `t()` / content overrides | yes | no — Polylang translates the page as a normal post |
+| Native translation | `t()` strings in `_canai_html` (string table) | content overrides — the page's title/content/excerpt override blob (`wpcanai-i18n-set-post-overrides`, or the block editor's language mode) swaps in on `/{lang}/` renders, inside the layout; `t()` applies only to the wrapping layout's Twig, since block content is not Twig |
 | Conditionals, loops over non-post data, Alpine | yes | no (an `html` block keeps raw markup but needs `unfiltered_html`) |
 | Header/footer/layout wrapping | yes | **yes, too** — `_canai_layout` wraps a blocks page's rendered content the same way it wraps Twig, as long as the layout is set |
 
@@ -141,7 +133,7 @@ repeated here.
 ### `wpcanai-create-page` (the `format: "blocks"` path)
 
 This is the same `wpcanai-create-page` tool `canai-mcp` documents for Twig pages
-(`{ "title", "slug"?, "status"?, "html"?, "css"?, "js"?, "layout"?, "lang"?, "translation_of"? }`)
+(`{ "title", "slug"?, "status"?, "html"?, "css"?, "js"?, "layout"? }`)
 — this section only covers its block-authoring arguments.
 
 - **Additional args:** `"format"?: "twig"|"blocks"`, `"blocks"?: object[]`.
@@ -149,13 +141,13 @@ This is the same `wpcanai-create-page` tool `canai-mcp` documents for Twig pages
   rejected; the page is created with a block body and marked blocks. `warnings` is empty on the
   Twig path. The reverse is also refused: sending `blocks` without `format: "blocks"` errors
   `invalid_input` rather than silently publishing an empty page.
-- **Returns:** `{ "post_id": int, "slug": string, "lang": string|null, "format": string,
+- **Returns:** `{ "post_id": int, "slug": string, "format": string,
   "warnings": string[] }`.
 
 ### `wpcanai-write-page`
 
 - **Args:** `{ "post_id": int, "blocks": object[], "title"?: string, "status"?: string,
-  "layout"?: int, "css"?: string, "convert"?: bool, "lang"?: string }` — `post_id` must be a
+  "layout"?: int, "css"?: string, "convert"?: bool }` — `post_id` must be a
   `page`. `blocks` replaces the whole body (WordPress revisions are the undo path). Block types
   are listed below; the `html` block is available here (and in `create-page` with
   `format: "blocks"`), and nowhere else.
@@ -165,7 +157,7 @@ This is the same `wpcanai-create-page` tool `canai-mcp` documents for Twig pages
   everything on a block's root element stays a Tailwind `className`. `""` deletes it; omit to
   leave it. Written after the body and after a conversion's cleanup, so a failed body write never
   touches it.
-- **Returns:** `{ "post_id", "slug", "status", "url", "edit_url", "lang", "format": "blocks",
+- **Returns:** `{ "post_id", "slug", "status", "url", "edit_url", "format": "blocks",
   "converted": bool, "block_count", "warnings": string[] }`.
 - **Format guard.** On a Twig page whose `_canai_html` is non-empty the call fails with
   `format_mismatch` (the error carries the prompt to show the owner) unless `convert: true`:
@@ -177,7 +169,7 @@ This is the same `wpcanai-create-page` tool `canai-mcp` documents for Twig pages
   would on a Twig page. `_canai_layout` wraps a blocks page's rendered content in that layout's
   Twig shell (header/footer included) exactly as it wraps Twig content — the plugin checks
   `_canai_layout` independently of the format mark, so the same layout mechanism serves both.
-- **Errors:** `invalid_input`, `invalid_status`, `lang_mismatch`, `not_a_page`, `invalid_blocks`
+- **Errors:** `invalid_input`, `invalid_status`, `not_a_page`, `invalid_blocks`
   (with `path` like `"2.blocks.0"` for nested blocks), `invalid_attachment`, `format_mismatch`,
   `forbidden` (writing `css` without the `unfiltered_html` capability; an authenticated MCP
   API-key request runs as an administrator and bypasses this check). Fatal problems write

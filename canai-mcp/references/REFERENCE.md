@@ -140,21 +140,9 @@ Use these for **main-query** archives so URLs respect **pretty permalinks**, CPT
 
 ### Internationalization (i18n)
 
-Three families: **Polylang-only** helpers (`current_language()`, `language_switcher()`), the **WordPress gettext** family (`__`, `_x`, `_n`), and **CanAI native i18n** helpers (`t()`, `tmedia()`, `current_lang()`, `languages()`, `lang_url()`, plugin 1.22.0+) which need no extra plugin once languages are configured (CanAI → Translations, or `wpcanai-i18n-set-settings` over MCP). On native-i18n sites use `t()` for user-facing strings and `current_lang()` / `languages()` for switchers; `current_language()` falls back to `get_locale()` and `language_switcher()` returns `[]` without Polylang. Gettext strings without an explicit domain default to `wpcanai`.
+Two families: the **WordPress gettext** family (`__`, `_x`, `_n`) and **CanAI native i18n** (`t()`, `tmedia()`, `current_lang()`, `languages()`, `lang_url()`, plugin 1.22.0+), which needs no extra plugin once languages are configured (CanAI → Translations, or `wpcanai-i18n-set-settings` over MCP). Use `t()` for user-facing page strings and `current_lang()` / `languages()` for switchers. Gettext is for strings a theme or plugin already ships in its catalogue; strings without an explicit domain default to `wpcanai`.
 
 ```twig
-{# Current language code — Polylang slug ('en','ms','...') or get_locale() fallback #}
-{{ current_language() }}
-
-{# Language switcher: array of items with url, slug, name, current, no_translation #}
-{% for lang in language_switcher() %}
-  <a href="{{ lang.url }}"
-     class="{{ lang.current ? 'font-bold' : '' }}"
-     hreflang="{{ lang.slug }}">
-    {{ lang.name }}
-  </a>
-{% endfor %}
-
 {# Translatable strings — domain defaults to 'wpcanai'. Pass a domain to use the active theme's. #}
 {{ __('Add to cart') }}
 {{ _x('Open', 'menu state', 'my-theme') }}
@@ -174,11 +162,17 @@ Three families: **Polylang-only** helpers (`current_language()`, `language_switc
 {{ lang_url('ms') }}                {# current URL localized to the given language (prefix added/stripped) #}
 ```
 
-**Native vs Polylang:** `t()` reads the CanAI string table (managed on the Translations admin page / `wpcanai-i18n-*` MCP tools); `__()/_x()/_n()` are gettext. `current_language()` / `language_switcher()` are **Polylang-only** — on native-i18n sites use `current_lang()` / `languages()`. See SKILL.md → **Native string translation** for the full workflow.
+**Aliases (kept for existing templates):** `current_language()` returns the native current-language slug — `get_locale()` when native i18n is disabled. `language_switcher()` returns the configured languages as rows `{ slug, name, url, current, hreflang }` (`url` is the `lang_url()` of the current page) — `[]` when native i18n is disabled. Both read CanAI's own languages; write new templates with `current_lang()` / `languages()`.
 
-**Polylang storage rules** (see SKILL.md → Multi-language section): `wpcanai_template` posts are translatable; `_canai_html/css/js/context/context_mode` are **copied** on translation; `_canai_layout` and `_canai_delegate_page_id` are **translated** (per-language IDs); the `template_type` taxonomy is **not** translatable.
+```twig
+{# Alias form — equivalent to the languages() loop above #}
+{% for lang in language_switcher() %}
+  <a href="{{ lang.url }}" hreflang="{{ lang.hreflang }}"
+     class="{{ lang.current ? 'font-bold' : '' }}">{{ lang.name }}</a>
+{% endfor %}
+```
 
-**MCP `lang` contract** (plugin 1.8.6+): when Polylang is active, every MCP tool that targets a post or page (`list-templates`, `list-pages`, `read-meta`, `write-meta`, `replace-in-meta`, `create-template`, `resolve-content-id`, `scan`, `get-wc-page-ids`, `create-page`) requires a `lang` arg — calls without it return `WP_Error('lang_required')`. `read-meta` / `write-meta` additionally reject mismatched lang/post_id combinations with `WP_Error('lang_mismatch')` (no auto-translate). `create-template` / `create-page` accept `translation_of: <source_id>` to merge the new post into the source's translation group. Define `WPCANAI_MCP_LANG_OPTIONAL` in `wp-config.php` to bypass these checks. Media tools (`list-media`, `get-media`, `update-media`, `sideload-url`) are lang-exempt — attachments are language-neutral.
+`t()` reads the CanAI string table (managed on the Translations admin page / `wpcanai-i18n-*` MCP tools); `__()/_x()/_n()` are gettext. Templates and pages are not scoped by language — one post per page serves every language, and the post-targeting MCP tools take no `lang` argument. See SKILL.md → **Native string translation** for the full workflow.
 
 **Where a page's CSS/JS lives (plugin 1.78.0+):** to find where a page's CSS/JS actually lives (an empty `css` on a component is normal — styles are usually on its layout), call `read-meta` with `fields: ["asset_sources"]`. It returns the posts whose CSS/JS reach pages rendered through that post, in output order, one row per non-empty source: `{post_id, title, role, kind, lines, delivery}` — `role` is `self` / `layout` / `default_layout` / `parent_layout`, `kind` is `css` / `js`, `delivery` is `head` / `footer` / `inline`. It is not in the default field set and carries no `hashes`. `list-templates` / `list-pages` rows carry `css_lines` / `js_lines` for a quick scan (0 = none).
 
