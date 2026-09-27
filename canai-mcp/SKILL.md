@@ -2,7 +2,9 @@
 name: canai-mcp
 description: >
   Use the CanAI MCP server exclusively for live CanAI site data; never substitute WP-CLI,
-  REST/curl, or wp-content edits. FluentSnippets belongs to the opt-in canai-yolo skill.
+  REST/curl, or wp-content edits. CanAI is for design and content: custom functionality (post types,
+  taxonomies, hooks, custom PHP) routes to FluentSnippets via the canai-yolo skill, and moving an existing
+  non-CanAI page into CanAI routes to canai-replicate (live URL) or canai-prepare (HTML files).
   Triggers on: "/canai-mcp", "wpcanai mcp", "canai mcp", "canai-mcp", "wpcanai remote",
   "canai remote", "remote wpcanai", "remote canai", "staging", "production", "remote site",
   "mcp", "api key", "deploy template", "purge cache", "page cache", "tool labels",
@@ -12,10 +14,14 @@ description: >
   "sideload", "upload", "upload image", "upload media", "media library", "attach image", "attachment", "image to media",
   "blog post", "write a blog post", "write post", "wpcanai-write-post",
   "chart", "bar chart", "line chart", "graph", "data visualization", "chart.js",
-  "reading mode", "reader mode", "reader view", "safari reader".
+  "reading mode", "reader mode", "reader view", "safari reader",
+  "custom post type", "cpt", "register post type", "taxonomy", "custom field", "meta box",
+  "functions.php", "mu-plugin", "custom code", "hook", "shortcode",
+  "migrate this page", "move this page to canai", "convert this page to canai",
+  "rebuild this page in canai", "elementor to canai", "page builder", "html file to canai", "import html".
 metadata:
   author: canai
-  version: "1.35.1"
+  version: "1.36.0"
   declaration_key: "40b93de2"
 allowed-tools: "Read Grep Glob"
 ---
@@ -31,6 +37,49 @@ See [references/REFERENCE.md](references/REFERENCE.md) for CanAI-registered Twig
 This skill is **only** the **CanAI MCP server** and its tools. **Never** substitute terminal `wp`, `curl`, raw REST, or repo edits for interacting with the user’s WordPress. The site may be local or remote; either way it is reached over MCP.
 
 **FluentSnippets** lives in the separate opt-in skill **`canai-yolo`**. This skill stays content-focused (templates, pages, blog posts, settings, i18n, media, Tailwind). If the user needs snippet authoring, install/use `canai-yolo` — do not improvise those workflows from this skill. That includes the snippet deploy loop (`wpcanai-replace-in-snippet` → sha256 check → `purged`, plugin v1.80.0). There is **no eval escape hatch**: the `wpcanai/eval` ability was **removed in plugin v1.59.0**, so every capability must be a real `wpcanai/*` ability.
+
+**The same rule covers what you tell the user.** Never tell the user to edit `functions.php`, theme or plugin files, `wp-config.php`, or to add files under `wp-content/` (`mu-plugins`, `plugins`). If code is needed, it is a FluentSnippets snippet (see **Scope** below).
+
+---
+
+## Scope — design here, custom code in FluentSnippets
+
+**CanAI is for design and content**: templates, pages, entries' content and layout, styling/Tailwind, media, charts, CanAI translations, CanAI settings. **Custom functionality is outside CanAI** and goes to **FluentSnippets through the `canai-yolo` skill**.
+
+| Routes to FluentSnippets (`canai-yolo`) | Stays in CanAI (this skill) |
+|---|---|
+| Registering custom post types and taxonomies | Their templates: `single-<type>`, `archive-<type>` |
+| Custom fields / meta boxes, shortcodes with logic | **Entries of a custom type** (see **Entries of a custom post type**): block-editor content via `wpcanai-write-post`, anything else as a CanAI page via `wpcanai-create-page` / `wpcanai-write-meta` |
+| Hooks and filters, redirects, cron, REST routes | Page and post layout, Twig, Tailwind, Alpine, charts |
+| Form handling, third-party integrations | Media, CanAI i18n, CanAI settings, presets; CSS/JS that only styles a CanAI page stays in `_canai_css` / `_canai_js` |
+
+For any request in the left column, route it — do not write PHP for the user to paste anywhere:
+
+1. **Tell the user** in one sentence that this is custom functionality, which CanAI hands to FluentSnippets through the `canai-yolo` skill, and that nothing needs editing in theme or plugin files.
+2. **FluentSnippets missing** (`wpcanai-hello`'s `site.integrations_absent` lists `fluent-snippets`, or the snippet tools are absent from your tool list): the user installs and activates it from **WP Admin → Plugins → Add New**, search "FluentSnippets". There is no MCP tool that installs plugins.
+3. **`canai-yolo` not loaded:** the user sends this line as a message in the chat (no terminal needed): `npx -y skills add usewp/canai --skill canai-yolo -p -y`, then starts a new chat and says "hello canai mcp" again.
+4. **No writable snippet group:** the owner adds **`CanAI custom`** under **AI Client → Guardrails → FluentSnippets group allowlist**. This guardrail is owner-only by design; you cannot set it.
+5. **Hand over to `canai-yolo`.** When the functionality exists, come back here for the design (typed templates) and the entries.
+
+## Migrating an existing page or site into CanAI
+
+Moving an existing non-CanAI page or site into CanAI — a theme-rendered page, a page-builder page (Elementor, Divi, …), a plain block-editor page, an external site, or HTML files from elsewhere — is a **migration**. Do not hand-rewrite the page's markup into Twig from this skill. The source decides the skill:
+
+| The user has | Skill | Then |
+|---|---|---|
+| A **live URL** (a page on this site or any other) | `canai-replicate` — captures the page, rebuilds it as a structured, styled CanAI kit and verifies it before anything is written | Push the kit with the kit flow in **Implement HTML → CanAI** (`pushprep` → `output/push/*.json`) |
+| Only **HTML files** (an exported page, a static site folder, a file from a designer or another tool) | `canai-prepare` — reworks them into CanAI-friendly single-HTML pages | Import them with **Implement HTML → CanAI** (asset sideload pre-pass first) |
+| A design, mockup or screenshot | `canai-prepare` | Same import |
+
+Converting a CanAI page between Twig and blocks is **not** a migration — that is `canai-blocks` (`convert: true`).
+
+1. **Tell the user** this is a migration, which CanAI does through a dedicated skill for a smoother transition (it rebuilds and checks the page before anything is written), rather than retyping the page by hand.
+2. **Pick the route by the source** (table above). If the user has both a live URL and the HTML, prefer the URL: it captures the rendered page, fonts and assets as a visitor sees them. For a page on this same site, get its post ID now: ask the user to open it in **WP Admin → Pages → Edit** and read the number after `post=` in the address bar. No MCP tool looks up a non-CanAI page by URL — `wpcanai-list-pages` only returns pages made with CanAI and `wpcanai-resolve-content-id` resolves template types.
+3. **Skill not loaded:** the user sends the matching line as a message in the chat, then starts a new chat and says "hello canai mcp" again:
+   - live URL → `npx -y skills add usewp/canai --skill canai-replicate -p -y` (it needs an AI client that runs shell commands, Node 22+, and the `agent-browser` CLI and skill; `canai-replicate` walks the user through those);
+   - HTML files → `npx -y skills add usewp/canai --skill canai-prepare -p -y` (no browser or Node needed).
+4. **Push the result** with its existing flow: a `canai-replicate` kit through `pushprep` → `output/push/*.json`; prepared HTML through **Implement HTML → CanAI**. **A same-site migration writes onto the existing page's post ID** with `wpcanai-write-meta`, so the URL, slug, parent and SEO settings stay — do not create a second page. The page's old content stays in `post_content` / its builder meta and a snapshot is taken on write, so the migration can be undone.
+5. **Custom post types or fields** a kit's `CONTENT-MODEL.md` lists are custom functionality: register them via FluentSnippets (`canai-yolo`'s CPT recipe, see **Scope**), then author their entries as in **Entries of a custom post type**.
 
 ---
 
@@ -98,7 +147,7 @@ Verify with `**wpcanai-list-templates`** (or your client’s tool list for the C
 Call **`wpcanai-hello` first**, before any other CanAI tool, and tell it which skills you have loaded:
 
 ```json
-wpcanai-hello { "skills": { "canai-mcp": "1.35.1+k40b93de2" } }
+wpcanai-hello { "skills": { "canai-mcp": "1.36.0+k40b93de2" } }
 ```
 
 **Copy this line exactly.** The part after `+` is this file's declaration key: the site accepts a declaration only with it, so a guessed version opens nothing. Never invent a key, never reuse one from another skill, another session or a server reply (no reply ever contains one), and never send a bare version.
@@ -213,6 +262,20 @@ When converting a static HTML file (e.g. `index.html`) into CanAI via MCP tools:
 A blog post is ordinary WordPress content, not a CanAI-meta page. Write it with **`wpcanai-write-post`**, passing a structured block list — the body becomes native block markup the owner can edit in the block editor, and it renders through the blog kit's `blog-single-post` template with no extra work. Sideload any images first and reference them by attachment id. Do **not** reach for `wpcanai-create-page` or `wpcanai-write-meta` for posts.
 
 - **Charts in posts (plugin v1.77.0).** A chart is **data, not an image**: pass a `chart` block (see the block table) with `labels` and up to **8** `datasets` — fold a 9th series into "Other" rather than splitting the chart — and never sideload a rendered chart picture instead. Set `unit` (`ms`, `%`, `MB`) so ticks, tooltips and the table read "12 ms", not "12". Every chart also renders its numbers as an accessible data table (a collapsed `<details>` by default; `table: "open"` shows it expanded, `"hidden"` keeps it for screen readers and Markdown only), so no-JS, reader-mode, RSS and `Accept: text/markdown` readers get the figures without you adding a `table` block. The site owner can turn the runtime off under **Settings → Libraries → Chart.js** — option `wpcanai_chart_settings` (`load_chart` `auto`|`yes`|`no`, `source` `plugin`|`cdn`), a first-class settings key read with `**wpcanai-read-settings`** and changed with `**wpcanai-update-settings`**; with `no` the figure shows the table only, so read that setting before reporting a missing chart as a bug.
+
+### Entries of a custom post type (plugin v1.85.0)
+
+The post type itself is registered by a FluentSnippets snippet (see **Scope**); this skill writes its **entries**. Rule: **block-editor content → `wpcanai-write-post`; anything else → a CanAI page.**
+
+- **Find the type's slug** from the user or the snippet (`register_post_type( 'doctor', … )` → `doctor`). `wpcanai-list-pages { "post_type": "doctor" }` lists that type's entries made with CanAI.
+- **Block-editor content** (the owner edits it in the block editor, like a blog post): `wpcanai-write-post` with `"post_type": "doctor"`. The type must have `show_in_rest` and `editor` support; otherwise the call fails with `no_show_in_rest` / `no_editor_support`, and the fix is in the registration snippet (add `'show_in_rest' => true` and `'editor'` to `supports`), not here.
+- **A designed page** (Twig/Tailwind like any CanAI page): `wpcanai-create-page` with `"post_type": "doctor"` and `html` / `css` / `js`; later edits go through `wpcanai-write-meta` / `wpcanai-replace-in-meta` by post ID, exactly as for pages. Twig only — a blocks body on a custom type is refused with `blocks_on_custom_type`; send it through `wpcanai-write-post` instead.
+- **Which types are allowed:** registered and public, and not one of WordPress's or CanAI's own types (`page`, `post`, `attachment`, `wpcanai_template`, `product`, …). Otherwise `unknown_post_type`, `reserved_post_type` or `not_public`.
+- **How an entry renders:** its own CanAI content (a `create-page` entry) → a `single-<type>` template → the theme. A `write-post` entry has block content and no CanAI meta, so it renders through `single-<type>` if one exists, else the theme — as blog posts do.
+- **When the user hasn't said which:** ask once — "edit it yourself in the block editor, or a designed page like your other CanAI pages?" Without an answer, a request that says "page" gets `wpcanai-create-page`; one that says "post", "article" or "profile" to be edited by the owner gets `wpcanai-write-post`.
+- **Layout for a designed entry:** the same as a page. Pass the site's existing layout (`wpcanai-list-templates`) as `layout`, or leave it out and the entry uses the default layout. A `single-<type>` template never wraps an entry that has its own CanAI content.
+- **Menus:** creating an entry never adds it to a menu; that stays the owner's call in wp-admin.
+- **404 on the type's URLs** (archive or entry): new post types' pretty permalinks are not in WordPress's rewrite rules yet. Tell the user to open **Settings → Permalinks** and click **Save Changes** (no change needed), then retry.
 
 ### Reading mode (Safari Reader / Firefox Reader View / Chrome)
 
@@ -373,7 +436,7 @@ Change the key mode only when the user asks you to — never lower it to get pas
 
 ```json
 {
-  "accepted": { "canai-mcp": "1.35.1" },
+  "accepted": { "canai-mcp": "1.36.0" },
   "unknown":  [],
   "outdated": { "canai-blocks": { "have": "1.2.0", "update": "npx -y skills add usewp/canai --skill canai-blocks -p -y" } },
   "rejected": {},
@@ -404,7 +467,7 @@ Change the key mode only when the user asks you to — never lower it to get pas
 
 ### `wpcanai-list-pages`
 
-- **Args:** `{ }` — no arguments.
+- **Args:** `{ "post_type"?: string }` — **(v1.85.0)** optional filter: only entries of that type (`page`, or an eligible custom type — see **Entries of a custom post type**). Without it, every post type made with CanAI is listed.
 - **Returns:** `array` of objects: `id`, `title`, `post_type`, `layout_id` (int or null), `format` (`"twig"`|`"blocks"`) for posts/pages that have `_canai_html`, or pages marked blocks.
 - **Published only.** Returns posts with status `publish`. A page created via `wpcanai-create-page` with `status: "draft"` will NOT appear here — re-resolve it by id, don't assume it was lost.
 
@@ -442,7 +505,7 @@ Change the key mode only when the user asks you to — never lower it to get pas
 
 - **Args:** `{ "title": string, "type": string, "html"?: string, "css"?: string, "js"?: string, "layout"?: int }` — `title` and `type` (template_type slug) required.
 - **Returns:** `{ "post_id": int, "slug": string }`.
-- **Typed CPT templates (v1.24+).** A published `wpcanai_template` whose `template_type` term is `single-<post_type>` or `archive-<post_type>` claims that CPT's singular / archive rendering on the frontend — e.g. create one with type `single-service` to own the `service` detail page, `archive-service` for its archive. `single-post` (pre-seeded since 1.60.0) does the same for blog posts written in the WordPress editor: `{{ the_content(post.post_content) }}` inside a `prose` container, with `post.featured_image.*` available on typed `single-*` takeovers and `post.author.*` available since 1.68.15. Existence-gated: with no such template, CanAI falls through byte-identically to the theme. Pages keep their own meta path; WooCommerce products keep the WC block.
+- **Typed CPT templates (v1.24+).** A published `wpcanai_template` whose `template_type` term is `single-<post_type>` or `archive-<post_type>` claims that CPT's singular / archive rendering on the frontend — e.g. create one with type `single-service` to own the `service` detail page, `archive-service` for its archive. `single-post` (pre-seeded since 1.60.0) does the same for blog posts written in the WordPress editor: `{{ the_content(post.post_content) }}` inside a `prose` container, with `post.featured_image.*` available on typed `single-*` takeovers and `post.author.*` available since 1.68.15. Existence-gated: with no such template, CanAI falls through byte-identically to the theme. Pages keep their own meta path; WooCommerce products keep the WC block. **The post type itself** comes from a FluentSnippets snippet (see **Scope**) or a preset; this paragraph is only about rendering it. If its archive or entry URLs return 404, tell the user to re-save **Settings → Permalinks** (**Save Changes**, no change needed).
 
 ### `wpcanai-resolve-content-id`
 
@@ -496,18 +559,20 @@ Change the key mode only when the user asks you to — never lower it to get pas
 
 ### `wpcanai-create-page`
 
-- **Args:** `{ "title": string, "slug"?: string, "status"?: string, "html"?: string, "css"?: string, "js"?: string, "layout"?: int }` — `title` required; creates a `page` post with optional `_canai_*` meta.
-- **Returns:** `{ "post_id": int, "slug": string, "format": string, "warnings": string[] }`.
+- **Args:** `{ "title": string, "slug"?: string, "status"?: string, "html"?: string, "css"?: string, "js"?: string, "layout"?: int, "post_type"?: string }` — `title` required; creates a `page` post (or, with `post_type`, an entry of an eligible custom type) with optional `_canai_*` meta.
+  - **`post_type` (v1.85.0)**, default `page`: create an entry of an eligible custom type as a CanAI page (see **Entries of a custom post type**). Twig only — `format: "blocks"` on a custom type returns `blocks_on_custom_type` (use `wpcanai-write-post` with `post_type`). Ineligible types return `unknown_post_type`, `reserved_post_type` or `not_public`. Never touches menus.
+- **Returns:** `{ "post_id": int, "slug": string, "format": string, "post_type": string, "warnings": string[] }`.
 
 ### `wpcanai-write-post`
 
-- **Args:** `{ "post_id"?: int, "title"?: string, "blocks"?: object[], "slug"?: string, "status"?: string, "excerpt"?: string, "date"?: string, "featured_image"?: int, "categories"?: string[], "tags"?: string[] }`.
+- **Args:** `{ "post_id"?: int, "title"?: string, "blocks"?: object[], "slug"?: string, "status"?: string, "excerpt"?: string, "date"?: string, "featured_image"?: int, "categories"?: string[], "tags"?: string[], "post_type"?: string }`.
   - **Create** (no `post_id`): `title` and `blocks` are required. **Update** (`post_id` given): only the fields you send change; the id must be a `post`, not a page — a page id returns `WP_Error('not_a_post')`.
+  - **`post_type` (v1.85.0)**, default `post`: write block-editor content into an entry of an eligible custom type (see **Entries of a custom post type**). The type must be registered, public and not reserved (`unknown_post_type`, `reserved_post_type`, `not_public`), and have `show_in_rest` and `editor` support (`no_show_in_rest`, `no_editor_support` — the error names what to add to the registration snippet). On update the post's type must equal `post_type` (omitted means `post`), else `post_type_mismatch`. `categories` / `tags` apply only when that taxonomy is registered for the type; otherwise they are skipped and listed in `skipped_taxonomies`, not an error.
   - **Default status is `draft`**, not `publish` — unlike `wpcanai-create-page`. The owner is expected to read the prose in the editor first. Valid: `draft`, `publish`, `pending`, `private`, `future`.
   - `blocks` **replaces the entire body**. There is no partial edit; re-send the whole list. WordPress revisions are the undo path.
   - `categories` / `tags` take names or slugs, create anything missing, and replace the whole set on update.
-- **Returns:** `{ "post_id": int, "slug": string, "status": string, "url": string, "edit_url": string, "block_count": int, "warnings": string[] }`. `warnings` is non-fatal (unresolvable embed provider, image with no alt text, a classic-editor body that was converted). Fatal problems return `WP_Error` and write nothing.
-- **This is for blog posts only.** Pages stay on `wpcanai-create-page` + `wpcanai-write-meta` (CanAI HTML/CSS/JS meta). `write-post` writes native block markup into a post's `post_content` and does not touch CanAI meta.
+- **Returns:** `{ "post_id": int, "slug": string, "status": string, "url": string, "edit_url": string, "block_count": int, "post_type": string, "skipped_taxonomies"?: string[], "warnings": string[] }`. `warnings` is non-fatal (unresolvable embed provider, image with no alt text, a classic-editor body that was converted). Fatal problems return `WP_Error` and write nothing.
+- **This is for blog posts and block-editor entries of custom types only.** Pages stay on `wpcanai-create-page` + `wpcanai-write-meta` (CanAI HTML/CSS/JS meta). `write-post` writes native block markup into a post's `post_content` and does not touch CanAI meta.
 
 **Block types.** Each item in `blocks` is `{ "type": …, …fields }`:
 
@@ -660,6 +725,7 @@ Site name, tagline, and archive/search/404 SEO title+description live in a per-l
   - **`adopt_woo_pages` (default `true`, v1.47.0).** A pack with `settings.woo_pages` writes its content onto the store's **existing** WooCommerce pages instead of creating duplicates (`checkout-2`, …), preserving their IDs and permalinks so order-received URLs in already-sent emails keep working. Each adopted page's prior CanAI meta is snapshotted and restored by `wpcanai-uninstall-preset` — the page itself is never deleted. Pass `false` to force new pages (pre-v1.47.0 behavior; breaks previously issued order links).
   - **`trash_woo_pages` (default `false`).** Trashes the existing shop/cart/checkout/my-account pages (recoverable from Trash) so the pack's own store pages take those slugs. It runs **before** adoption, so it wins: the slots are empty by the time adoption looks, and fresh pages are created.
 - **`wpcanai-uninstall-preset`** — `{ "slug": string }`. Removes a pack's templates/pages and tears down any nav menus it created.
+- **A pack's custom post types** (e.g. `cpt-corporate`'s `service`) are registered by the pack itself — do not re-register them in a snippet. If their archive or entry URLs return 404 after install, tell the user to re-save **Settings → Permalinks** (**Save Changes**, no change needed).
 
 ### `wpcanai-export` / `wpcanai-import`
 

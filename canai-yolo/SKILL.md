@@ -2,21 +2,25 @@
 name: canai-yolo
 description: >
   Opt-in CanAI MCP power tool that can publish site PHP: FluentSnippets
-  (create/update/publish PHP/CSS/JS snippets). Not for routine template/page/content
-  work — use canai-mcp for that.
+  (create/update/publish PHP/CSS/JS snippets). Where CanAI sends custom functionality
+  it does not do itself: custom post types, taxonomies, custom fields, hooks, shortcodes
+  with logic, redirects, REST routes. Not for routine template/page/content work — use
+  canai-mcp for that.
   Triggers on: "/canai-yolo", "canai-yolo", "fluentsnippets", "fluent snippets",
   "easy-code-manager", "code snippet", "php snippet", "publish snippet",
-  "create snippet".
+  "create snippet", "custom post type", "cpt", "register post type", "taxonomy",
+  "custom field", "meta box", "functions.php", "mu-plugin", "custom code", "hook",
+  "shortcode".
 metadata:
   author: canai
-  version: "2.3.0"
+  version: "2.4.0"
   declaration_key: "2278f2bf"
 allowed-tools: "Read Grep Glob"
 ---
 
 # CanAI YOLO — FluentSnippets MCP tools
 
-**High risk. Opt-in.** This skill documents MCP tools that can **permanently publish PHP** on the WordPress site. Install and invoke it only when the user explicitly wants snippet work.
+**High risk. Opt-in.** This skill documents MCP tools that can **permanently publish PHP** on the WordPress site. Install and invoke it when the user explicitly wants snippet work, or when `canai-mcp` routes custom functionality here (see **When to use**).
 
 For templates, pages, i18n, media, settings, and Tailwind — use **`canai-mcp`** instead. Do not blend YOLO workflows into a normal `/canai-mcp` content session unless the user asked for this skill.
 
@@ -27,7 +31,7 @@ Transport is the same CanAI MCP server (`{site}/wp-json/mcp/wpcanai`) and API ke
 When this skill is attached, add yourself to `canai-mcp`'s **Start of session** call:
 
 ```json
-wpcanai-hello { "skills": { "canai-mcp": "<its metadata.version>+k<its declaration_key>", "canai-yolo": "2.3.0+k2278f2bf" } }
+wpcanai-hello { "skills": { "canai-mcp": "<its metadata.version>+k<its declaration_key>", "canai-yolo": "2.4.0+k2278f2bf" } }
 ```
 
 **Copy both entries exactly** — `canai-mcp`'s from its own Start of session line, this one as written. The part after `+` is the skill's declaration key; without it the declaration opens nothing. Never invent or reuse a key.
@@ -41,6 +45,11 @@ If the session already started, call `wpcanai-hello` again with both — it adds
 Use **`canai-yolo`** only for:
 
 1. **FluentSnippets** (`easy-code-manager`) — list/read/create/update/publish site PHP, CSS, or JS snippets via dedicated MCP tools.
+2. **Custom functionality `canai-mcp` routes here** — anything that needs PHP running on the site: registering custom post types and taxonomies, custom fields / meta boxes, shortcodes with logic, hooks and filters, redirects, cron, REST routes, form handling, integrations. CanAI itself stays design and content (templates, pages, entries, styling); see **Scope** in `canai-mcp`.
+
+**It publishes live PHP, so the user decides.** Create every snippet as a **draft** first, show the user the code and what it does, and publish (`wpcanai-set-snippet-status`, or `status: "published"` on a later update) only after they agree. Never tell the user to put the code in `functions.php`, a theme or plugin file, `wp-config.php`, or a file under `wp-content/` (`mu-plugins`, `plugins`) — FluentSnippets is where it lives.
+
+**Group:** write to **`CanAI custom`**. If that group is not allowlisted, use another allowlisted group from `wpcanai-list-snippets` (`writable: true`), or ask the owner to add `CanAI custom` under **AI Client → Guardrails → FluentSnippets group allowlist** — you cannot set the allowlist yourself.
 
 > **There is no eval escape hatch.** The `wpcanai/eval` ability was **removed in plugin v1.59.0** — WP.org bans `eval()` outright — and `WPCANAI_ENABLE_EVAL` is no longer read. Every capability is a real ability; there is nothing to fall back on. If a workflow seems to need eval, the fix is to request the missing ability, not to improvise. An opt-in add-on plugin is planned (`specs/2026-08-20-canai-eval-addon-design.md`).
 
@@ -55,7 +64,7 @@ Key rules the schemas alone don't make obvious:
 1. **Tools only appear when FluentSnippets is active.** If `easy-code-manager` is inactive the six snippet tools are not registered at all — you won't see them in the tool list.
 2. **Canonical form (plugin v1.80.0).** Send PHP as the body **without `<?php`** — a leading `<?php` and blank lines are **stripped** on write (no longer rejected) and on read. Trailing newlines are kept; a trailing `?>` is removed. `sha256` / `bytes` / `lines` are computed over the code **exactly as `get-snippet` returns it**, so hash that string, not your local file, when comparing. css/js must not be wrapped in their own `<style>` / `<script>` tag. PHP is syntax-checked and test-run once before it is saved: it must not redeclare a function or class that already exists (guard with `function_exists` / `class_exists`), print output, `return` at the top level, or call something that only loads later (use a hook).
 3. **Create defaults to a draft.** `wpcanai-create-snippet` writes a draft unless you pass **`status: "published"`** (v1.80.0), which syntax-checks PHP first and writes nothing on a syntax error. The response `status` is read back — Fluent Snippets' own `auto_publish` can still promote a draft.
-4. **Writes only succeed for allowlisted groups.** An administrator lists agent-writable snippet groups at **CanAI → AI Agent → Guardrails → FluentSnippets group allowlist**. An empty allowlist (the default) means **all** snippet writes are refused (`snippet_writes_disabled`). A write to a non-allowlisted group returns `snippet_group_not_allowed`. Prefer the group `AI` unless the user specifies otherwise. Reads (`list`/`get`) are always allowed regardless of the allowlist.
+4. **Writes only succeed for allowlisted groups.** An administrator lists agent-writable snippet groups at **CanAI → AI Agent → Guardrails → FluentSnippets group allowlist**. An empty allowlist (the default) means **all** snippet writes are refused (`snippet_writes_disabled`). A write to a non-allowlisted group returns `snippet_group_not_allowed`. Write to the group `CanAI custom` (see **Group** below) unless the user specifies otherwise. Reads (`list`/`get`) are always allowed regardless of the allowlist.
 5. **Updates are sparse.** Send only the fields you want to change to `wpcanai-update-snippet`; the server reads the current snippet, merges your changes over its full metadata, and writes it back. Omitting a field keeps its current value — you cannot wipe `group`/`priority`/`run_at`/`created_at` by sending only `code`.
 6. **`run_at` is type-specific.** PHP → `all`|`backend`|`frontend`; `php_content` → `shortcode`|`wp_head`|`wp_body_open`|`wp_footer`|`before_content`|`after_content`; css → `wp_head`|`admin_head`|`everywhere`; js → `wp_head`|`wp_footer`|`admin_head`|`admin_footer`. An invalid pairing is rejected before FluentSnippets is called (`invalid_snippet_type` / `invalid_run_at`).
 7. **Upstream quirks (not fixed here).** CSS `everywhere` does not actually load in admin (a plugin typo, `everywehere`), and PHP `frontend` is not enforced (it runs everywhere) — both values are still accepted because they are what the FluentSnippets UI offers. Prefer `all` / `backend` / `wp_head` when unsure.
@@ -80,6 +89,45 @@ Agents often implement browser → WordPress relays as a FluentSnippets PHP rout
 1. **Never send a custom nonce under `X-WP-Nonce` (or request param `_wpnonce`).** WordPress core's `rest_cookie_check_errors()` intercepts that exact header/param on **every** REST request site-wide and validates it against the built-in `'wp_rest'` action — **before** your route's `permission_callback` runs. A custom-action nonce under that name is always rejected with `rest_cookie_invalid_nonce`, masking your own permission logic. Use any other header name for a custom nonce action (e.g. `X-<Your-App>-Nonce`).
 
 2. **Surface HTTP status / error code to the client** (console log or distinct on-page states) even when user-facing copy stays generic. A rate-limit `429`, a nonce `403`, and a real `500` are different failures; collapsing them into one message makes production incidents impossible to triage.
+
+### Recipe — custom post type or taxonomy
+
+One PHP snippet per post type, its taxonomies included. Name it `CPT: <Label>`, group `CanAI custom`, `run_at: "all"`, created as a draft.
+
+1. **Check first.** `wpcanai-list-snippets` — if a `CPT: <Label>` snippet already exists, update it instead of adding a second one. Do not re-register a type a preset already ships (e.g. `service` from `cpt-corporate`).
+2. **Register on `init`, never at file load.** Send the body without `<?php`:
+
+   ```php
+   add_action( 'init', function () {
+       register_post_type( 'doctor', array(
+           'label'        => 'Doctors',
+           'labels'       => array( 'name' => 'Doctors', 'singular_name' => 'Doctor' ),
+           'public'       => true,
+           'has_archive'  => true,
+           'rewrite'      => array( 'slug' => 'doctors' ),
+           'supports'     => array( 'title', 'editor', 'thumbnail', 'excerpt' ),
+           'show_in_rest' => true, // needed for block-editor entries via wpcanai-write-post
+       ) );
+       register_taxonomy( 'specialty', 'doctor', array(
+           'label'        => 'Specialties',
+           'public'       => true,
+           'hierarchical' => true,
+           'show_in_rest' => true,
+       ) );
+   } );
+   ```
+
+   Keep `show_in_rest: true` and `editor` in `supports` whenever the user wants block-editor entries — `wpcanai-write-post` refuses a type without them. Add no rewrite-flush code.
+3. **Draft → show → publish.** Show the user the code, publish only after they agree.
+4. **Permalinks.** After publishing, tell the user to open **Settings → Permalinks** and click **Save Changes** once (no change needed), so the type's archive and entry URLs resolve instead of returning 404.
+5. **Hand back to `canai-mcp`** for the design — `single-<type>` / `archive-<type>` templates — and the entries (`wpcanai-write-post` or `wpcanai-create-page` with `post_type`; see **Entries of a custom post type** in `canai-mcp`).
+
+### Other common recipes (one line each)
+
+- **Custom field / meta box** — one PHP snippet: `add_action( 'add_meta_boxes', … )` to add the box, `add_action( 'save_post_<type>', … )` to save with a nonce check and `current_user_can`, `register_post_meta( '<type>', '<key>', array( 'show_in_rest' => true, 'single' => true, 'type' => 'string' ) )` so Twig and the REST API can read it.
+- **Shortcode with logic** — one PHP snippet with `add_shortcode( '<tag>', function ( $atts ) { … return $html; } )`; return, never echo. Pure display (no logic) belongs in the CanAI page instead.
+- **Redirect** — one PHP snippet on `template_redirect`: match the path, `wp_safe_redirect( $target, 301 ); exit;`.
+- **REST route** — see **Writing custom REST routes in a snippet** above.
 
 ### `wpcanai-list-snippets`
 
@@ -123,6 +171,7 @@ Agents often implement browser → WordPress relays as a FluentSnippets PHP rout
 | Edit part of a snippet (deploy loop) | `wpcanai-replace-in-snippet` → check `sha256` → `purged` |
 | Confirm what is stored, no code | `wpcanai-get-snippet` `{ "fields": ["hash"] }` / `wpcanai-list-snippets` `{ "include_hash": true }` |
 | Publish / unpublish a snippet | `wpcanai-set-snippet-status` |
+| Register a custom post type / taxonomy | **Recipe — custom post type or taxonomy** (draft → show → publish → permalinks → hand back to `canai-mcp`) |
 
 ---
 
@@ -131,5 +180,7 @@ Agents often implement browser → WordPress relays as a FluentSnippets PHP rout
 ```bash
 npx skills add usewp/canai --skill canai-yolo
 ```
+
+Or, without a terminal, send this line as a message in your AI chat: `npx -y skills add usewp/canai --skill canai-yolo -p -y`.
 
 Pair with `canai-mcp` for content work on the same MCP endpoint.
