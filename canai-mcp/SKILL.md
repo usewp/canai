@@ -15,7 +15,7 @@ description: >
   "reading mode", "reader mode", "reader view", "safari reader".
 metadata:
   author: canai
-  version: "1.34.0"
+  version: "1.34.1"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -97,7 +97,7 @@ Verify with `**wpcanai-list-templates`** (or your client’s tool list for the C
 Call **`wpcanai-hello` first**, before any other CanAI tool, and tell it which skills you have loaded:
 
 ```json
-wpcanai-hello { "skills": { "canai-mcp": "1.34.0" } }
+wpcanai-hello { "skills": { "canai-mcp": "1.34.1" } }
 ```
 
 Add every attached companion skill with its own version — `canai-blocks` and `canai-yolo` each give you their line. If a companion is attached after the session started, call `hello` again with all of them: it **adds** to the declaration and never removes. `hello` is never hidden and never errors; a wrong or empty `skills` object still returns the site facts.
@@ -341,8 +341,8 @@ The site checks the skills your session declared through `wpcanai-hello`. The ow
 | Mode | Reads | Writes | Opt-in tools |
 |---|---|---|---|
 | `off` | allowed | allowed, `skill_notice` while no skill is declared | allowed, `skill_notice` naming the opt-in skill |
-| `opt-in` (fresh-install default) | allowed | allowed, `skill_notice` while no skill is declared | **denied** until that skill is declared |
-| `strict` | allowed | **denied** until any known skill is declared | denied until that skill is declared |
+| `opt-in` | allowed | allowed, `skill_notice` while no skill is declared | **denied** until that skill is declared |
+| `strict` (fresh-install default) | allowed | **denied** until any known skill is declared | denied until that skill is declared |
 
 Opt-in tools are `write-page`, `create-page` with `format: "blocks"` and `write-meta` with `convert: true` (skill `canai-blocks`), and every Snippets tool (skill `canai-yolo`). Reads are never gated; `hello`, `diagnostics` and `manage-tools` are exempt in every mode. A tool the owner hid still fails with `tool_disabled` first — the owner's decision comes before the skill check.
 
@@ -357,7 +357,7 @@ Opt-in tools are `write-page`, `create-page` with `format: "blocks"` and `write-
 
 ```json
 {
-  "accepted": { "canai-mcp": "1.34.0" },
+  "accepted": { "canai-mcp": "1.34.1" },
   "unknown":  [],
   "outdated": { "canai-blocks": { "have": "1.2.0", "min": "1.4.0", "update": "npx skills add usewp/canai --skill canai-blocks" } },
   "gate":     "opt-in",
