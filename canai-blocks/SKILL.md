@@ -12,7 +12,8 @@ description: >
   "wpcanai-write-page", "convert to blocks", "convert to twig", "page css", "block page css".
 metadata:
   author: canai
-  version: "1.4.0"
+  version: "1.5.0"
+  declaration_key: "12e2ba56"
 allowed-tools: "Read Write Edit Grep Glob"
 ---
 
@@ -39,19 +40,21 @@ only about *pages*, where blocks are a choice against Twig.
 There is no eval escape hatch here either: the `wpcanai/eval` ability was removed in plugin
 v1.59.0. Every capability is a real `wpcanai/*` ability.
 
-## Start of session — declare this skill (plugin v1.83.0)
+## Start of session — declare this skill (plugin v1.84.0)
 
 When this skill is attached, add yourself to `canai-mcp`'s **Start of session** call:
 
 ```json
-wpcanai-hello { "skills": { "canai-mcp": "<its metadata.version>", "canai-blocks": "1.4.0" } }
+wpcanai-hello { "skills": { "canai-mcp": "<its metadata.version>+k<its declaration_key>", "canai-blocks": "1.5.0+k12e2ba56" } }
 ```
+
+**Copy both entries exactly** — `canai-mcp`'s from its own Start of session line, this one as written. The part after `+` is the skill's declaration key; without it the declaration opens nothing. Never invent or reuse a key.
 
 If the session already started, call `wpcanai-hello` again with both — it adds, never replaces.
 The site gates `wpcanai-write-page`, `wpcanai-create-page` with `format: "blocks"` and
 `wpcanai-write-meta` with `convert: true` behind this skill (see **Skill gate** in `canai-mcp`).
 A `skill_required` error naming `canai-blocks` means that call was missing: make it, then retry.
-If `hello` lists `canai-blocks` under `outdated`, stop and give the user the `update` command.
+If `hello` lists `canai-blocks` under `outdated` or `keyless`, stop and give the user the `update` command.
 
 ---
 

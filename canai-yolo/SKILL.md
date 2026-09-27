@@ -9,7 +9,8 @@ description: >
   "create snippet".
 metadata:
   author: canai
-  version: "2.2.0"
+  version: "2.3.0"
+  declaration_key: "2278f2bf"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -21,15 +22,17 @@ For templates, pages, i18n, media, settings, and Tailwind — use **`canai-mcp`*
 
 Transport is the same CanAI MCP server (`{site}/wp-json/mcp/wpcanai`) and API key as `canai-mcp`. Ability IDs use slashes; MCP tool names use **hyphens**.
 
-## Start of session — declare this skill (plugin v1.83.0)
+## Start of session — declare this skill (plugin v1.84.0)
 
 When this skill is attached, add yourself to `canai-mcp`'s **Start of session** call:
 
 ```json
-wpcanai-hello { "skills": { "canai-mcp": "<its metadata.version>", "canai-yolo": "2.2.0" } }
+wpcanai-hello { "skills": { "canai-mcp": "<its metadata.version>+k<its declaration_key>", "canai-yolo": "2.3.0+k2278f2bf" } }
 ```
 
-If the session already started, call `wpcanai-hello` again with both — it adds, never replaces. The site gates every snippet tool behind this skill (see **Skill gate** in `canai-mcp`): the server side of this skill's opt-in promise. A `skill_required` error naming `canai-yolo` means that call was missing: make it, then retry. If `hello` lists `canai-yolo` under `outdated`, stop and give the user the `update` command. A snippet tool the owner switched off still answers `tool_disabled`; declaring the skill does not turn it on.
+**Copy both entries exactly** — `canai-mcp`'s from its own Start of session line, this one as written. The part after `+` is the skill's declaration key; without it the declaration opens nothing. Never invent or reuse a key.
+
+If the session already started, call `wpcanai-hello` again with both — it adds, never replaces. The site gates every snippet tool behind this skill (see **Skill gate** in `canai-mcp`): the server side of this skill's opt-in promise. A `skill_required` error naming `canai-yolo` means that call was missing: make it, then retry. If `hello` lists `canai-yolo` under `outdated` or `keyless`, stop and give the user the `update` command. A snippet tool the owner switched off still answers `tool_disabled`; declaring the skill does not turn it on.
 
 ---
 
