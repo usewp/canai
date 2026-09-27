@@ -15,7 +15,7 @@ description: >
   "reading mode", "reader mode", "reader view", "safari reader".
 metadata:
   author: canai
-  version: "1.33.0"
+  version: "1.34.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -91,6 +91,24 @@ Add to your **MCP client’s server configuration** (example; keys may differ by
 **Important:** `WP_API_URL` must be the **full** path `…/wp-json/mcp/wpcanai`, not only the site home URL — use the value from **AI Agent → Connections**.
 
 Verify with `**wpcanai-list-templates`** (or your client’s tool list for the CanAI server).
+
+## Start of session (plugin v1.83.0)
+
+Call **`wpcanai-hello` first**, before any other CanAI tool, and tell it which skills you have loaded:
+
+```json
+wpcanai-hello { "skills": { "canai-mcp": "1.34.0" } }
+```
+
+Add every attached companion skill with its own version — `canai-blocks` and `canai-yolo` each give you their line. If a companion is attached after the session started, call `hello` again with all of them: it **adds** to the declaration and never removes. `hello` is never hidden and never errors; a wrong or empty `skills` object still returns the site facts.
+
+- **Its `site` block replaces the prerequisite checks.** `plugin_version`, `setup_finished`, `tools { exposed, hidden }`, `languages { configured, tools_exposed }`, `integrations_absent`, `page_cache`. Call `wpcanai-diagnostics` only when `hello` shows a problem or the user asks for the full report.
+- **`outdated` → stop.** Each entry is `{ "have", "min", "update" }`: the skill you have is older than this site's tools were documented for. Tell the user, give them the `update` command from the response, and do not keep working from argument docs that may be wrong.
+- **`unknown`** lists names the site does not recognise. Harmless; they are just not counted.
+- **`skill_required` on any tool** means the user has not attached that opt-in skill in this session. Say so and name the skill. **Never work around it** — for example, do not hand-build block markup through `write-meta` because `write-page` refused.
+- **`skill_notice`** at the end of a write result means this session has no declared skill, or declared an outdated one. The fix is the `hello` call above.
+
+See **Skill gate** under the tool reference for what the site enforces and `wpcanai-hello` for the full response.
 
 ## CanAI Prerequisite Setup (on the site)
 
@@ -277,7 +295,7 @@ The prefix you see is **resolved for the site**: a third-party label (`woocommer
 
 | Labels | Tools |
 |---|---|
-| `canai` | `list-templates`, `read-meta`, `grep-content`, `resolve-content-id`, `scan`, `get-pending`, `export`, `list-presets`, `list-snapshots`, `list-operations`, `get-snapshot`, `pin-snapshot`, `pin-current` |
+| `canai` | `hello`, `list-templates`, `read-meta`, `grep-content`, `resolve-content-id`, `scan`, `get-pending`, `export`, `list-presets`, `list-snapshots`, `list-operations`, `get-snapshot`, `pin-snapshot`, `pin-current` |
 | `canai, cache` | `write-meta`, `replace-in-meta`, `create-template`, `import`, `restore-snapshot`, `restore-operation` |
 | `canai, core` | `list-pages`, `list-media`, `get-media`, `read-settings`, `update-settings`, `get-option`, `update-options`, `uninstall-preset`, every `i18n-*` tool |
 | `canai, core, cache` | `create-page`, `write-post`, `write-page` |
@@ -306,15 +324,58 @@ The list a client gets from `tools/list` is **not** "everything registered". Eac
 | R3 | another registered MCP ability duplicates it (site filter, empty by default) | `get-option`, `list-media`, `get-media`, `sideload-url` |
 | R4 | setup has run — *advice only, never applied automatically* | `setup`, presets, `import`, `export` |
 
-`diagnostics` and `manage-tools` are never hidden: they are how you find out what is hidden and turn it back on.
+`diagnostics`, `manage-tools` and `hello` (v1.83.0) are never hidden: they are how you find out what is hidden and turn it back on, and how a session starts.
 
 **A tool you expected is missing from your list?** Do not conclude the site lacks the feature. Call `wpcanai-manage-tools { "action": "list" }` — it lists **every** registered tool including hidden ones, with `exposed`, `override`, `recommendation`, `reason` and `rule` — then, if the user wants it, switch it on and **reconnect** (HTTP clients cache `tools/list`; the new tool appears after the reconnect). A direct call to a hidden tool fails with `tool_disabled`, and the message names the exact `manage-tools` call.
 
 ### `wpcanai-manage-tools` (plugin v1.82.0)
 
-- **Args:** `{ "action": "list" }` or `{ "action": "set", "overrides"?: { "<short>": "on"|"off"|null }, "groups"?: { "<group>": "on"|"off"|null }, "follow_recommendations"?: bool, "apply_advisory"?: bool }`. `null` clears an override so the recommendation applies again. `groups` expands to every registered tool in a Tools-tab group — `Templates & code`, `Pages & posts`, `Media`, `Snippets`, `Languages`, `History & restore`, `Site & settings`, `WooCommerce` (or the slug, e.g. `languages`). `apply_advisory: true` writes the R4 advice as `off` overrides. Unknown tool names → `invalid_tool` (an existing override for an unregistered tool may still be cleared); unknown group → `invalid_group`; `diagnostics` / `manage-tools` → `exempt_tool`.
-- **Returns:** `{ "follow_recommendations": bool, "tools": [{ "name", "group", "touches", "requires", "exposed", "override", "recommendation", "reason", "rule", "advisory", "bytes" }], "totals": { "exposed", "total", "exposed_bytes", "total_bytes", "exposed_tokens", "total_tokens" } }`; after `set` also `"reconnect_required": true` and a `note`. `bytes` is description + input schema — what the tool costs you per turn.
+- **Args:** `{ "action": "list" }` or `{ "action": "set", "overrides"?: { "<short>": "on"|"off"|null }, "groups"?: { "<group>": "on"|"off"|null }, "follow_recommendations"?: bool, "apply_advisory"?: bool, "skill_gate"?: "off"|"opt-in"|"strict", "reset_skill_stats"?: bool }`. `null` clears an override so the recommendation applies again. `groups` expands to every registered tool in a Tools-tab group — `Templates & code`, `Pages & posts`, `Media`, `Snippets`, `Languages`, `History & restore`, `Site & settings`, `WooCommerce` (or the slug, e.g. `languages`). `apply_advisory: true` writes the R4 advice as `off` overrides. Unknown tool names → `invalid_tool` (an existing override for an unregistered tool may still be cleared); unknown group → `invalid_group`; `diagnostics` / `manage-tools` / `hello` → `exempt_tool`. **(v1.83.0)** `skill_gate` sets the Skill gate mode (unknown value → `invalid_skill_gate`, nothing written); `reset_skill_stats: true` zeroes the skill adoption counters.
+- **Returns:** `{ "follow_recommendations": bool, "skill_gate": "off"|"opt-in"|"strict", "tools": [{ "name", "group", "touches", "requires", "exposed", "override", "recommendation", "reason", "rule", "advisory", "bytes", "requires_skill", "requires_skill_note" }], "totals": { "exposed", "total", "exposed_bytes", "total_bytes", "exposed_tokens", "total_tokens" } }`; after `set` also `"reconnect_required": true` and a `note`. `bytes` is description + input schema — what the tool costs you per turn. **(v1.83.0)** `requires_skill` is the opt-in skill a whole tool needs (`canai-blocks` for `write-page`, `canai-yolo` for every Snippets tool), else `null`; `requires_skill_note` also covers the input-dependent cases, e.g. `"canai-blocks (when format=blocks)"` on `create-page`.
 - **Translation tools are hidden by default.** When the user asks for anything translation-shaped and the `i18n-*` tools are not in your list: run `manage-tools list`, **confirm with the user** that translations are wanted on this site, then `{ "action": "set", "groups": { "Languages": "on" } }`, reconnect, and continue with the **Translation model router** below (`i18n-set-settings` adds the first language if none exists — the group must be on *before* that call). The override persists across requests and reconnects until someone clears it.
+
+### Skill gate (plugin v1.83.0)
+
+The site checks the skills your session declared through `wpcanai-hello`. The owner picks the mode under **AI Client → Guardrails → Skill gate** or with `wpcanai-manage-tools` `{ "action": "set", "skill_gate": "<mode>" }`; `hello` returns it as `gate`, and `diagnostics` reports it in the `skills` group. Change the mode only when the user asks you to — never lower it to get past a `skill_required` denial.
+
+| Mode | Reads | Writes | Opt-in tools |
+|---|---|---|---|
+| `off` | allowed | allowed, `skill_notice` while no skill is declared | allowed, `skill_notice` naming the opt-in skill |
+| `opt-in` (fresh-install default) | allowed | allowed, `skill_notice` while no skill is declared | **denied** until that skill is declared |
+| `strict` | allowed | **denied** until any known skill is declared | denied until that skill is declared |
+
+Opt-in tools are `write-page`, `create-page` with `format: "blocks"` and `write-meta` with `convert: true` (skill `canai-blocks`), and every Snippets tool (skill `canai-yolo`). Reads are never gated; `hello`, `diagnostics` and `manage-tools` are exempt in every mode. A tool the owner hid still fails with `tool_disabled` first — the owner's decision comes before the skill check.
+
+- **Denial.** Code `skill_required`, status 403. The message names the skill and its install command, for example: `Access denied: MCP tool "write-page" needs the canai-blocks skill loaded in this session. Install it (npx skills add usewp/canai --skill canai-blocks), then follow its start-of-session step. Without that skill, pages are Twig: use create-page / write-meta instead.` Relay it to the user; do not retry or route around it.
+- **Notice.** `skill_notice` is one short string, with the install command, added to write results in a session that has not declared a skill, or that lacks the opt-in skill for that tool. It appears at most three times per session. With an `outdated` declaration it carries the update line instead, once.
+- **Description prefix.** A gated tool's description carries `[skill: <name>]` after its label prefix, e.g. `[canai, core, cache] [skill: canai-blocks] …` on `write-page`, so you see the requirement before calling it.
+
+### `wpcanai-hello` (plugin v1.83.0)
+
+- **Args:** `{ "skills": { "<skill-name>": "<semver>" } }` — required, at least one entry. Send the skills you have loaded with their `metadata.version` (see **Start of session**).
+- **Returns:**
+
+```json
+{
+  "accepted": { "canai-mcp": "1.34.0" },
+  "unknown":  [],
+  "outdated": { "canai-blocks": { "have": "1.2.0", "min": "1.4.0", "update": "npx skills add usewp/canai --skill canai-blocks" } },
+  "gate":     "opt-in",
+  "unlocked": [ "write-page" ],
+  "site": {
+    "plugin_version": "1.83.0",
+    "setup_finished": true,
+    "tools": { "exposed": 38, "hidden": 19 },
+    "languages": { "configured": [ "ms" ], "tools_exposed": 0 },
+    "integrations_absent": [ "woocommerce", "cache" ],
+    "page_cache": null
+  },
+  "reconnect_required": false
+}
+```
+
+- `unlocked` lists the opt-in tools this declaration unlocked **and** that the owner exposes; a tool the owner hides is never listed and still answers `tool_disabled`. `reconnect_required` is always `false`: the session's permission changed, not the tool list.
+- A second call adds to the declaration; it never removes a skill.
 
 ### `wpcanai-list-templates`
 
@@ -591,6 +652,7 @@ Site name, tagline, and archive/search/404 SEO title+description live in a per-l
 - `include_network: true` additionally makes **real outbound HTTP requests** (outbound HTTPS, REST loopback, skills-endpoint reachability, auth-header pass-through) — slower; use it when connectivity or environment issues are suspected instead of guessing.
 - **(v1.80.0)** a `page_cache` check (plugin detected, purge hooks, auto-purge on/off) and an `integrations` group (one row per tool label: present, tools registered, disabled). **(v1.82.0)** `integrations` rows count tools by their *declared* labels (`touches` + `requires`), so an absent integration still reports how many tools declare it, and carry `hidden_by_recommendation`.
 - **(v1.82.0)** group `tools`: `tool_budget` (exposed vs total tools, bytes, ~tokens) and `tool_recommendations` (warn when "Follow recommendations" is off and a recommendation differs from the current state; the `fix` is the exact `manage-tools` call). Group `languages`: `languages` (the configured native languages, or none) and `translation_tools` — the language list paired with the Languages tool group: none/off → pass (not in use), none/on → **warn** (add a language with `i18n-set-settings` or switch the group off), some/on → pass, some/off → info (a legitimate owner choice; opt in with `manage-tools` if translations are wanted). This is the only place diagnostics mentions translation; without an opt-in nothing else does.
+- **(v1.83.0)** group `skills`: the gate mode (warns while it is `off`), one row per known skill (current, outdated or never seen, with the version and client it was last seen with), this session's declared skills, and the site's counters (`sessions_declared`, `sessions_undeclared`, `writes_undeclared`, `denied`).
 
 ### `wpcanai-purge-cache` (plugin v1.80.0; requires `cache`)
 
@@ -1004,6 +1066,7 @@ If the damage spans several posts (a bad preset install or import), skip straigh
 
 | Goal                             | Tools                    |
 | -------------------------------- | ------------------------ |
+| Start a session (declare skills) | `wpcanai-hello`              |
 | List templates                   | `wpcanai-list-templates`     |
 | List CanAI pages                   | `wpcanai-list-pages`         |
 | Read fields                      | `wpcanai-read-meta`          |
