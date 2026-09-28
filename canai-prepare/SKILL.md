@@ -9,7 +9,7 @@ description: >
   "spa to html", "pwa to html", "static html", "single html", "per-page html", "convert design to html".
 metadata:
   author: canai
-  version: "1.9.0"
+  version: "1.10.0"
 allowed-tools: Bash Read Write Edit Grep Glob
 ---
 
@@ -89,6 +89,7 @@ When generating **linked single-HTML files** (Workflow B), duplicating header/fo
 - **Keep real `<a href>` links inside both** (`href="about.html"`), so the file previews in a browser. Do not write Twig or menu loops here: `canai-mcp` swaps the links for a `get_menu()` loop on import.
 - **A mobile drawer repeats the primary links**, so it is marked `data-canai-menu="primary"` too. Breadcrumbs and pagination are `Navigation` landmarks, not menus, and carry no `data-canai-menu`.
 - **Write `menus.json` next to `pages.json`**, listing each marked nav's links in order: `{ "primary": [ … ], "footer": [ … ] }`. An item is `{ "title", "page" }` for a link to a generated page (`page` is that page's `slug` from `pages.json`) or `{ "title", "url" }` for any other link, with optional `"target": "_blank"` and `"children": [ … ]` (at most 3 levels). That is exactly the `items` shape of `wpcanai-write-menu`. Example in [references/BOILERPLATE.md](references/BOILERPLATE.md#menusjson-manifest-site-navigation).
+- **Mega menus are menu data too.** A column heading or dropdown trigger that is not a link is an item with `children` and neither `page` nor `url`; a link's one-line blurb goes in `"description"` and its Lucide icon name in `"icon"` (the same name as its `data-lucide`). Keep the panel's real markup in the HTML (headings, icons, blurbs, links), and list the same structure in `menus.json`. A thumbnail stays a relative `<img>` in the HTML and `"image"` is left out: `canai-mcp` sideloads it and adds the attachment id on import.
 
 ## Output paths
 

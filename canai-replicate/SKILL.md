@@ -14,7 +14,7 @@ description: >
   breakdown", "pixel-perfect", "high fidelity", "pixelmatch".
 metadata:
   author: canai
-  version: "4.4.0"
+  version: "4.5.0"
 allowed-tools: Bash Read Write Edit Grep Glob
 ---
 
@@ -535,10 +535,13 @@ Three different bundle shapes, from three different prompts:
   Navigation loops the real WordPress menu functions
   `get_menu('primary')` / `get_menu('footer')` — never
   hardcoded `home_url()` links as the default — so the client's
-  Appearance → Menus screen actually controls the nav; a hardcoded link is
-  only an acceptable, disclosed (`<!-- FIELD GAP -->`) fallback for what
-  `get_menu()`'s flat `{title,url,target,classes,active}` shape genuinely
-  can't express, e.g. a mega-menu's nested flyout sub-items. Generated
+  Appearance → Menus screen actually controls the nav. Loop the top level
+  (`get_menu('primary')|filter(i => i.depth == 0)`) whenever the loop also
+  renders `item.children`, since the list is flat. A mega menu is menu data
+  too — column headings are items with children and no link, links carry
+  `description` / `icon` / `image` (plugin v1.89.0) — so a hardcoded link is
+  only an acceptable, disclosed (`<!-- FIELD GAP -->`) fallback for panel
+  content that is not a link list (a promo card, a search box). Generated
   **once per site** — every other output includes it rather than
   re-authoring it (see below).
 - **One-off pages** — `.transform/<slug>/PROMPT.md`, pointing at the page's
@@ -849,7 +852,9 @@ runs/<site>/
   as canai-prepare.
 - **Menus.** The kit's nav links go in `menus.json` (canai-prepare format)
   and are written with `wpcanai-write-menu` (canai-mcp), one call per location (`primary`,
-  `footer`); the chrome partials' `get_menu()` loops then render them.
+  `footer`); the chrome partials' `get_menu()` loops then render them. A mega
+  menu's headings (items with `children` and no `page` / `url`), icons,
+  one-line descriptions and thumbnails travel in the same items.
 
 ## Failure modes
 

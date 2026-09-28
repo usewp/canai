@@ -33,19 +33,24 @@ attribute:
 
 ### Navigation
 ```twig
-{% for item in get_menu('primary') %}
+{% for item in get_menu('primary')|filter(i => i.depth == 0) %}
   <a href="{{ item.url }}"
      class="{{ item.active ? 'active' : '' }}"
-     target="{{ item.target }}">
+     {% if item.target %}target="{{ item.target }}" rel="noopener"{% endif %}>
     {{ item.title }}
   </a>
+  {% for child in item.children %}
+    <a href="{{ child.url }}">{{ child.title }}</a>
+  {% endfor %}
 {% endfor %}
 ```
 
 - **Two locations: `primary` and `footer` (plugin v1.88.0).** CanAI registers exactly these two nav locations itself, whatever the theme, and they are the only names `get_menu()` should be called with: a header loops `get_menu('primary')`, a footer `get_menu('footer')`. Their links are written with `wpcanai-write-menu`, never as hardcoded `<a href>` lists. Presets create/tear these down via `settings.menus`.
-- **Items come out localised.** Each item is `{ title, raw_title, url, target, classes, active, children }`. On a non-default language `title` is the string-store translation (the untranslated title when there is none) and an internal `url` carries the language prefix; `raw_title` is always the untranslated title. On the default language both are exactly what WordPress stores.
+- **Items come out localised.** Each item is `{ title, raw_title, url, target, classes, active, children, id, parent, depth, description, raw_description, attr_title, icon, image }` (the last eight since v1.89.0). On a non-default language `title` and `description` are the string-store translations (the source when there is none) and an internal `url` carries the language prefix; `raw_title` / `raw_description` are always the source. On the default language they are exactly what WordPress stores. A language with its own menu (v1.89.0) renders that menu's text as written, URLs still prefixed.
+- **The list is flat — filter the top level.** `get_menu()` returns every item, sub-items included, and each item also carries its `children`. Loop `get_menu('primary')|filter(i => i.depth == 0)` whenever the loop also renders `item.children`, or every sub-item appears twice (`wpcanai-scan`: `menu_children_twice`). `parent` is the parent item's `id` (`0` at the top level).
+- **Rich items (v1.89.0).** `description` (a one-line blurb), `icon` (a Lucide name, `''` when none: `<i data-lucide="{{ item.icon }}"></i>`), `image` (an attachment id, `0` when none: `{{ image_attrs(item.image, 'src:thumbnail,alt') }}` / `{{ media_url(item.image, 'medium') }}`), `attr_title` (the link's title attribute). A **heading** — a dropdown trigger or mega-menu column title that is not a link — has `url: ''`: render `{% if item.url %}<a …>{% else %}<span …>{% endif %}`.
 - **Upgrade note:** before v1.88.0 the locations were named `wpcanai_primary` / `wpcanai_footer`. `get_menu()` still resolves both names, and `wpcanai-scan` reports each call as `legacy_menu_location`; rename them to `primary` / `footer`.
-- Read menus with `get_menu()`. A Template Variables menu query (`location=primary`) returns raw WordPress items: untranslated titles and unlocalised URLs.
+- Read menus with `get_menu()`. A Template Variables menu query (`location=primary`) returns WordPress item objects; since v1.89.0, on a non-default language, they are copies whose `title` / `description` are translated and internal `url`s localised like `get_menu()`'s (`raw_title` / `raw_description` keep the source), and `location=` follows a language's own menu; on the default language they are WordPress's own objects, unchanged. It carries none of `get_menu()`'s `children` / `depth` / `icon` / `image` keys, so prefer `get_menu()` in templates.
 
 ### Archive pagination (WordPress + WooCommerce)
 

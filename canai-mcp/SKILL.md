@@ -13,11 +13,12 @@ description: >
   "blog post", "write a blog post", "write post", "wpcanai-write-post",
   "chart", "bar chart", "line chart", "graph", "data visualization", "chart.js",
   "menu", "nav menu", "primary menu", "footer menu", "set up the menu", "wpcanai-write-menu", "turl",
+  "mega menu", "dropdown menu", "menu icon", "menu per language", "wpcanai-assign-menu",
   "translate this page", "translate strings",
   "reading mode", "reader mode", "reader view", "safari reader".
 metadata:
   author: canai
-  version: "1.39.0"
+  version: "1.40.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -132,31 +133,88 @@ For **WordPress / WooCommerce / CanAI options** (e.g. static front page, `users_
 
 ### Menus — two locations, never hardcoded
 
-> **Navigation is never hardcoded.** A header renders `{% for item in get_menu('primary') %}`, a footer `get_menu('footer')`, and nothing else — no `<a href>` lists, no fallback chains (neither a second `get_menu()` nor a `{% else %}` of hardcoded links inside the loop), no other location names, no `current_lang()` URL prefixes (URLs and titles come out of `get_menu()` already localised). The links themselves are written once with `wpcanai-write-menu`. If the source markup has a nav list, read its links, write them with `write-menu`, then replace the list with the `get_menu()` loop.
+> **Navigation is never hardcoded.** A header renders `{% for item in get_menu('primary')|filter(i => i.depth == 0) %}`, a footer `get_menu('footer')`, and nothing else — no `<a href>` lists, no fallback chains (neither a second `get_menu()` nor a `{% else %}` of hardcoded links inside the loop), no other location names, no `current_lang()` URL prefixes (URLs and titles come out of `get_menu()` already localised). The links themselves are written once with `wpcanai-write-menu`. If the source markup has a nav list, read its links, write them with `write-menu`, then replace the list with the `get_menu()` loop.
 
-**The only locations are `primary` and `footer`** (plugin v1.88.0). Never invent a third name (`topnav`, `main`, `mobile`, `header`): `write-menu` refuses it before it runs ("input[location] is not one of primary and footer"), and `wpcanai-scan` reports a `get_menu()` call that uses one as `unknown_menu_location`. A mobile drawer that shows the header links loops `get_menu('primary')` a second time.
+**The only locations are `primary` and `footer`** (plugin v1.88.0). Never invent a third name (`topnav`, `main`, `mobile`, `header`): `write-menu` refuses it before it runs ("input[location] is not one of primary and footer"), and `wpcanai-scan` reports a `get_menu()` call that uses one as `unknown_menu_location`. A mobile drawer that shows the header links loops `get_menu('primary')` a second time. A language whose links differ gets its **own menu for the same location** (plugin v1.89.0, see **Menus per language**) — still never a third location.
 
 **Workflow — one nav list at a time:**
 
 1. **Look first** — `wpcanai-get-menus { }` shows what each location holds (`locations.primary` / `locations.footer`, `null` when nothing is assigned).
-2. **Read the list's links in order.** The link text is `title`. A link to a page on this site is `page` (its id or slug) — create the page first; a `page` that resolves to nothing is `unknown_page` and nothing is written. Any other link is `url`; add `"target": "_blank"` only when the source opens it in a new tab. A nested list is `children` (at most 3 levels).
+2. **Read the list's links in order.** The link text is `title`. A link to a page on this site is `page` (its id or slug) — create the page first; a `page` that resolves to nothing is `unknown_page` and nothing is written. Any other link is `url`; add `"target": "_blank"` only when the source opens it in a new tab. A nested list is `children` (at most 3 levels). A dropdown trigger or mega-menu column heading that is not a link is an item with `children` and **neither** `page` nor `url`; a link's one-line blurb is `description`, its icon `icon` (a Lucide name), its thumbnail `image` (an attachment id from `wpcanai-sideload-url`) — see **Mega menus** below (plugin v1.89.0).
 3. **Write** — `wpcanai-write-menu { "location": "primary", "items": [ { "title": "Home", "page": "home" }, { "title": "Services", "page": 42, "children": [ { "title": "Design", "page": "design" } ] }, { "title": "Docs", "url": "https://docs.example.com", "target": "_blank" } ] }`. The list replaces the location's items; `"merge": true` instead updates items with the same title and appends the rest.
 4. **Replace the list with the loop** in the header or footer template:
    ```twig
    {# Navigation / Primary #}
    <nav aria-label="{{ t('Primary') }}">
-     {% for item in get_menu('primary') %}
-       <a href="{{ item.url }}" class="{{ item.active ? 'font-semibold' : '' }}"{% if item.target %} target="{{ item.target }}"{% endif %}>{{ item.title }}</a>
+     {% for item in get_menu('primary')|filter(i => i.depth == 0) %}
+       <a href="{{ item.url }}" class="{{ item.active ? 'font-semibold' : '' }}"{% if item.target %} target="{{ item.target }}" rel="noopener"{% endif %}>{{ item.title }}</a>
      {% endfor %}
    </nav>
    ```
-   A dropdown loops `item.children` inside its item. Keep the source's classes on the `<nav>` and the `<a>`.
-5. **Scan** — `wpcanai-scan` must show no `hardcoded_nav`, `unknown_menu_location`, `menu_fallback_chain` or `menu_not_assigned` for that template.
+   **Loop the top level with `|filter(i => i.depth == 0)`** (plugin v1.89.0). `get_menu()` returns every item in one flat list — sub-items included — and each item also carries its `children`; a dropdown loops `item.children` inside its top-level item, so without the filter every sub-item renders twice (`wpcanai-scan`: `menu_children_twice`). On a single-level menu the filter changes nothing; write it anyway so a sub-item added later does not duplicate. Keep the source's classes on the `<nav>` and the `<a>`.
+5. **Scan** — `wpcanai-scan` must show no `hardcoded_nav`, `unknown_menu_location`, `menu_fallback_chain`, `menu_children_twice` or `menu_not_assigned` for that template.
 
 - **`write-menu` writes into the menu already assigned to the location; it never renames or replaces it.** A site whose `primary` holds "Journal Primary" keeps "Journal Primary". Only a location with no menu gets a new one, named `Primary` / `Footer`, assigned in the same call.
 - **`menus.json` from `canai-prepare`** sits next to `pages.json` as `{ "primary": [ … ], "footer": [ … ] }`, already in `write-menu`'s `items` shape: one `write-menu` call per key, after the pages it names exist. Its `page` values are `pages.json` slugs — pass the created page's id where the slug on the site differs (e.g. `index` became the front page). The prepared HTML marks each nav `<nav data-canai-menu="primary">` / `"footer"`; that `<nav>`'s links are what the loop replaces.
-- **Translation needs no template work.** On a non-default language `get_menu()` returns each `title` from the string store and each internal `url` with the language prefix; `raw_title` holds the untranslated title. Menu titles are translated like any other string — see **Native string translation**.
+- **Translation needs no template work.** On a non-default language `get_menu()` returns each `title` and `description` from the string store and each internal `url` with the language prefix; `raw_title` / `raw_description` hold the untranslated text. Menu titles and descriptions are translated like any other string — see **Native string translation**. A language that has its own menu is the exception: see **Menus per language**.
 - **Upgrade note.** Templates written before plugin v1.88.0 call `get_menu('wpcanai_primary')` / `get_menu('wpcanai_footer')`. Both names still resolve, and `wpcanai-scan` reports each call as `legacy_menu_location`; rename them with `wpcanai-replace-in-meta` (`{ "from": "get_menu('wpcanai_primary')", "to": "get_menu('primary')" }`, the same for `footer`). `wpcanai-get-menus` lists any menu still assigned under an old name in `legacy_assignments`.
+
+#### Mega menus — headings, icons, descriptions, images (plugin v1.89.0)
+
+Rich navigation is menu data too: never hardcode a mega menu's links because they carry an icon or a blurb.
+
+- **Item fields.** Besides `title` / `page` / `url` / `target` / `classes`, a `write-menu` item takes `description` (one line of text), `icon` (a Lucide icon name, `[a-z0-9-]`), `image` (an attachment id — sideload the picture first) and `attr_title` (the link's `title` attribute). `get_menu()` items return them, plus `id`, `parent` and `depth` (`0` at the top level). The owner edits the same fields in Appearance → Menus (Description and Title Attribute under Screen Options; Icon and Image on every item).
+- **Headings.** An item with `children` and neither `page` nor `url` is a label, not a link: `get_menu()` returns it with `url: ''`. Use it for a dropdown trigger or a mega-menu column title. An item without children still needs one of `page` / `url`.
+- **Write** — one call, three levels at most:
+  ```json
+  { "location": "primary", "items": [
+    { "title": "Services", "children": [
+      { "title": "Build", "children": [
+        { "title": "Websites", "page": "websites", "icon": "monitor", "description": "Fast sites, built to be edited." },
+        { "title": "Shops", "page": "shops", "icon": "shopping-bag", "description": "WooCommerce stores that sell." } ] },
+      { "title": "Grow", "children": [
+        { "title": "SEO", "page": "seo", "icon": "search", "description": "Found by the people looking." } ] } ] },
+    { "title": "Contact", "page": "contact" } ] }
+  ```
+- **Render** — the top level filtered, headings as `<span>`, links with their icon and description:
+  ```twig
+  {# Navigation / Primary #}
+  <nav aria-label="{{ t('Primary') }}" class="flex items-center gap-6">
+    {% for item in get_menu('primary')|filter(i => i.depth == 0) %}
+      {% if item.children is empty %}
+        <a href="{{ item.url }}" class="{{ item.active ? 'font-semibold' : '' }}"{% if item.target %} target="{{ item.target }}" rel="noopener"{% endif %}>{{ item.title }}</a>
+      {% else %}
+        <div class="relative" x-data="{ open: false }" @click.outside="open = false">
+          <button type="button" @click="open = !open" :aria-expanded="open">{{ item.title }}</button>
+          <div x-show="open" class="absolute left-0 mt-2 grid grid-cols-2 gap-8 rounded-xl bg-white p-6 shadow-lg">
+            {% for column in item.children %}
+              <div>
+                {% if column.url %}<a href="{{ column.url }}" class="font-semibold">{{ column.title }}</a>{% else %}<span class="font-semibold">{{ column.title }}</span>{% endif %}
+                {% for link in column.children %}
+                  <a href="{{ link.url }}" class="mt-3 flex gap-3">
+                    {% if link.image %}<img {{ image_attrs(link.image, 'src:thumbnail,alt') }} class="h-10 w-10 rounded object-cover">{% elseif link.icon %}<i data-lucide="{{ link.icon }}" class="h-5 w-5"></i>{% endif %}
+                    <span>{{ link.title }}{% if link.description %}<small class="block text-slate-500">{{ link.description }}</small>{% endif %}</span>
+                  </a>
+                {% endfor %}
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+    {% endfor %}
+  </nav>
+  ```
+  The page already calls `lucide.createIcons()` once; icons inside an Alpine `x-show` panel are in the DOM from the start, so they render.
+- **`merge: true`** keeps a field you leave out; `""` (or `0` for `image`) clears it.
+
+#### Menus per language (plugin v1.89.0)
+
+- **Translate, don't duplicate.** When a language shows the same links, keep one menu: its titles and descriptions are translated through the string store and its internal URLs get the language prefix (see **Native string translation**). This is the default and the right answer almost always.
+- **A language menu only when the links differ** — a Malay-only page, a shorter footer. `wpcanai-write-menu { "location": "footer", "lang": "ms", "items": [ … ] }` writes that language's menu for the location, creating `Footer (Bahasa Melayu)` (the language's native name) and assigning it to that language on the first call. Its items are written **in that language**: `get_menu()` renders them as written (no string-store pass) and still prefixes internal URLs.
+- **No third location.** A language menu is an assignment stored by CanAI, not a registered location: Appearance → Menus → Manage Locations still lists Primary and Footer, templates still call `get_menu('primary')` / `get_menu('footer')` and nothing changes in them.
+- **Switch back** with `wpcanai-assign-menu { "location": "footer", "lang": "ms", "menu_id": null }` — Malay then shows the translated default menu again (the language menu is kept, unassigned). `assign-menu` with a `menu_id` points a language (or, without `lang`, the location itself) at an existing menu.
+- **See it** in `wpcanai-get-menus`: `languages.ms.footer` is the language's menu or `null` (inherits the translated default). The owner does the same in CanAI → Translations → **Menus** (per language, per location: "Same as default — titles translated" or a menu).
+- **Strings.** For a language with its own menu for a location, `wpcanai-i18n-list-strings` and the Strings tab leave out that location's default-menu titles and descriptions: they never render in that language.
 
 ### Implement HTML → CanAI (agent workflows)
 
@@ -198,7 +256,7 @@ When converting a static HTML file (e.g. `index.html`) into CanAI via MCP tools:
 > |---|---|
 > | `<img src="…">`, `srcset`, CSS `url(…)` | `{{ image_attrs(id, 'src,alt') }}` / `{{ media_url(id, size) }}` |
 > | internal `<a href="/about">` / `href="about.html">` | `{{ slug_url('about') }}` for a post by slug; `{{ turl('/path/') }}` for any other site path (`turl('/')` is the home page); `{{ turl(id_url(id)) }}` / `{{ turl(post_url()) }}` / `{{ turl(term_url(id)) }}` by id — `slug_url()` and `turl()` follow the current language |
-> | a header / footer nav list (`<nav>`, or a `<ul>` of links in `<header>` / `<footer>`) | `{% for item in get_menu('primary') %}` / `get_menu('footer')`, its links written once with `wpcanai-write-menu` (see **Menus** above) |
+> | a header / footer nav list (`<nav>`, or a `<ul>` of links in `<header>` / `<footer>`) | `{% for item in get_menu('primary')\|filter(i => i.depth == 0) %}` / `get_menu('footer')`, its links written once with `wpcanai-write-menu` (see **Menus** above) — a mega menu's icons, blurbs and headings included |
 > | `home_url()` plus a language prefix, a `base` or `current_lang()` URL variable | nothing to build: `turl()`, `slug_url()` and `get_menu()` apply the current language themselves |
 > | literal user-facing strings | `{{ t('…') }}` for page strings (see **Native string translation**); `{{ __('…') }}` / `{{ _x() }}` / `{{ _n() }}` only for strings a theme or plugin already ships in its gettext catalogue |
 > | static post/markup that should be dynamic | `{{ the_content() }}` / `{{ shortcode('[…]') }}` |
@@ -213,7 +271,7 @@ When converting a static HTML file (e.g. `index.html`) into CanAI via MCP tools:
 5. **Auto-detect and sideload local media BEFORE writing HTML.** Static site folders almost always reference local assets (`./images/hero.jpg`, `assets/logo.svg`, `videos/intro.mp4`, favicons, OG images, CSS `url(...)` backgrounds). If you push the HTML/CSS as-is, every one of those references 404s on the live site. Run the **Static-site asset sideload pre-pass** (next subsection) before any `wpcanai-create-page` / `wpcanai-write-meta` call so the HTML you write resolves media **by ID** through `{{ image_attrs(...) }}` / `{{ media_url(...) }}`, not relative paths or pinned upload URLs.
 6. **Rewrite internal links to CanAI helpers** (instance of the principle above). Static sources keep `<a href="about.html">` / `href="/about">`; these break on the live site (wrong base path, non-permalink, moved slugs). Rewrite each internal link to the matching helper: cross-page links → `{{ slug_url('<slug>') }}` (or `{{ turl(id_url(<id>)) }}` when the target page id is known from `wpcanai-create-page`); term / archive links → `{{ turl(term_url(<term_id>)) }}`; any other site path → `{{ turl('/path/') }}`. A header or footer nav list is not rewritten link by link — it becomes a `get_menu()` loop (see **Menus**). **Leave untouched:** external / absolute (`https://other.com`), protocol-relative (`//cdn…`), and anchor-only (`#section`) links. Report the rewrites in the manifest.
 7. **Normalize section comments to Twig navigation labels.** Convert every HTML nav comment that `canai-prepare` emitted into the exact form `{# Type / Short Label #}` — for example, `{# Section / Hero #}`. **Never** carry HTML nav comments into `_canai_html` (they pollute rendered output and are view-source reconnaissance). Guarantee every landmark has its matching type immediately before the opening tag: `<main>` → `Container`, `<section>` → `Section`, `<header>` → `Header`, `<footer>` → `Footer`, `<nav>` → `Navigation`, `<aside>` → `Sidebar`. Follow [references/STRUCTURE-NAVIGATION.md](references/STRUCTURE-NAVIGATION.md) for the controlled vocabulary and exact conversion. Ordinary implementation notes use `{# @dev … #}` and stay out of the editor's Structure outline. A canai-replicate `pushprep` artifact may use the older convention; normalize it before writing.
-8. **After authoring writes (create-page / create-template / implement / import / preset), run `wpcanai-scan` and clear content findings before claiming done.** A surgical edit through `wpcanai-replace-in-meta` (a class, a string, a URL) does not need a scan — skip it. Treat `missing_structure_comment`, `invalid_structure_comment`, `leaky_comment`, and `leaky_secret` like broken layouts: add or correct Twig navigation labels, convert HTML/`/* */` comments to Twig, and remove secret-shaped literals from meta. Clear the navigation findings too (`hardcoded_nav`, `legacy_menu_location`, `unknown_menu_location`, `menu_fallback_chain`, `menu_not_assigned`, `hardcoded_lang_prefix`, `unlocalised_internal_href` — plugin v1.88.0): each message names its fix, and **Menus** above is the workflow. For a full-site pass, use the **Comment / secret security sweep** recipe below.
+8. **After authoring writes (create-page / create-template / implement / import / preset), run `wpcanai-scan` and clear content findings before claiming done.** A surgical edit through `wpcanai-replace-in-meta` (a class, a string, a URL) does not need a scan — skip it. Treat `missing_structure_comment`, `invalid_structure_comment`, `leaky_comment`, and `leaky_secret` like broken layouts: add or correct Twig navigation labels, convert HTML/`/* */` comments to Twig, and remove secret-shaped literals from meta. Clear the navigation findings too (`hardcoded_nav`, `legacy_menu_location`, `unknown_menu_location`, `menu_fallback_chain`, `menu_children_twice`, `menu_not_assigned`, `hardcoded_lang_prefix`, `unlocalised_internal_href` — plugin v1.88.0; `menu_children_twice` v1.89.0): each message names its fix, and **Menus** above is the workflow. For a full-site pass, use the **Comment / secret security sweep** recipe below.
 
 ### Blog posts (not CanAI pages)
 
@@ -312,7 +370,7 @@ The prefix you see is **resolved for the site**: a third-party label (`woocommer
 | `canai` | `list-templates`, `read-meta`, `grep-content`, `resolve-content-id`, `scan`, `get-pending`, `export`, `list-presets`, `list-snapshots`, `list-operations`, `get-snapshot`, `pin-snapshot`, `pin-current` |
 | `canai, cache` | `write-meta`, `replace-in-meta`, `create-template`, `import`, `restore-snapshot`, `restore-operation` |
 | `canai, core` | `list-pages`, `list-media`, `get-media`, `read-settings`, `update-settings`, `get-option`, `update-options`, `uninstall-preset`, `get-menus`, every `i18n-*` tool |
-| `canai, core, cache` | `create-page`, `write-post`, `write-page`, `write-menu` |
+| `canai, core, cache` | `create-page`, `write-post`, `write-page`, `write-menu`, `assign-menu` |
 | `canai, core, http, cache` | `diagnostics` |
 | `canai, core, woocommerce` | `setup` |
 | `canai, core, woocommerce, http` | `install-preset` |
@@ -434,6 +492,7 @@ The list a client gets from `tools/list` is **not** "everything registered". Eac
   | warning | `legacy_menu_location` | `get_menu()` called with a pre-1.88 location name | rename to `get_menu('primary')` / `get_menu('footer')` with `replace-in-meta` (see the upgrade note under **Menus**); the old name still renders |
   | warning | `unknown_menu_location` | `get_menu()` called with any other name | use `primary` or `footer` — CanAI has no other location |
   | info | `menu_fallback_chain` | a `get_menu()` result tested with `is empty` / `is not empty` and a second `get_menu()` in the same block, or a `{% else %}` branch with links in a loop over a `get_menu()` result | one location, no fallback: delete the second call or the `{% else %}` branch, and assign the menu with `write-menu` |
+  | warning | `menu_children_twice` (v1.89.0) | a loop over `get_menu()` — or a variable set from it — with no `filter(`, whose body reads the item's `.children` | loop `get_menu('primary')\|filter(i => i.depth == 0)`: the flat list already holds every sub-item |
   | info | `menu_not_assigned` | `get_menu('primary')` / `get_menu('footer')` while that location has no menu on this site | `wpcanai-write-menu { "location": …, "items": […] }` creates and assigns it |
   | info | `hardcoded_lang_prefix` | a language prefix built by hand: `current_lang() == 'ms' ? '/ms'`, a URL variable set from `current_lang()` at the start of an `href`, or a literal `href="/ms/…"` for a configured language | `{{ turl('/path/') }}` — it applies the current language itself; `get_menu()` URLs already carry it |
   | info | `unlocalised_internal_href` | on a site with more than one language, a literal `href="/…"` or `href="{{ home_url(…) }}"` | wrap the link in `turl()` so it follows the current language |
@@ -501,16 +560,25 @@ Every type except `embed` accepts `className` (Tailwind classes on the block's r
 ### `wpcanai-get-menus` (plugin v1.88.0)
 
 - **Args:** `{ }`.
-- **Returns:** `{ "locations": { "primary": { "menu_id", "name", "items" } | null, "footer": { … } | null }, "menus": [{ "id", "name", "slug", "assigned_to": ["primary"] }], "legacy_assignments": { "<old location>": <menu id> }, "translations": { "<lang>": { "translated", "total" } } }`. Items are `{ "id", "title", "type", "object", "object_id", "url", "target", "classes", "children" }`, raw and untranslated. `translations` counts, per non-default language, how many item titles have a translation. `legacy_assignments` lists menus still assigned under a pre-1.88 location name (see the upgrade note under **Menus**).
+- **Returns:** `{ "locations": { "primary": { "menu_id", "name", "items" } | null, "footer": { … } | null }, "languages": { "<lang>": { "primary": { "menu_id", "name", "items" } | null, "footer": … } }, "menus": [{ "id", "name", "slug", "assigned_to": ["primary"], "languages": { "<lang>": ["footer"] } }], "legacy_assignments": { "<old location>": <menu id> }, "translations": { "<lang>": { "translated", "total" } } }`. Items are `{ "id", "title", "type", "object", "object_id", "url", "target", "classes", "description", "attr_title", "icon", "image", "children" }`, raw and untranslated (a heading has `url: ""`). **(v1.89.0)** `description` / `attr_title` / `icon` / `image` (attachment id, `0` when none); `languages` has every non-default language, with `null` for a location that uses the translated default menu, and `menus[].languages` names the language assignments. `translations` counts, per non-default language, how many item titles and descriptions have a translation — only for the locations that language does not give its own menu. `legacy_assignments` lists menus still assigned under a pre-1.88 location name (see the upgrade note under **Menus**).
 - Call it before `write-menu`, to see which menu each location already holds.
 
 ### `wpcanai-write-menu` (plugin v1.88.0)
 
-- **Args:** `{ "location": "primary"|"footer", "items": [{ "title": string, "page"?: int|string, "url"?: string, "target"?: ""|"_blank", "classes"?: string, "children"?: [ …same shape ] }], "merge"?: bool }` — `location` and `items` required. Every item has a non-empty `title` and **exactly one** of `page` (a post id or slug of any public post type → a page item that follows the page if its slug changes) or `url` (a custom link, site-relative or absolute). Nesting is at most 3 levels.
+- **Args:** `{ "location": "primary"|"footer", "items": [{ "title": string, "page"?: int|string, "url"?: string, "target"?: ""|"_blank", "classes"?: string, "description"?: string, "attr_title"?: string, "icon"?: string, "image"?: int, "children"?: [ …same shape ] }], "merge"?: bool, "lang"?: string }` — `location` and `items` required. Every item has a non-empty `title` and **exactly one** of `page` (a post id or slug of any public post type → a page item that follows the page if its slug changes) or `url` (a custom link, site-relative or absolute) — except a **heading**: an item with `children` may have neither (it renders as a label, `url: ""`). Nesting is at most 3 levels.
+- **(v1.89.0) Rich fields.** `description` (one line), `attr_title`, `icon` (a Lucide name matching `^[a-z0-9-]{0,64}$`), `image` (an attachment id that is an image). On `merge` a field you leave out keeps its value; `""` / `0` clears it.
+- **(v1.89.0) `lang`** — a non-default language slug: write that language's own menu for the location instead of the default one (see **Menus per language**). The first call creates `Primary (<native name>)` / `Footer (<native name>)` (a same-name menu is reused) and assigns it to the language; the default location is untouched and the result carries `lang`. A default or unknown slug, or a site without native translation, → `invalid_lang`.
 - **Replace by default.** The location's items become exactly `items`, in the order and nesting given; `items: []` empties the menu. `merge: true` keeps the existing items, updates the one with the same `title` under the same parent, and appends the rest.
 - **One menu per location.** It writes into the menu already assigned to the location and never renames it. Only a location with no menu gets a new one, named `Primary` / `Footer` and assigned on the spot. There is no delete tool: the owner deletes menus in wp-admin.
-- **The whole tree is validated before anything is written.** A `location` other than `primary` / `footer` is refused by input validation. `unknown_page` (a `page` that resolves to nothing — create the page first), `invalid_item` (no `title`, both or neither of `page` / `url`, a `target` other than `""` / `"_blank"`), `too_deep` (more than 3 levels). Any of them leaves the menu untouched.
+- **The whole tree is validated before anything is written.** A `location` other than `primary` / `footer` is refused by input validation. `unknown_page` (a `page` that resolves to nothing — create the page first), `invalid_item` (no `title`, both of `page` / `url`, neither on an item without `children`, a `target` other than `""` / `"_blank"`, an invalid `icon`, an `image` that is not an image attachment), `too_deep` (more than 3 levels). Any of them leaves the menu untouched.
 - **Returns:** that location's state as `get-menus` reports it (`menu_id`, `name`, `items`), plus `written` (the number of items written) and `purged`. A menu renders on every page, so the write purges the whole page cache (see **Tool labels**).
+
+### `wpcanai-assign-menu` (plugin v1.89.0)
+
+- **Args:** `{ "location": "primary"|"footer", "lang"?: string, "menu_id": int|null }` — point a location (or, with `lang`, one language's location) at an **existing** menu; `wpcanai-get-menus` lists the ids. It writes no items: use `write-menu` for that.
+- `menu_id: null` clears the assignment: a language falls back to the translated default menu (its own menu is kept, unassigned); without `lang` the location is left with no menu (its pre-1.88 alias entries too) and `wpcanai-scan` then reports `menu_not_assigned` wherever it renders.
+- **Errors:** `unknown_menu` (the id is not a nav menu), `invalid_lang` (a default or unknown slug). **Returns** `{ "location", "lang" (null for the location itself), "menu_id", "name", "items", "purged" }` — the assignment just made: with `lang`, that language's own menu (`menu_id: 0` after a clear, while the language shows the translated default menu); without `lang`, the location's menu.
+- The owner's equivalents are Appearance → Menus → Manage Locations (default) and CanAI → Translations → **Menus** (per language).
 
 ### `wpcanai-read-settings`
 
@@ -560,8 +628,8 @@ Every type except `embed` accepts `className` (Tailwind classes on the block's r
 
 ### `wpcanai-i18n-list-strings`
 
-- **Args:** `{ "lang": string, "untranslated"?: bool, "search"?: string, "post_id"?: int, "layout"?: bool, "menus"?: bool, "location"?: "primary"|"footer" }` — `lang` required (fills the translation column). `untranslated: true` keeps only strings whose translation is empty; `search` is a case-insensitive substring filter on the source text. **(v1.88.0)** `post_id` keeps only the strings used on that post (page or template); `layout: true` adds the strings of its layout chain (layout, header, footer); `menus: true` adds the menu item titles; `location` adds one location's menu titles only.
-- **Returns:** `array` of `{ "source": string, "translation": string, "post_ids": int[], "menus": string[] }` — `post_ids` are the posts whose `_canai_html` / `_canai_js` contain that `t()` source. **(v1.88.0)** `menus` names the locations whose menu uses the source as an item title (`["primary"]`; `[]` when none), and a menu-only row has `post_ids: []`. `t()` sources come from the **string index** — run `wpcanai-i18n-rescan` first if content changed; menu titles are read from the assigned menus on every call.
+- **Args:** `{ "lang": string, "untranslated"?: bool, "search"?: string, "post_id"?: int, "layout"?: bool, "menus"?: bool, "location"?: "primary"|"footer" }` — `lang` required (fills the translation column). `untranslated: true` keeps only strings whose translation is empty; `search` is a case-insensitive substring filter on the source text. **(v1.88.0)** `post_id` keeps only the strings used on that post (page or template); `layout: true` adds the strings of its layout chain (layout, header, footer); `menus: true` adds the menu item titles (and descriptions, v1.89.0); `location` adds one location's only. **(v1.89.0)** A location that `lang` gives its own menu contributes nothing: that menu is written in the language already.
+- **Returns:** `array` of `{ "source": string, "translation": string, "post_ids": int[], "menus": string[] }` — `post_ids` are the posts whose `_canai_html` / `_canai_js` contain that `t()` source. **(v1.88.0)** `menus` names the locations whose menu uses the source as an item title or description (`["primary"]`; `[]` when none), and a menu-only row has `post_ids: []`. `t()` sources come from the **string index** — run `wpcanai-i18n-rescan` first if content changed; menu titles are read from the assigned menus on every call.
 
 ### `wpcanai-i18n-set-translations`
 
@@ -648,7 +716,7 @@ Site name, tagline, and archive/search/404 SEO title+description live in a per-l
 - `include_network: true` additionally makes **real outbound HTTP requests** (outbound HTTPS, REST loopback, skills-endpoint reachability, auth-header pass-through) — slower; use it when connectivity or environment issues are suspected instead of guessing.
 - **(v1.80.0)** a `page_cache` check (plugin detected, purge hooks, auto-purge on/off) and an `integrations` group (one row per tool label: present, tools registered, disabled). **(v1.82.0)** `integrations` rows count tools by their *declared* labels (`touches` + `requires`), so an absent integration still reports how many tools declare it, and carry `hidden_by_recommendation`.
 - **(v1.82.0)** group `tools`: `tool_budget` (exposed vs total tools, bytes, ~tokens) and `tool_recommendations` (warn when "Follow recommendations" is off and a recommendation differs from the current state; the `fix` is the exact `manage-tools` call). Group `languages`: `languages` (the configured native languages, or none) and `translation_tools` — the language list paired with the Languages tool group: none/off → pass (not in use), none/on → **warn** (add a language with `i18n-set-settings` or switch the group off), some/on → pass, some/off → info (a legitimate owner choice; opt in with `manage-tools` if translations are wanted). This is the only place diagnostics mentions translation; without an opt-in nothing else does.
-- **(v1.88.0)** group `menus`: one row per location — `pass` with the menu's name and item count, `warning` when nothing is assigned (the `fix` is a `write-menu` call) — plus an `info` row listing menus still assigned under a pre-1.88 location name.
+- **(v1.88.0)** group `menus`: one row per location — `pass` with the menu's name and item count, `warning` when nothing is assigned (the `fix` is a `write-menu` call) — plus an `info` row listing menus still assigned under a pre-1.88 location name. **(v1.89.0)** one more `info` row per language menu ("Menu location: footer (Bahasa Melayu)").
 
 ### `wpcanai-purge-cache` (plugin v1.80.0; requires `cache`)
 
@@ -766,7 +834,7 @@ CanAI has one translation model: **native string translation** (one post per pag
 
 4. **Translate — per non-default language, one page at a time:**
    - `wpcanai-i18n-list-strings { "lang": "ms", "post_id": 42, "layout": true, "menus": true, "untranslated": true }` — that page's `t()` strings, its layout's (header, footer) and the menu item titles, still untranslated. Start here. List the whole site (`{ "lang": "ms", "untranslated": true }`) only when the user asks for the whole site.
-   - Translate every `source` yourself (agent-authored translations). **Menu item titles are ordinary sources** (rows whose `menus` is `["primary"]` or `["footer"]`): translate them in the same call, and `get_menu()` renders them translated — no `t()` in the template, no rescan.
+   - Translate every `source` yourself (agent-authored translations). **Menu item titles and descriptions are ordinary sources** (rows whose `menus` is `["primary"]` or `["footer"]`): translate them in the same call, and `get_menu()` renders them translated — no `t()` in the template, no rescan. A location the language gives its own menu is left out of the list: that menu is already written in the language (see **Menus per language**).
    - Write in **one bulk call**: `wpcanai-i18n-set-translations { "lang": "ms", "translations": { "Shop now": "Beli sekarang", "Add to cart": "Tambah ke troli" } }`.
    - Report a source → translation table so the user can spot-check; corrections are just another bulk call.
    - **The owner can do the same from the page's Translate strings button** (plugin v1.88.0): in the page editor's Translations box, the CanAI editor, the CanAI side box on block pages and the All Pages / All Templates row actions, plus **Translate this page** in the front-end admin bar. It opens CanAI → Translations → Strings filtered to that page, with toggles for its layout and the menus. Point a user there when they want to translate by hand.
@@ -800,7 +868,7 @@ CanAI has one translation model: **native string translation** (one post per pag
 
 ### Twig helpers
 
-`t()`, `tmedia()`, `current_lang()`, `languages()`, `lang_url()`, `turl()` — see [references/REFERENCE.md](references/REFERENCE.md#internationalization-i18n) (`turl()` sits under **Media & Links**). **`turl('/path/')`** (plugin v1.88.0) is `home_url()` for the current language: the default language gets the plain URL and `ms` gets `/ms/path/`, so an internal link never builds a prefix. `turl(path, lang)` targets one language (the switcher case). `slug_url()` localises the same way, and `get_menu()` items come out with `title` translated and `url` localised; `raw_title` holds the untranslated title. `current_language()` and `language_switcher()` still work as aliases of `current_lang()` and `languages()` (for templates that already use them); write new templates with the native names.
+`t()`, `tmedia()`, `current_lang()`, `languages()`, `lang_url()`, `turl()` — see [references/REFERENCE.md](references/REFERENCE.md#internationalization-i18n) (`turl()` sits under **Media & Links**). **`turl('/path/')`** (plugin v1.88.0) is `home_url()` for the current language: the default language gets the plain URL and `ms` gets `/ms/path/`, so an internal link never builds a prefix. `turl(path, lang)` targets one language (the switcher case). `slug_url()` localises the same way, and `get_menu()` items come out with `title` / `description` translated and `url` localised; `raw_title` / `raw_description` hold the untranslated text (a language's own menu renders as written). `current_language()` and `language_switcher()` still work as aliases of `current_lang()` and `languages()` (for templates that already use them); write new templates with the native names.
 
 ---
 
@@ -1071,6 +1139,7 @@ If the damage spans several posts (a bad preset install or import), skip straigh
 | New page (with CanAI meta)         | `wpcanai-create-page`        |
 | Read the two menus (primary, footer) | `wpcanai-get-menus`        |
 | Set up or change a menu's links    | `wpcanai-write-menu` (see **Menus**) |
+| Point a location or a language at an existing menu, or clear it | `wpcanai-assign-menu` |
 | Read WP / WC / CanAI options       | `wpcanai-read-settings`      |
 | Update WP / WC / CanAI options     | `wpcanai-update-settings`    |
 | Read arbitrary wp_option (allowlist) | `wpcanai-get-option`         |

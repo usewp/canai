@@ -66,21 +66,27 @@ nav locations itself, whatever the theme, and they are the only names
 `get_menu()` should be called with: a header loops `get_menu('primary')`, a
 footer `get_menu('footer')`."*).
 The Twig function is registered in `src/Templating/TwigFactory.php` and
-returns a plain array of `{title, url, target, classes, active, children}`
-objects. `children` is the same item shape, recursive, built from WordPress'
-real `menu_item_parent` relationships (i.e. whatever nesting the client
-actually set up in **Appearance → Menus**) — a nested dropdown/mega-menu
-submenu is real, editable menu data now, not something `get_menu()` is
-unable to express (verified against the function's own real implementation).
-Every item still appears in the same flat top-level array too (so a
-single-level loop over `get_menu(...)` alone is still correct for a site
-with no sub-items) — `children` is purely additive.
+returns a plain array of `{title, raw_title, url, target, classes, active,
+children, id, parent, depth, description, raw_description, attr_title, icon,
+image}` objects. `children` is the same item shape, recursive, built from
+WordPress' real `menu_item_parent` relationships (i.e. whatever nesting the
+client actually set up in **Appearance → Menus**) — a nested dropdown/mega-menu
+submenu is real, editable menu data, not something `get_menu()` is unable to
+express. The array is **flat**: every item appears in it, sub-items included
+(`depth` is `0` for a top-level item), and each item also carries its
+`children`. So a loop that renders `item.children` must iterate the top level
+only — `get_menu('primary')|filter(i => i.depth == 0)` — or every sub-item
+renders twice (the scan reports that loop as `menu_children_twice`).
+Since plugin v1.89.0 an item also carries `description` (a one-line blurb),
+`icon` (a Lucide icon name, `''` when none), `image` (an attachment id, `0`
+when none) and `attr_title`, and an item with children may have no link at
+all (`url` is `''`): a dropdown trigger or a mega-menu column heading.
 
-- **Header primary nav** — loop `get_menu('primary')`; for a
-  dropdown/flyout item, loop its `children` too:
+- **Header primary nav** — loop the top level of `get_menu('primary')`; for
+  a dropdown/flyout item, loop its `children` too:
   ```twig
   <nav id="primary-nav" aria-label="Primary" x-show="open" class="lg:!block …">
-    {% for item in get_menu('primary') %}
+    {% for item in get_menu('primary')|filter(i => i.depth == 0) %}
       {% if item.children is empty %}
         <a href="{{ item.url }}" class="{{ item.active ? 'text-brand' : '' }} hover:text-brand">{{ item.title }}</a>
       {% else %}
@@ -99,25 +105,41 @@ with no sub-items) — `children` is purely additive.
   (the dropdown markup/Alpine pattern above is illustrative — follow
   `alpine-recipes.md`'s actual `dropdown-menu` recipe verbatim per the rule
   above; only the `item.children`/`child` data-source part is new.)
-- **Footer link columns** — loop `get_menu('footer')` the same way.
+- **Footer link columns** — loop `get_menu('footer')` the same way (filter
+  the top level whenever a column renders its `children`).
+- **Mega menus are menu data too.** A multi-column panel grouped under
+  non-clickable headings, with an icon, a one-line description or a
+  thumbnail per link, maps onto the item shape: each column heading is an
+  item with `children` and no link (`url` is `''`), each link carries
+  `icon` / `description` / `image`. Render it from the data:
+  ```twig
+  {% for column in item.children %}
+    {% if column.url %}<a href="{{ column.url }}">{{ column.title }}</a>{% else %}<span>{{ column.title }}</span>{% endif %}
+    {% for link in column.children %}
+      <a href="{{ link.url }}">
+        {% if link.image %}<img {{ image_attrs(link.image, 'src:thumbnail,alt') }}>{% elseif link.icon %}<i data-lucide="{{ link.icon }}"></i>{% endif %}
+        {{ link.title }}{% if link.description %}<small>{{ link.description }}</small>{% endif %}
+      </a>
+    {% endfor %}
+  {% endfor %}
+  ```
+  Record each link's icon name, description and image in the migration's
+  menu data so they are written with the menu (the MCP `write-menu` item
+  takes `description`, `icon`, `image` — an attachment id — and headings as
+  items with `children` and neither `page` nor `url`).
 - **Never** write `<a href="{{ home_url('/about/') }}">About</a>` (or any
   other hardcoded sitewide-nav link) as the *default* — that is precisely
   the 26-hardcoded-links bug this prompt exists to fix, and it is invisible
   to WordPress's own Menus screen. A hardcoded `turl('/path/')` link is only an
-  acceptable **fallback**, and only for structure `get_menu()` genuinely
-  cannot express:
-  - A **nested dropdown/mega-menu submenu whose sub-items need more than a
-    title + link** — `get_menu()`'s item shape (including `children`) only
-    carries `{title, url, target, classes, active}` per item; a mega-menu
-    with per-sub-item icons, descriptions, thumbnails, or a multi-column
-    layout grouped under non-clickable headings is real content `get_menu()`
-    cannot carry, so THOSE richer sub-items may stay as hardcoded links
-    reproducing the sample, with a `<!-- FIELD GAP: get_menu()'s item shape
-    has no icon/description/thumbnail field; this submenu's rich content is
-    hardcoded -->` comment so it's a disclosed, deliberate simplification,
-    not an invisible one. A plain nested link list (the common case — most
-    dropdown/flyout submenus) is NOT this case: use `item.children` for it,
-    per the loop above, exactly like a top-level item.
+  acceptable **fallback**, and only for structure a menu item genuinely
+  cannot hold:
+  - **Content inside a mega-menu panel that is not a link list** — a promo
+    card with its own heading, price and button, a search box, a video.
+    That block may stay hardcoded inside the panel, with a
+    `<!-- FIELD GAP: this mega-menu promo block is not menu data -->`
+    comment so it is a disclosed, deliberate simplification, not an
+    invisible one. The panel's links, headings, icons, descriptions and
+    thumbnails are NOT this case: they come from `get_menu()`.
   - **Logo / home link, legal/social links unique to the footer** (privacy
     policy, social icons) that were never part of a captured nav menu to
     begin with — these were never editable via Menus on the source site

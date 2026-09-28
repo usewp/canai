@@ -196,5 +196,26 @@ The links of the two marked navs (`data-canai-menu="primary"` / `"footer"`), in 
 ```
 
 - The only keys are `primary` and `footer`; leave one out when the design has no such nav.
-- Each item has a `title` and exactly one of `page` (a `slug` from `pages.json`) or `url` (any other link).
+- Each item has a `title` and exactly one of `page` (a `slug` from `pages.json`) or `url` (any other link) — except a **heading**: an item with `children` may have neither (a dropdown trigger or a mega-menu column title that is not a link).
 - `target` is `"_blank"` or omitted. `children` nests the same item shape, at most 3 levels deep.
+- Optional per item: `description` (one line of text) and `icon` (a Lucide icon name, as in the item's `data-lucide`).
+
+A mega menu — "Services" opens a panel with two headed columns of links, each with an icon and a blurb:
+
+```json
+{
+  "primary": [
+    { "title": "Home", "page": "index" },
+    { "title": "Services", "children": [
+      { "title": "Build", "children": [
+        { "title": "Websites", "page": "websites", "icon": "monitor", "description": "Fast sites, built to be edited." },
+        { "title": "Shops", "page": "shops", "icon": "shopping-bag", "description": "Online stores that sell." }
+      ] },
+      { "title": "Grow", "children": [
+        { "title": "SEO", "page": "seo", "icon": "search", "description": "Found by the people looking." }
+      ] }
+    ] },
+    { "title": "Contact", "page": "contact" }
+  ]
+}
+```
