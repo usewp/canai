@@ -9,7 +9,7 @@ description: >
   "spa to html", "pwa to html", "static html", "single html", "per-page html", "convert design to html".
 metadata:
   author: canai
-  version: "1.8.0"
+  version: "1.9.0"
 allowed-tools: Bash Read Write Edit Grep Glob
 ---
 
@@ -19,7 +19,7 @@ Generate **recommended static markup** for later import into **CanAI**: one **co
 
 **Assume the agent runs in the user’s own folder** (not necessarily the WordPress root). This skill focuses on **CanAI-compatible, integration-ready** single-HTML output only — no requirement for WP-CLI, `.env.wplocal`, or writing under `wp-content/`.
 
-See [references/BOILERPLATE.md](references/BOILERPLATE.md) for the canonical skeleton, Alpine/Lucide patterns, and `pages.json` format. See [references/STRUCTURE-NAVIGATION.md](references/STRUCTURE-NAVIGATION.md) for the shared Atomic Design navigation contract used by both `canai-prepare` and `canai-mcp`.
+See [references/BOILERPLATE.md](references/BOILERPLATE.md) for the canonical skeleton, Alpine/Lucide patterns, and the `pages.json` / `menus.json` formats. See [references/STRUCTURE-NAVIGATION.md](references/STRUCTURE-NAVIGATION.md) for the shared Atomic Design navigation contract used by both `canai-prepare` and `canai-mcp`.
 
 ## Purpose
 
@@ -80,6 +80,16 @@ In a **full static HTML** file, you may include `<header>` and `<footer>` for pr
 
 When generating **linked single-HTML files** (Workflow B), duplicating header/footer across files is fine for static preview; on import, extract shared regions once into `**wpcanai_template('site-header')`** / `**wpcanai_template('site-footer')**` (or the project’s actual header/footer slugs) and keep only `<main>` (and layout-specific sections) in each page template.
 
+## Navigation — two menus, marked
+
+> **A site has at most two menus: `primary` (the header nav) and `footer` (the footer nav).** Mark both, keep their real links, and never invent a third menu name (`topnav`, `mobile`, `main`, `social`). On import they become the site's two WordPress menus, and CanAI never renders a hardcoded nav.
+
+- **Header nav:** `<!-- Navigation / Primary -->` immediately before `<nav data-canai-menu="primary" aria-label="Primary">`.
+- **Footer nav:** `<!-- Navigation / Footer -->` immediately before `<nav data-canai-menu="footer" aria-label="Footer">`. When the footer links sit in several columns, wrap all the columns in that one `<nav>`.
+- **Keep real `<a href>` links inside both** (`href="about.html"`), so the file previews in a browser. Do not write Twig or menu loops here: `canai-mcp` swaps the links for a `get_menu()` loop on import.
+- **A mobile drawer repeats the primary links**, so it is marked `data-canai-menu="primary"` too. Breadcrumbs and pagination are `Navigation` landmarks, not menus, and carry no `data-canai-menu`.
+- **Write `menus.json` next to `pages.json`**, listing each marked nav's links in order: `{ "primary": [ … ], "footer": [ … ] }`. An item is `{ "title", "page" }` for a link to a generated page (`page` is that page's `slug` from `pages.json`) or `{ "title", "url" }` for any other link, with optional `"target": "_blank"` and `"children": [ … ]` (at most 3 levels). That is exactly the `items` shape of `wpcanai-write-menu`. Example in [references/BOILERPLATE.md](references/BOILERPLATE.md#menusjson-manifest-site-navigation).
+
 ## Output paths
 
 Default: write under `**./<project-slug>/**` in the **current working directory** (or a path the user specifies). No WordPress root or uploads folder is required.
@@ -93,6 +103,7 @@ Default: write under `**./<project-slug>/**` in the **current working directory*
     hero.webp
     ...
   pages.json          # optional; multi-page / SPA decomposition
+  menus.json          # the primary / footer nav links (see Navigation)
 ```
 
 - `**project-slug`:** kebab-case, short (e.g. `landing-q2`, `shop-redesign`).
@@ -132,11 +143,13 @@ Example:
 3. Replace client-side navigation with normal `**<a href="...">`** links between generated files.
 4. Downgrade framework components to semantic HTML + Tailwind + Alpine/vanilla behavior.
 5. Write `**pages.json**` — array of `{ "slug", "title", "file" }` for traceability.
+6. Write `**menus.json**` from the marked header and footer navs (see **Navigation — two menus, marked**).
 
 ## CanAI compatibility checklist
 
 - Navigation comments use the exact `<!-- Type / Short Label -->` grammar and controlled vocabulary.
 - Every `<main>`, `<section>`, `<header>`, `<footer>`, `<nav>`, and `<aside>` has its required matching type immediately before the opening tag.
+- Header nav is `<!-- Navigation / Primary -->` + `<nav data-canai-menu="primary">`, footer nav is `<!-- Navigation / Footer -->` + `<nav data-canai-menu="footer">`; no other `data-canai-menu` value; `menus.json` lists their links.
 - No `<style>` in body content; no inline `style=""` unless unavoidable (prefer utilities).
 - Scripts: preview libs inside `WPCanAI-PREVIEW-LIBS`; page logic below, outside those markers.
 - Images: framing preflight completed; descriptive `alt`, intrinsic `width`/`height`, responsive aspect container, and `loading="lazy"` below the fold.
@@ -154,6 +167,7 @@ Example:
 7. **Navigation comments map 1:1 on import:** `<!-- Type / Short Label -->` becomes `{# Type / Short Label #}`. Preserve the type and label exactly; only replace the delimiters. Follow [references/STRUCTURE-NAVIGATION.md](references/STRUCTURE-NAVIGATION.md), including the required landmark mappings, so `wpcanai-scan` passes and the editor's Structure metabox stays useful.
 8. **Keep copy translation-ready.** On native-i18n target sites, downstream import turns every user-facing string into a `{{ t('…') }}` translation source. Write copy so each string is a clean, self-contained phrase with **no markup inside it** — `<strong>Best seller</strong>` (wrap the text, not the tag), never a string that bakes in HTML. This mirrors the image → `image_attrs()` and section-comment handoffs.
 9. **WooCommerce pages** — for shop / cart / checkout pages, emit the cart/checkout region as one navigable placeholder such as `<!-- Section / Cart -->`, with any implementation instruction in a separate `<!-- @dev Replace with wc_cart_block() on import -->` comment. Downstream (`canai-mcp`) swaps in the `wc_*` Twig helpers; do not wire helper markup here.
+10. **Navigation becomes WordPress menus on import.** `canai-mcp` writes `menus.json` with `wpcanai-write-menu` (one call per key, after the pages exist) and replaces each marked `<nav data-canai-menu>`'s links with the `get_menu('primary')` / `get_menu('footer')` loop. The prepared file keeps its real links; the site owner edits the menus in WordPress afterwards.
 
 ## Related skills
 

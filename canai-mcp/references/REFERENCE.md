@@ -42,7 +42,10 @@ attribute:
 {% endfor %}
 ```
 
-- **Theme-independent locations (v1.25+).** CanAI registers `wpcanai_primary` and `wpcanai_footer` nav locations itself; render them with `get_menu('wpcanai_primary')` rather than the theme's `get_menu('primary')`. Presets create/tear these down via `settings.menus`.
+- **Two locations: `primary` and `footer` (plugin v1.88.0).** CanAI registers exactly these two nav locations itself, whatever the theme, and they are the only names `get_menu()` should be called with: a header loops `get_menu('primary')`, a footer `get_menu('footer')`. Their links are written with `wpcanai-write-menu`, never as hardcoded `<a href>` lists. Presets create/tear these down via `settings.menus`.
+- **Items come out localised.** Each item is `{ title, raw_title, url, target, classes, active, children }`. On a non-default language `title` is the string-store translation (the untranslated title when there is none) and an internal `url` carries the language prefix; `raw_title` is always the untranslated title. On the default language both are exactly what WordPress stores.
+- **Upgrade note:** before v1.88.0 the locations were named `wpcanai_primary` / `wpcanai_footer`. `get_menu()` still resolves both names, and `wpcanai-scan` reports each call as `legacy_menu_location`; rename them to `primary` / `footer`.
+- Read menus with `get_menu()`. A Template Variables menu query (`location=primary`) returns raw WordPress items: untranslated titles and unlocalised URLs.
 
 ### Archive pagination (WordPress + WooCommerce)
 
@@ -104,7 +107,13 @@ Use these for **main-query** archives so URLs respect **pretty permalinks**, CPT
 {{ term_url(term_id) }}                  {# Term archive URL #}
 {{ slug_url('shop') }}                   {# Page URL by slug #}
 {{ slug_url('my-post', 'post') }}        {# Any post type URL by slug #}
+{{ turl('/') }}                          {# Home for the current language: https://site/ (default), https://site/ms/ (ms) #}
+{{ turl('/contact/') }}                  {# Any site path, same rule #}
+{{ turl(id_url(post_id)) }}              {# Any URL on this site; other hosts, mailto:, tel:, #anchor pass through #}
+{{ turl('/', 'en') }}                    {# Explicit language — the switcher form #}
 ```
+
+**`turl()` — internal links for the current language (plugin v1.88.0).** `turl(path_or_url)` is `home_url()` with the current language applied. On the default language it returns exactly the `home_url()` URL (any language prefix stripped, no query string), so a template written with it renders the same links a monolingual site does. On a non-default language it adds the prefix (`/ms/contact/`), never twice. `turl(path, lang)` targets one language and follows `lang_url()`'s switcher rule: on the default language it carries `?lang=<default>`, so the click also resets the visitor's language cookie. Use it only for a switcher. `slug_url()` localises the same way; `id_url()`, `post_url()` and `term_url()` return the plain permalink, so wrap them in `turl()`. Never build a prefix by hand (`home_url()` plus `current_lang()`, a `base` variable): `wpcanai-scan` reports it as `hardcoded_lang_prefix`.
 
 ### Charts (plugin v1.77.0)
 ```twig
@@ -140,7 +149,7 @@ Use these for **main-query** archives so URLs respect **pretty permalinks**, CPT
 
 ### Internationalization (i18n)
 
-Two families: the **WordPress gettext** family (`__`, `_x`, `_n`) and **CanAI native i18n** (`t()`, `tmedia()`, `current_lang()`, `languages()`, `lang_url()`, plugin 1.22.0+), which needs no extra plugin once languages are configured (CanAI → Translations, or `wpcanai-i18n-set-settings` over MCP). Use `t()` for user-facing page strings and `current_lang()` / `languages()` for switchers. Gettext is for strings a theme or plugin already ships in its catalogue; strings without an explicit domain default to `wpcanai`.
+Two families: the **WordPress gettext** family (`__`, `_x`, `_n`) and **CanAI native i18n** (`t()`, `tmedia()`, `current_lang()`, `languages()`, `lang_url()`, plugin 1.22.0+; `turl()`, plugin 1.88.0+ — see **Media & Links**), which needs no extra plugin once languages are configured (CanAI → Translations, or `wpcanai-i18n-set-settings` over MCP). Use `t()` for user-facing page strings and `current_lang()` / `languages()` for switchers. Gettext is for strings a theme or plugin already ships in its catalogue; strings without an explicit domain default to `wpcanai`.
 
 ```twig
 {# Translatable strings — domain defaults to 'wpcanai'. Pass a domain to use the active theme's. #}

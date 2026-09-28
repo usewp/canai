@@ -87,6 +87,10 @@ The Twig form is a direct conversion:
 <footer>...</footer>
 ```
 
+## Site navigation menus
+
+A `Navigation` landmark that renders site navigation carries `data-canai-menu="primary"` (the header nav) or `data-canai-menu="footer"` (the footer nav) in static HTML, and keeps its real links so the file previews. In Twig it becomes a loop over `get_menu('primary')` or `get_menu('footer')`, and its links are written to that menu. These are the only two menu names. Other `Navigation` landmarks, such as breadcrumbs or pagination, carry no `data-canai-menu`.
+
 ## Rules
 
 1. Use one space on both sides of `/`.

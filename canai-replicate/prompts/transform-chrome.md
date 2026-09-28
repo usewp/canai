@@ -59,11 +59,12 @@ real WordPress menu, fixes both problems at the source.
 ## Navigation MUST come from a real WordPress menu, not hardcoded links
 
 This is the second thing this prompt exists to fix. CanAI registers two
-theme-independent nav menu locations, `wpcanai_primary` and `wpcanai_footer`
-(confirmed in `canai.php`'s `register_nav_menus()` call and documented in
-`ai/canai-mcp/references/REFERENCE.md`: *"CanAI registers `wpcanai_primary`
-and `wpcanai_footer` nav locations itself; render them with
-`get_menu('wpcanai_primary')` rather than the theme's `get_menu('primary')`"*).
+theme-independent nav menu locations, `primary` and `footer` (confirmed in
+`src/Menus/MenuLocations.php` and documented in
+`ai/canai-mcp/references/REFERENCE.md`: *"CanAI registers exactly these two
+nav locations itself, whatever the theme, and they are the only names
+`get_menu()` should be called with: a header loops `get_menu('primary')`, a
+footer `get_menu('footer')`."*).
 The Twig function is registered in `src/Templating/TwigFactory.php` and
 returns a plain array of `{title, url, target, classes, active, children}`
 objects. `children` is the same item shape, recursive, built from WordPress'
@@ -75,11 +76,11 @@ Every item still appears in the same flat top-level array too (so a
 single-level loop over `get_menu(...)` alone is still correct for a site
 with no sub-items) — `children` is purely additive.
 
-- **Header primary nav** — loop `get_menu('wpcanai_primary')`; for a
+- **Header primary nav** — loop `get_menu('primary')`; for a
   dropdown/flyout item, loop its `children` too:
   ```twig
   <nav id="primary-nav" aria-label="Primary" x-show="open" class="lg:!block …">
-    {% for item in get_menu('wpcanai_primary') %}
+    {% for item in get_menu('primary') %}
       {% if item.children is empty %}
         <a href="{{ item.url }}" class="{{ item.active ? 'text-brand' : '' }} hover:text-brand">{{ item.title }}</a>
       {% else %}
@@ -98,11 +99,11 @@ with no sub-items) — `children` is purely additive.
   (the dropdown markup/Alpine pattern above is illustrative — follow
   `alpine-recipes.md`'s actual `dropdown-menu` recipe verbatim per the rule
   above; only the `item.children`/`child` data-source part is new.)
-- **Footer link columns** — loop `get_menu('wpcanai_footer')` the same way.
+- **Footer link columns** — loop `get_menu('footer')` the same way.
 - **Never** write `<a href="{{ home_url('/about/') }}">About</a>` (or any
   other hardcoded sitewide-nav link) as the *default* — that is precisely
   the 26-hardcoded-links bug this prompt exists to fix, and it is invisible
-  to WordPress's own Menus screen. A hardcoded `home_url()` link is only an
+  to WordPress's own Menus screen. A hardcoded `turl('/path/')` link is only an
   acceptable **fallback**, and only for structure `get_menu()` genuinely
   cannot express:
   - A **nested dropdown/mega-menu submenu whose sub-items need more than a
@@ -158,8 +159,9 @@ with no sub-items) — `children` is purely additive.
   (`<i data-lucide="…">` + the shared `lucide.createIcons()` call the parent
   page already makes — do not add another one here), semantic HTML5 — same
   conventions as every other output in this migration.
-- `home_url()` (bare, for the logo link target) and `custom_logo()` or a
-  literal `<img>` for the wordmark are fine — those are not nav links.
+- `turl('/')` for the logo link target (it follows the current language;
+  never `home_url()` + a prefix) and `custom_logo()` or a literal `<img>`
+  for the wordmark are fine — those are not nav links.
 
 ## Sample-fidelity check
 

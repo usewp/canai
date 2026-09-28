@@ -101,8 +101,8 @@ the drift bug this rule exists to prevent: on a real migration, a
 `case-study-single` template and its own `case-study-archive` template —
 same site, same nav — independently inlined the header and **disagreed**
 with each other (different dropdown-menu counts, different link counts).
-Navigation itself is WordPress-menu-driven (`get_menu('wpcanai_primary')` /
-`get_menu('wpcanai_footer')`, inside the shared partials) rather than
+Navigation itself is WordPress-menu-driven (`get_menu('primary')` /
+`get_menu('footer')`, inside the shared partials) rather than
 hardcoded per-template links — that's `transform-chrome.md`'s job, not
 yours; every template in this prompt only ever *includes* the two partials.
 

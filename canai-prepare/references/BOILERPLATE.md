@@ -26,7 +26,7 @@ Use this as the canonical structure for every generated page. Adjust `lang`, `ti
     <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
       <a href="index.html" class="font-semibold">Site</a>
       <!-- Navigation / Primary -->
-      <nav class="flex gap-4" aria-label="Primary">
+      <nav data-canai-menu="primary" class="flex gap-4" aria-label="Primary">
         <a href="index.html" class="text-gray-600 hover:text-gray-900">Home</a>
         <a href="about.html" class="text-gray-600 hover:text-gray-900">About</a>
       </nav>
@@ -176,3 +176,25 @@ Choose the aspect ratio and `object-position` only after the image-framing prefl
   { "slug": "about", "title": "About", "file": "about.html" }
 ]
 ```
+
+## menus.json manifest (site navigation)
+
+The links of the two marked navs (`data-canai-menu="primary"` / `"footer"`), in order. It sits next to `pages.json`, and each key is one `wpcanai-write-menu` call on import:
+
+```json
+{
+  "primary": [
+    { "title": "Home", "page": "index" },
+    { "title": "About", "page": "about" },
+    { "title": "Docs", "url": "https://docs.example.com", "target": "_blank" }
+  ],
+  "footer": [
+    { "title": "About", "page": "about" },
+    { "title": "GitHub", "url": "https://github.com/example", "target": "_blank" }
+  ]
+}
+```
+
+- The only keys are `primary` and `footer`; leave one out when the design has no such nav.
+- Each item has a `title` and exactly one of `page` (a `slug` from `pages.json`) or `url` (any other link).
+- `target` is `"_blank"` or omitted. `children` nests the same item shape, at most 3 levels deep.

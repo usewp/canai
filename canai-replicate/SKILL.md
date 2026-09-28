@@ -14,7 +14,7 @@ description: >
   breakdown", "pixel-perfect", "high fidelity", "pixelmatch".
 metadata:
   author: canai
-  version: "4.3.0"
+  version: "4.4.0"
 allowed-tools: Bash Read Write Edit Grep Glob
 ---
 
@@ -533,7 +533,7 @@ Three different bundle shapes, from three different prompts:
   `<footer>…</footer>` element, each opening with its own
   `<!-- wpcanai-template: template_type=header|footer -->` comment.
   Navigation loops the real WordPress menu functions
-  `get_menu('wpcanai_primary')` / `get_menu('wpcanai_footer')` — never
+  `get_menu('primary')` / `get_menu('footer')` — never
   hardcoded `home_url()` links as the default — so the client's
   Appearance → Menus screen actually controls the nav; a hardcoded link is
   only an acceptable, disclosed (`<!-- FIELD GAP -->`) fallback for what
@@ -847,6 +847,9 @@ runs/<site>/
   in `{{ t('…') }}` and uses `tmedia()` for per-language media. Produce copy
   that stays cleanly wrappable (no markup inside translatable strings), same
   as canai-prepare.
+- **Menus.** The kit's nav links go in `menus.json` (canai-prepare format)
+  and are written with `wpcanai-write-menu` (canai-mcp), one call per location (`primary`,
+  `footer`); the chrome partials' `get_menu()` loops then render them.
 
 ## Failure modes
 
