@@ -12,7 +12,7 @@ description: >
   "wpcanai-write-page", "convert to blocks", "convert to twig", "page css", "block page css".
 metadata:
   author: canai
-  version: "1.5.0"
+  version: "1.6.0"
   declaration_key: "12e2ba56"
 allowed-tools: "Read Write Edit Grep Glob"
 ---
@@ -45,15 +45,21 @@ v1.59.0. Every capability is a real `wpcanai/*` ability.
 When this skill is attached, add yourself to `canai-mcp`'s **Start of session** call:
 
 ```json
-wpcanai-hello { "skills": { "canai-mcp": "<its metadata.version>+k<its declaration_key>", "canai-blocks": "1.5.0+k12e2ba56" } }
+wpcanai-hello { "skills": { "canai-mcp": "<its metadata.version>+k<its declaration_key>", "canai-blocks": "1.6.0+k12e2ba56" } }
 ```
 
 **Copy both entries exactly** — `canai-mcp`'s from its own Start of session line, this one as written. The part after `+` is the skill's declaration key; without it the declaration opens nothing. Never invent or reuse a key.
 
-If the session already started, call `wpcanai-hello` again with both — it adds, never replaces.
+**(plugin v1.86.0) On every call to this skill's tools, `skills` must contain this skill's line** — keep
+`canai-mcp`'s in the same object. Nothing is remembered from `hello`; each call is checked on its own:
+
+```json
+wpcanai-write-page { "skills": { "canai-mcp": "<its metadata.version>+k<its declaration_key>", "canai-blocks": "1.6.0+k12e2ba56" }, "post_id": 42, "blocks": [ … ] }
+```
+
 The site gates `wpcanai-write-page`, `wpcanai-create-page` with `format: "blocks"` and
-`wpcanai-write-meta` with `convert: true` behind this skill (see **Skill gate** in `canai-mcp`).
-A `skill_required` error naming `canai-blocks` means that call was missing: make it, then retry.
+`wpcanai-write-meta` with `convert: true` behind this line (see **Skill gate** in `canai-mcp`).
+A `skill_required` error naming `canai-blocks` means the object lacked it: add it, then retry.
 If `hello` lists `canai-blocks` under `outdated` or `keyless`, stop and give the user the `update` command.
 
 ---
