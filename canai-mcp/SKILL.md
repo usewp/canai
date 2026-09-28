@@ -2,9 +2,7 @@
 name: canai-mcp
 description: >
   Use the CanAI MCP server exclusively for live CanAI site data; never substitute WP-CLI,
-  REST/curl, or wp-content edits. CanAI is for design and content: custom functionality (post types,
-  taxonomies, hooks, custom PHP) routes to FluentSnippets via the canai-yolo skill, and moving an existing
-  non-CanAI page into CanAI routes to canai-replicate (live URL) or canai-prepare (HTML files).
+  REST/curl, or wp-content edits. FluentSnippets belongs to the opt-in canai-yolo skill.
   Triggers on: "/canai-mcp", "wpcanai mcp", "canai mcp", "canai-mcp", "wpcanai remote",
   "canai remote", "remote wpcanai", "remote canai", "staging", "production", "remote site",
   "mcp", "api key", "deploy template", "purge cache", "page cache", "tool labels",
@@ -14,15 +12,10 @@ description: >
   "sideload", "upload", "upload image", "upload media", "media library", "attach image", "attachment", "image to media",
   "blog post", "write a blog post", "write post", "wpcanai-write-post",
   "chart", "bar chart", "line chart", "graph", "data visualization", "chart.js",
-  "reading mode", "reader mode", "reader view", "safari reader",
-  "custom post type", "cpt", "register post type", "taxonomy", "custom field", "meta box",
-  "functions.php", "mu-plugin", "custom code", "hook", "shortcode",
-  "migrate this page", "move this page to canai", "convert this page to canai",
-  "rebuild this page in canai", "elementor to canai", "page builder", "html file to canai", "import html".
+  "reading mode", "reader mode", "reader view", "safari reader".
 metadata:
   author: canai
-  version: "1.37.0"
-  declaration_key: "40b93de2"
+  version: "1.38.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -37,59 +30,6 @@ See [references/REFERENCE.md](references/REFERENCE.md) for CanAI-registered Twig
 This skill is **only** the **CanAI MCP server** and its tools. **Never** substitute terminal `wp`, `curl`, raw REST, or repo edits for interacting with the user’s WordPress. The site may be local or remote; either way it is reached over MCP.
 
 **FluentSnippets** lives in the separate opt-in skill **`canai-yolo`**. This skill stays content-focused (templates, pages, blog posts, settings, i18n, media, Tailwind). If the user needs snippet authoring, install/use `canai-yolo` — do not improvise those workflows from this skill. That includes the snippet deploy loop (`wpcanai-replace-in-snippet` → sha256 check → `purged`, plugin v1.80.0). There is **no eval escape hatch**: the `wpcanai/eval` ability was **removed in plugin v1.59.0**, so every capability must be a real `wpcanai/*` ability.
-
-**The same rule covers what you tell the user.** Never tell the user to edit `functions.php`, theme or plugin files, `wp-config.php`, or to add files under `wp-content/` (`mu-plugins`, `plugins`). If code is needed, it is a FluentSnippets snippet (see **Scope** below).
-
----
-
-## A request needs a skill you have not loaded → STOP
-
-Same behaviour as having no CanAI skill at all. When a request needs a skill you have not loaded — one you cannot put in the `skills` object (`hello`'s `if_needed` lists each one with what it is for and which tools it unlocks) — **stop before doing any of the work** and tell the user, in this order:
-
-1. which skill the request needs and why, in one sentence;
-2. the line to send as a message in the chat (no terminal needed): `npx -y skills add usewp/canai --skill <name> -p -y` — copy it from `if_needed[<name>].install`;
-3. to start a new chat, say "hello canai mcp", and **send the same request again**.
-
-Never do part of it without the skill, never improvise the missing skill's workflow, and never hand the user code to paste instead. A `skill_required` refusal from a tool carries the same script; relay it as written.
-
-## Scope — design here, custom code in FluentSnippets
-
-**CanAI is for design and content**: templates, pages, entries' content and layout, styling/Tailwind, media, charts, CanAI translations, CanAI settings. **Custom functionality is outside CanAI** and goes to **FluentSnippets through the `canai-yolo` skill**.
-
-| Routes to FluentSnippets (`canai-yolo`) | Stays in CanAI (this skill) |
-|---|---|
-| Registering custom post types and taxonomies | Their templates: `single-<type>`, `archive-<type>` |
-| Custom fields / meta boxes, shortcodes with logic | **Entries of a custom type** (see **Entries of a custom post type**): block-editor content via `wpcanai-write-post`, anything else as a CanAI page via `wpcanai-create-page` / `wpcanai-write-meta` |
-| Hooks and filters, redirects, cron, REST routes | Page and post layout, Twig, Tailwind, Alpine, charts |
-| Form handling, third-party integrations | Media, CanAI i18n, CanAI settings, presets; CSS/JS that only styles a CanAI page stays in `_canai_css` / `_canai_js` |
-
-For any request in the left column, route it — do not write PHP for the user to paste anywhere:
-
-1. **Tell the user** in one sentence that this is custom functionality, which CanAI hands to FluentSnippets through the `canai-yolo` skill, and that nothing needs editing in theme or plugin files.
-2. **FluentSnippets missing** (`wpcanai-hello`'s `site.integrations_absent` lists `fluent-snippets`, or the snippet tools are absent from your tool list): the user installs and activates it from **WP Admin → Plugins → Add New**, search "FluentSnippets". There is no MCP tool that installs plugins.
-3. **`canai-yolo` not loaded → STOP** (see above): the user sends this line as a message in the chat (no terminal needed): `npx -y skills add usewp/canai --skill canai-yolo -p -y`, then starts a new chat, says "hello canai mcp" and **sends the same request again**.
-4. **No writable snippet group:** the owner adds **`CanAI custom`** under **AI Client → Guardrails → FluentSnippets group allowlist**. This guardrail is owner-only by design; you cannot set it.
-5. **Hand over to `canai-yolo`.** When the functionality exists, come back here for the design (typed templates) and the entries.
-
-## Migrating an existing page or site into CanAI
-
-Moving an existing non-CanAI page or site into CanAI — a theme-rendered page, a page-builder page (Elementor, Divi, …), a plain block-editor page, an external site, or HTML files from elsewhere — is a **migration**. Do not hand-rewrite the page's markup into Twig from this skill. The source decides the skill:
-
-| The user has | Skill | Then |
-|---|---|---|
-| A **live URL** (a page on this site or any other) | `canai-replicate` — captures the page, rebuilds it as a structured, styled CanAI kit and verifies it before anything is written | Push the kit with the kit flow in **Implement HTML → CanAI** (`pushprep` → `output/push/*.json`) |
-| Only **HTML files** (an exported page, a static site folder, a file from a designer or another tool) | `canai-prepare` — reworks them into CanAI-friendly single-HTML pages | Import them with **Implement HTML → CanAI** (asset sideload pre-pass first) |
-| A design, mockup or screenshot | `canai-prepare` | Same import |
-
-Converting a CanAI page between Twig and blocks is **not** a migration — that is `canai-blocks` (`convert: true`).
-
-1. **Tell the user** this is a migration, which CanAI does through a dedicated skill for a smoother transition (it rebuilds and checks the page before anything is written), rather than retyping the page by hand.
-2. **Pick the route by the source** (table above). If the user has both a live URL and the HTML, prefer the URL: it captures the rendered page, fonts and assets as a visitor sees them. For a page on this same site, get its post ID now: ask the user to open it in **WP Admin → Pages → Edit** and read the number after `post=` in the address bar. No MCP tool looks up a non-CanAI page by URL — `wpcanai-list-pages` only returns pages made with CanAI and `wpcanai-resolve-content-id` resolves template types.
-3. **Skill not loaded → STOP** (see above): the user sends the matching line as a message in the chat, then starts a new chat, says "hello canai mcp" and **sends the same request again**:
-   - live URL → `npx -y skills add usewp/canai --skill canai-replicate -p -y` (it needs an AI client that runs shell commands, Node 22+, and the `agent-browser` CLI and skill; `canai-replicate` walks the user through those);
-   - HTML files → `npx -y skills add usewp/canai --skill canai-prepare -p -y` (no browser or Node needed).
-4. **Push the result** with its existing flow: a `canai-replicate` kit through `pushprep` → `output/push/*.json`; prepared HTML through **Implement HTML → CanAI**. **A same-site migration writes onto the existing page's post ID** with `wpcanai-write-meta`, so the URL, slug, parent and SEO settings stay — do not create a second page. The page's old content stays in `post_content` / its builder meta and a snapshot is taken on write, so the migration can be undone.
-5. **Custom post types or fields** a kit's `CONTENT-MODEL.md` lists are custom functionality: register them via FluentSnippets (`canai-yolo`'s CPT recipe, see **Scope**), then author their entries as in **Entries of a custom post type**.
 
 ---
 
@@ -151,40 +91,6 @@ Add to your **MCP client’s server configuration** (example; keys may differ by
 **Important:** `WP_API_URL` must be the **full** path `…/wp-json/mcp/wpcanai`, not only the site home URL — use the value from **AI Agent → Connections**.
 
 Verify with `**wpcanai-list-templates`** (or your client’s tool list for the CanAI server).
-
-## Start of session (plugin v1.84.0)
-
-Call **`wpcanai-hello` first**, before any other CanAI tool, and tell it which skills you have loaded:
-
-```json
-wpcanai-hello { "skills": { "canai-mcp": "1.37.0+k40b93de2" } }
-```
-
-**Copy this line exactly.** The part after `+` is this file's declaration key: the site accepts a declaration only with it, so a guessed version opens nothing. Never invent a key, never reuse one from another skill, another session or a server reply (no reply ever contains one), and never send a bare version.
-
-Add every attached companion skill with its own line — `canai-blocks` and `canai-yolo` each give you theirs. `hello` is never hidden and never errors; a wrong or empty `skills` object still returns the site facts.
-
-**(plugin v1.86.0) Send the same `skills` object on every CanAI tool call** — every tool except `wpcanai-hello`, `wpcanai-diagnostics` and `wpcanai-manage-tools` requires it on a gated site. Nothing is remembered between calls: there is no "declare once", and calling `hello` opens nothing by itself. A `skill_required` refusal means the object was missing, or lacks the skill that documents that tool: relay it to the user as written; never retry without the skill. Worked example:
-
-```json
-wpcanai-list-pages { "skills": { "canai-mcp": "1.37.0+k40b93de2" } }
-```
-
-Add a companion's line to the same object when you call its tools (`wpcanai-write-page` needs `canai-blocks`, the snippet tools need `canai-yolo`); keep `canai-mcp`'s line in it always.
-
-- **Its `site` block replaces the prerequisite checks.** `plugin_version`, `setup_finished`, `tools { exposed, hidden }`, `languages { configured, tools_exposed }`, `integrations_absent`, `page_cache`. Call `wpcanai-diagnostics` only when `hello` shows a problem or the user asks for the full report.
-- **`outdated` → stop.** Each entry is `{ "have", "update" }`: the skill you have is older than this site's tools were documented for. Tell the user, give them the `update` command from the response, and do not keep working from argument docs that may be wrong.
-- **`unknown`** lists names the site does not recognise. Harmless; they are just not counted.
-- **`rejected`** maps names to the reason a declaration was refused: a missing or wrong declaration key, a skill with no MCP part (`canai-prepare`, `canai-replicate`, `canai-eeat` never declare themselves), or a version that is the CanAI plugin version rather than the skill's `metadata.version`. **Declare only skills you actually loaded, each with the exact line from its SKILL.md.** The site owner sees every declaration, and every refused one, on the Connections tab, and nothing in the server's replies tells you which version or key to send.
-- **`keyless` → stop.** On a site in *grace* key mode, a declaration without a key (an older skill release) is recorded here as `{ "have", "update" }` instead of being refused, but it opens nothing: a keyless entry never satisfies a tool's `skills` check. Tell the user to run the `update` command, restart the AI client and say "hello canai mcp" again.
-- **`action_required` → stop and relay it.** It comes first in the reply when the `skills` object you sent has no keyed CanAI skill (none sent, only unknown names, only keyless or refused entries, or malformed input), together with `install` (the commands to run). Pass the message to the user as written: they install the skill, restart the AI client, and say "hello canai mcp" again. Do not try to work around it.
-- **(plugin v1.86.0) Every other tool enforces it on the call itself.** On a gated site a tool called without a valid `skills` object is refused with `skill_required` — the refusal carries the same stop-install-retry script, so relay it. Nothing leads a successful reply any more; a call either runs or is refused.
-- **`if_needed`** (plugin v1.85.1) maps each routed skill absent from your `skills` object — `canai-yolo`, `canai-blocks`, `canai-replicate`, `canai-prepare` — to `{ "for", "install", "unlocks" }` (`unlocks`, plugin v1.86.0: the tool names that skill's line lets you call), with `if_needed_rule` spelling out the stop-install-retry script. Match the user's request against `for`; if one fits, follow **A request needs a skill you have not loaded → STOP**.
-- **The install lines are chat-ready.** Every install or update command the site returns has the form `npx -y skills add usewp/canai --skill <name> -p -y`: no prompts, so the user can send it as a message in this chat instead of opening a terminal. When the user sends such a line, run it, then tell them to start a new chat (or restart the AI client) so the skill loads, and to say "hello canai mcp" again.
-- **`skill_required` on any tool** means the call's `skills` object was missing or lacks the skill that documents that tool (`canai-mcp` for most tools, the opt-in skill for opt-in tools). Say so and name the skill. **Never work around it** — for example, do not hand-build block markup through `write-meta` because `write-page` refused.
-- **`skill_notice`** at the end of a result means the skill you sent for that call is outdated (the line carries the update command), or — on an `off` site only — that the write ran without any skill. The fix is the same object, from a current skill.
-
-See **Skill gate** under the tool reference for what the site enforces and `wpcanai-hello` for the full response.
 
 ## CanAI Prerequisite Setup (on the site)
 
@@ -283,20 +189,6 @@ A blog post is ordinary WordPress content, not a CanAI-meta page. Write it with 
 
 - **Charts in posts (plugin v1.77.0).** A chart is **data, not an image**: pass a `chart` block (see the block table) with `labels` and up to **8** `datasets` — fold a 9th series into "Other" rather than splitting the chart — and never sideload a rendered chart picture instead. Set `unit` (`ms`, `%`, `MB`) so ticks, tooltips and the table read "12 ms", not "12". Every chart also renders its numbers as an accessible data table (a collapsed `<details>` by default; `table: "open"` shows it expanded, `"hidden"` keeps it for screen readers and Markdown only), so no-JS, reader-mode, RSS and `Accept: text/markdown` readers get the figures without you adding a `table` block. The site owner can turn the runtime off under **Settings → Libraries → Chart.js** — option `wpcanai_chart_settings` (`load_chart` `auto`|`yes`|`no`, `source` `plugin`|`cdn`), a first-class settings key read with `**wpcanai-read-settings`** and changed with `**wpcanai-update-settings`**; with `no` the figure shows the table only, so read that setting before reporting a missing chart as a bug.
 
-### Entries of a custom post type (plugin v1.85.0)
-
-The post type itself is registered by a FluentSnippets snippet (see **Scope**); this skill writes its **entries**. Rule: **block-editor content → `wpcanai-write-post`; anything else → a CanAI page.**
-
-- **Find the type's slug** from the user or the snippet (`register_post_type( 'doctor', … )` → `doctor`). `wpcanai-list-pages { "post_type": "doctor" }` lists that type's entries made with CanAI.
-- **Block-editor content** (the owner edits it in the block editor, like a blog post): `wpcanai-write-post` with `"post_type": "doctor"`. The type must have `show_in_rest` and `editor` support; otherwise the call fails with `no_show_in_rest` / `no_editor_support`, and the fix is in the registration snippet (add `'show_in_rest' => true` and `'editor'` to `supports`), not here.
-- **A designed page** (Twig/Tailwind like any CanAI page): `wpcanai-create-page` with `"post_type": "doctor"` and `html` / `css` / `js`; later edits go through `wpcanai-write-meta` / `wpcanai-replace-in-meta` by post ID, exactly as for pages. Twig only — a blocks body on a custom type is refused with `blocks_on_custom_type`; send it through `wpcanai-write-post` instead.
-- **Which types are allowed:** registered and public, and not one of WordPress's or CanAI's own types (`page`, `post`, `attachment`, `wpcanai_template`, `product`, …). Otherwise `unknown_post_type`, `reserved_post_type` or `not_public`.
-- **How an entry renders:** its own CanAI content (a `create-page` entry) → a `single-<type>` template → the theme. A `write-post` entry has block content and no CanAI meta, so it renders through `single-<type>` if one exists, else the theme — as blog posts do.
-- **When the user hasn't said which:** ask once — "edit it yourself in the block editor, or a designed page like your other CanAI pages?" Without an answer, a request that says "page" gets `wpcanai-create-page`; one that says "post", "article" or "profile" to be edited by the owner gets `wpcanai-write-post`.
-- **Layout for a designed entry:** the same as a page. Pass the site's existing layout (`wpcanai-list-templates`) as `layout`, or leave it out and the entry uses the default layout. A `single-<type>` template never wraps an entry that has its own CanAI content.
-- **Menus:** creating an entry never adds it to a menu; that stays the owner's call in wp-admin.
-- **404 on the type's URLs** (archive or entry): new post types' pretty permalinks are not in WordPress's rewrite rules yet. Tell the user to open **Settings → Permalinks** and click **Save Changes** (no change needed), then retry.
-
 ### Reading mode (Safari Reader / Firefox Reader View / Chrome)
 
 When the user asks for a page or post to "support reading mode" (or reader view / Safari Reader), follow [references/READING-MODE.md](references/READING-MODE.md) **gate first**: read the targeted content, classify it against the reference's table, and **stop with an explanation** when reading mode is not recommended for that shape (landing pages, listings, WooCommerce transactional pages, form pages, thin copy). Only when the content is a real piece of prose do you proceed with the reference's markup checklist (`<article>` inside `<main>` with the `<h1>`, `<time>` and `rel="author"` byline inside it; body copy in `<p>`; navigation, related content and CTAs kept outside). There is no plugin setting or meta tag that enables reading mode — it is purely a browser heuristic over the markup, so never claim a toggle exists.
@@ -367,8 +259,6 @@ This is read-only static analysis: nothing is rendered, and no order, cart, or c
 
 Ability IDs use slashes; MCP tool names use **hyphens** (`wpcanai/read-meta` → `wpcanai-read-meta`).
 
-**Every tool below also takes `skills`** (plugin v1.86.0) — the same object as `wpcanai-hello`, sent on every call; see **Start of session**. It is not repeated in each entry's `Args`. Only `wpcanai-hello`, `wpcanai-diagnostics` and `wpcanai-manage-tools` are without it. Whether it is *required* depends on the site's skill gate mode (next section).
-
 ### Tool labels (plugin v1.80.0; seven labels since v1.81.0)
 
 Every CanAI tool description starts with a bracket prefix naming what the tool touches **outside CanAI's own data**, e.g. `[fluent-snippets, filesystem] Update a snippet …`. Read it before calling an unfamiliar tool; `annotations.readonly` still says whether it writes, and `uninstall-preset`, `restore-snapshot` and `restore-operation` are marked destructive.
@@ -387,7 +277,7 @@ The prefix you see is **resolved for the site**: a third-party label (`woocommer
 
 | Labels | Tools |
 |---|---|
-| `canai` | `hello`, `list-templates`, `read-meta`, `grep-content`, `resolve-content-id`, `scan`, `get-pending`, `export`, `list-presets`, `list-snapshots`, `list-operations`, `get-snapshot`, `pin-snapshot`, `pin-current` |
+| `canai` | `list-templates`, `read-meta`, `grep-content`, `resolve-content-id`, `scan`, `get-pending`, `export`, `list-presets`, `list-snapshots`, `list-operations`, `get-snapshot`, `pin-snapshot`, `pin-current` |
 | `canai, cache` | `write-meta`, `replace-in-meta`, `create-template`, `import`, `restore-snapshot`, `restore-operation` |
 | `canai, core` | `list-pages`, `list-media`, `get-media`, `read-settings`, `update-settings`, `get-option`, `update-options`, `uninstall-preset`, every `i18n-*` tool |
 | `canai, core, cache` | `create-page`, `write-post`, `write-page` |
@@ -416,75 +306,15 @@ The list a client gets from `tools/list` is **not** "everything registered". Eac
 | R3 | another registered MCP ability duplicates it (site filter, empty by default) | `get-option`, `list-media`, `get-media`, `sideload-url` |
 | R4 | setup has run — *advice only, never applied automatically* | `setup`, presets, `import`, `export` |
 
-`diagnostics`, `manage-tools` and `hello` (v1.83.0) are never hidden: they are how you find out what is hidden and turn it back on, and how a session starts.
+`diagnostics` and `manage-tools` are never hidden: they are how you find out what is hidden and turn it back on.
 
 **A tool you expected is missing from your list?** Do not conclude the site lacks the feature. Call `wpcanai-manage-tools { "action": "list" }` — it lists **every** registered tool including hidden ones, with `exposed`, `override`, `recommendation`, `reason` and `rule` — then, if the user wants it, switch it on and **reconnect** (HTTP clients cache `tools/list`; the new tool appears after the reconnect). A direct call to a hidden tool fails with `tool_disabled`, and the message names the exact `manage-tools` call.
 
 ### `wpcanai-manage-tools` (plugin v1.82.0)
 
-- **Args:** `{ "action": "list" }` or `{ "action": "set", "overrides"?: { "<short>": "on"|"off"|null }, "groups"?: { "<group>": "on"|"off"|null }, "follow_recommendations"?: bool, "apply_advisory"?: bool, "skill_gate"?: "off"|"opt-in"|"strict", "reset_skill_stats"?: bool, "declaration_key"?: "grace"|"required" }`. `null` clears an override so the recommendation applies again. `groups` expands to every registered tool in a Tools-tab group — `Templates & code`, `Pages & posts`, `Media`, `Snippets`, `Languages`, `History & restore`, `Site & settings`, `WooCommerce` (or the slug, e.g. `languages`). `apply_advisory: true` writes the R4 advice as `off` overrides. Unknown tool names → `invalid_tool` (an existing override for an unregistered tool may still be cleared); unknown group → `invalid_group`; `diagnostics` / `manage-tools` / `hello` → `exempt_tool`. **(v1.83.0)** `skill_gate` sets the Skill gate mode (unknown value → `invalid_skill_gate`, nothing written); `reset_skill_stats: true` zeroes the skill adoption counters. **(v1.84.0)** `declaration_key` sets the Declaration key mode (unknown value → `invalid_declaration_key`, nothing written) — only when the user asks.
-- **Returns:** `{ "follow_recommendations": bool, "skill_gate": "off"|"opt-in"|"strict", "declaration_key": "grace"|"required", "tools": [{ "name", "group", "touches", "requires", "exposed", "override", "recommendation", "reason", "rule", "advisory", "bytes", "requires_skill", "requires_skill_note" }], "totals": { "exposed", "total", "exposed_bytes", "total_bytes", "exposed_tokens", "total_tokens" } }`; after `set` also `"reconnect_required": true` and a `note`. `bytes` is description + input schema — what the tool costs you per turn. **(v1.83.0)** `requires_skill` is the opt-in skill a whole tool needs (`canai-blocks` for `write-page`, `canai-yolo` for every Snippets tool), else `null`; `requires_skill_note` also covers the input-dependent cases, e.g. `"canai-blocks (when format=blocks)"` on `create-page`.
+- **Args:** `{ "action": "list" }` or `{ "action": "set", "overrides"?: { "<short>": "on"|"off"|null }, "groups"?: { "<group>": "on"|"off"|null }, "follow_recommendations"?: bool, "apply_advisory"?: bool }`. `null` clears an override so the recommendation applies again. `groups` expands to every registered tool in a Tools-tab group — `Templates & code`, `Pages & posts`, `Media`, `Snippets`, `Languages`, `History & restore`, `Site & settings`, `WooCommerce` (or the slug, e.g. `languages`). `apply_advisory: true` writes the R4 advice as `off` overrides. Unknown tool names → `invalid_tool` (an existing override for an unregistered tool may still be cleared); unknown group → `invalid_group`; `diagnostics` / `manage-tools` → `exempt_tool`.
+- **Returns:** `{ "follow_recommendations": bool, "tools": [{ "name", "group", "touches", "requires", "exposed", "override", "recommendation", "reason", "rule", "advisory", "bytes" }], "totals": { "exposed", "total", "exposed_bytes", "total_bytes", "exposed_tokens", "total_tokens" } }`; after `set` also `"reconnect_required": true` and a `note`. `bytes` is description + input schema — what the tool costs you per turn.
 - **Translation tools are hidden by default.** When the user asks for anything translation-shaped and the `i18n-*` tools are not in your list: run `manage-tools list`, **confirm with the user** that translations are wanted on this site, then `{ "action": "set", "groups": { "Languages": "on" } }`, reconnect, and continue with the **Translation model router** below (`i18n-set-settings` adds the first language if none exists — the group must be on *before* that call). The override persists across requests and reconnects until someone clears it.
-
-### Skill gate (plugin v1.83.0; per-call since v1.86.0)
-
-The site checks the `skills` object on **each call** — the entry for the skill that documents the tool (`canai-mcp` for most tools; `canai-blocks` for `write-page`, `create-page` with `format: "blocks"` and `write-meta` with `convert: true`; `canai-yolo` for every Snippets tool). The owner picks the mode under **AI Client → Guardrails → Skill gate** or with `wpcanai-manage-tools` `{ "action": "set", "skill_gate": "<mode>" }`; `hello` returns it as `gate`, and `diagnostics` reports it in the `skills` group. Change the mode only when the user asks you to — never lower it to get past a `skill_required` denial.
-
-| Mode | `skills` is required on | Missing or invalid entry |
-|---|---|---|
-| `off` | nothing (optional everywhere) | the call runs; a write carries `skill_notice` |
-| `opt-in` | opt-in tools only (`write-page`, the Snippets tools; `create-page` / `write-meta` are checked at call time when the input asks for blocks) | opt-in tool **refused**; other tools run, a write carries `skill_notice` |
-| `strict` (fresh-install default) | every tool except `hello`, `diagnostics`, `manage-tools` — **reads included** | **refused** |
-
-The tool's `input_schema` says so too: on a gated site `skills` appears in `required` for the tools the mode covers, so you can see the requirement in the tool list before calling. A tool the owner hid still fails with `tool_disabled` (or `Tool not found`) first — the owner's decision comes before the skill check. An *outdated* entry (valid key, old version) passes and adds `skill_notice` with the update line.
-
-- **Denial.** Code `skill_required`, status 403. The message carries the stop-install-retry script with the chat-ready install line, for example: `Access denied: MCP tool "write-page" needs a skill this session has not loaded. STOP and tell the user: this needs the canai-blocks skill, which is not loaded in this session. They send this line as a message in the chat (no terminal needed): npx -y skills add usewp/canai --skill canai-blocks -p -y, then start a new chat, say "hello canai mcp" and send the same request again. If the user would rather not install it, offer a Twig page instead (create-page / write-meta) and let them choose.` Relay it to the user; do not retry or route around it.
-- **Notice.** `skill_notice` is one short string added to a result: on an `off` site, to every write made without a skill (with the install command); on any site, to a call whose skill entry is outdated (with the update command). There is no per-session cap — each call stands alone.
-- **Description prefix.** A gated tool's description carries `[skill: <name>]` after its label prefix, e.g. `[canai, core, cache] [skill: canai-blocks] …` on `write-page`, so you see the requirement before calling it.
-
-**Declaration key (plugin v1.84.0).** Only an entry carrying the skill's key counts; a keyless one never satisfies a tool's `skills` check, in any key mode. The owner picks what happens to keyless declarations under **AI Client → Guardrails → Declaration key** or with `wpcanai-manage-tools` `{ "action": "set", "declaration_key": "<mode>" }`; `manage-tools` and `diagnostics` report it.
-
-| Key mode | Keyless declaration (older skill) | Wrong key |
-|---|---|---|
-| `grace` (sites upgraded to 1.84.0) | recorded under `keyless` with the `update` command; opens nothing | `rejected` |
-| `required` (fresh installs) | `rejected` | `rejected` |
-
-Change the key mode only when the user asks you to — never lower it to get past a refusal. Refused declarations are stamped on the API key or OAuth client, and the Connections tab lists them next to the client (e.g. "tried canai-blocks 1.4.0 (no key)").
-
-### `wpcanai-hello` (plugin v1.84.0)
-
-- **Args:** `{ "skills": { "<skill-name>": "<metadata.version>+k<declaration_key>" } }` — at least one entry. Send the exact line from each loaded skill's **Start of session** section; the reply shows bare versions only. The reply is computed from this object alone — nothing from an earlier call is remembered.
-- **Returns:**
-
-```json
-{
-  "accepted": { "canai-mcp": "1.37.0" },
-  "unknown":  [],
-  "outdated": { "canai-blocks": { "have": "1.2.0", "update": "npx -y skills add usewp/canai --skill canai-blocks -p -y" } },
-  "rejected": {},
-  "keyless":  {},
-  "gate":     "opt-in",
-  "unlocked": [ "write-page" ],
-  "site": {
-    "plugin_version": "1.84.0",
-    "setup_finished": true,
-    "tools": { "exposed": 38, "hidden": 19 },
-    "languages": { "configured": [ "ms" ], "tools_exposed": 0 },
-    "integrations_absent": [ "woocommerce", "cache" ],
-    "page_cache": null
-  },
-  "reconnect_required": false,
-  "if_needed": {
-    "canai-yolo": { "for": "custom code: post types, taxonomies, hooks, custom PHP (FluentSnippets)", "install": "npx -y skills add usewp/canai --skill canai-yolo -p -y", "unlocks": [ "list-snippets", "get-snippet", "create-snippet", "update-snippet", "replace-in-snippet", "set-snippet-status" ] }
-  },
-  "if_needed_rule": "…"
-}
-```
-
-- `unlocked` lists the opt-in tools the object you sent unlocks **and** that the owner exposes; a tool the owner hides is never listed and still answers `tool_disabled`. `reconnect_required` is always `false`: nothing about the tool list changed. `if_needed` (plugin v1.85.1; `unlocks` since v1.86.0) lists each routed skill absent from your object with what it is for, its install line and the tools its line lets you call.
-- A second call adds to the declaration; it never removes a skill.
-- **(plugin v1.83.3) No skill declared.** When the session still has no keyed known skill after the call, the reply starts with `action_required` (a message for the user, worded for the gate mode and for whether the skill is missing or out of date) and `install` (e.g. `["npx -y skills add usewp/canai --skill canai-mcp -p -y"]`), before the fields above. Malformed input also carries `error`. Stop and relay `action_required`.
-- **(plugin v1.84.0) Keys.** `rejected` covers a missing key (in `required` key mode), a wrong key (always), the plugin version and non-declarable skills; `keyless` holds keyless declarations in `grace` key mode as `{ "have", "update" }`. Neither opens anything.
 
 ### `wpcanai-list-templates`
 
@@ -493,7 +323,7 @@ Change the key mode only when the user asks you to — never lower it to get pas
 
 ### `wpcanai-list-pages`
 
-- **Args:** `{ "post_type"?: string }` — **(v1.85.0)** optional filter: only entries of that type (`page`, or an eligible custom type — see **Entries of a custom post type**). Without it, every post type made with CanAI is listed.
+- **Args:** `{ }` — no arguments.
 - **Returns:** `array` of objects: `id`, `title`, `post_type`, `layout_id` (int or null), `format` (`"twig"`|`"blocks"`) for posts/pages that have `_canai_html`, or pages marked blocks.
 - **Published only.** Returns posts with status `publish`. A page created via `wpcanai-create-page` with `status: "draft"` will NOT appear here — re-resolve it by id, don't assume it was lost.
 
@@ -531,7 +361,7 @@ Change the key mode only when the user asks you to — never lower it to get pas
 
 - **Args:** `{ "title": string, "type": string, "html"?: string, "css"?: string, "js"?: string, "layout"?: int }` — `title` and `type` (template_type slug) required.
 - **Returns:** `{ "post_id": int, "slug": string }`.
-- **Typed CPT templates (v1.24+).** A published `wpcanai_template` whose `template_type` term is `single-<post_type>` or `archive-<post_type>` claims that CPT's singular / archive rendering on the frontend — e.g. create one with type `single-service` to own the `service` detail page, `archive-service` for its archive. `single-post` (pre-seeded since 1.60.0) does the same for blog posts written in the WordPress editor: `{{ the_content(post.post_content) }}` inside a `prose` container, with `post.featured_image.*` available on typed `single-*` takeovers and `post.author.*` available since 1.68.15. Existence-gated: with no such template, CanAI falls through byte-identically to the theme. Pages keep their own meta path; WooCommerce products keep the WC block. **The post type itself** comes from a FluentSnippets snippet (see **Scope**) or a preset; this paragraph is only about rendering it. If its archive or entry URLs return 404, tell the user to re-save **Settings → Permalinks** (**Save Changes**, no change needed).
+- **Typed CPT templates (v1.24+).** A published `wpcanai_template` whose `template_type` term is `single-<post_type>` or `archive-<post_type>` claims that CPT's singular / archive rendering on the frontend — e.g. create one with type `single-service` to own the `service` detail page, `archive-service` for its archive. `single-post` (pre-seeded since 1.60.0) does the same for blog posts written in the WordPress editor: `{{ the_content(post.post_content) }}` inside a `prose` container, with `post.featured_image.*` available on typed `single-*` takeovers and `post.author.*` available since 1.68.15. Existence-gated: with no such template, CanAI falls through byte-identically to the theme. Pages keep their own meta path; WooCommerce products keep the WC block.
 
 ### `wpcanai-resolve-content-id`
 
@@ -585,20 +415,18 @@ Change the key mode only when the user asks you to — never lower it to get pas
 
 ### `wpcanai-create-page`
 
-- **Args:** `{ "title": string, "slug"?: string, "status"?: string, "html"?: string, "css"?: string, "js"?: string, "layout"?: int, "post_type"?: string }` — `title` required; creates a `page` post (or, with `post_type`, an entry of an eligible custom type) with optional `_canai_*` meta.
-  - **`post_type` (v1.85.0)**, default `page`: create an entry of an eligible custom type as a CanAI page (see **Entries of a custom post type**). Twig only — `format: "blocks"` on a custom type returns `blocks_on_custom_type` (use `wpcanai-write-post` with `post_type`). Ineligible types return `unknown_post_type`, `reserved_post_type` or `not_public`. Never touches menus.
-- **Returns:** `{ "post_id": int, "slug": string, "format": string, "post_type": string, "warnings": string[] }`.
+- **Args:** `{ "title": string, "slug"?: string, "status"?: string, "html"?: string, "css"?: string, "js"?: string, "layout"?: int }` — `title` required; creates a `page` post with optional `_canai_*` meta.
+- **Returns:** `{ "post_id": int, "slug": string, "format": string, "warnings": string[] }`.
 
 ### `wpcanai-write-post`
 
-- **Args:** `{ "post_id"?: int, "title"?: string, "blocks"?: object[], "slug"?: string, "status"?: string, "excerpt"?: string, "date"?: string, "featured_image"?: int, "categories"?: string[], "tags"?: string[], "post_type"?: string }`.
+- **Args:** `{ "post_id"?: int, "title"?: string, "blocks"?: object[], "slug"?: string, "status"?: string, "excerpt"?: string, "date"?: string, "featured_image"?: int, "categories"?: string[], "tags"?: string[] }`.
   - **Create** (no `post_id`): `title` and `blocks` are required. **Update** (`post_id` given): only the fields you send change; the id must be a `post`, not a page — a page id returns `WP_Error('not_a_post')`.
-  - **`post_type` (v1.85.0)**, default `post`: write block-editor content into an entry of an eligible custom type (see **Entries of a custom post type**). The type must be registered, public and not reserved (`unknown_post_type`, `reserved_post_type`, `not_public`), and have `show_in_rest` and `editor` support (`no_show_in_rest`, `no_editor_support` — the error names what to add to the registration snippet). On update the post's type must equal `post_type` (omitted means `post`), else `post_type_mismatch`. `categories` / `tags` apply only when that taxonomy is registered for the type; otherwise they are skipped and listed in `skipped_taxonomies`, not an error.
   - **Default status is `draft`**, not `publish` — unlike `wpcanai-create-page`. The owner is expected to read the prose in the editor first. Valid: `draft`, `publish`, `pending`, `private`, `future`.
   - `blocks` **replaces the entire body**. There is no partial edit; re-send the whole list. WordPress revisions are the undo path.
   - `categories` / `tags` take names or slugs, create anything missing, and replace the whole set on update.
-- **Returns:** `{ "post_id": int, "slug": string, "status": string, "url": string, "edit_url": string, "block_count": int, "post_type": string, "skipped_taxonomies"?: string[], "warnings": string[] }`. `warnings` is non-fatal (unresolvable embed provider, image with no alt text, a classic-editor body that was converted). Fatal problems return `WP_Error` and write nothing.
-- **This is for blog posts and block-editor entries of custom types only.** Pages stay on `wpcanai-create-page` + `wpcanai-write-meta` (CanAI HTML/CSS/JS meta). `write-post` writes native block markup into a post's `post_content` and does not touch CanAI meta.
+- **Returns:** `{ "post_id": int, "slug": string, "status": string, "url": string, "edit_url": string, "block_count": int, "warnings": string[] }`. `warnings` is non-fatal (unresolvable embed provider, image with no alt text, a classic-editor body that was converted). Fatal problems return `WP_Error` and write nothing.
+- **This is for blog posts only.** Pages stay on `wpcanai-create-page` + `wpcanai-write-meta` (CanAI HTML/CSS/JS meta). `write-post` writes native block markup into a post's `post_content` and does not touch CanAI meta.
 
 **Block types.** Each item in `blocks` is `{ "type": …, …fields }`:
 
@@ -751,7 +579,6 @@ Site name, tagline, and archive/search/404 SEO title+description live in a per-l
   - **`adopt_woo_pages` (default `true`, v1.47.0).** A pack with `settings.woo_pages` writes its content onto the store's **existing** WooCommerce pages instead of creating duplicates (`checkout-2`, …), preserving their IDs and permalinks so order-received URLs in already-sent emails keep working. Each adopted page's prior CanAI meta is snapshotted and restored by `wpcanai-uninstall-preset` — the page itself is never deleted. Pass `false` to force new pages (pre-v1.47.0 behavior; breaks previously issued order links).
   - **`trash_woo_pages` (default `false`).** Trashes the existing shop/cart/checkout/my-account pages (recoverable from Trash) so the pack's own store pages take those slugs. It runs **before** adoption, so it wins: the slots are empty by the time adoption looks, and fresh pages are created.
 - **`wpcanai-uninstall-preset`** — `{ "slug": string }`. Removes a pack's templates/pages and tears down any nav menus it created.
-- **A pack's custom post types** (e.g. `cpt-corporate`'s `service`) are registered by the pack itself — do not re-register them in a snippet. If their archive or entry URLs return 404 after install, tell the user to re-save **Settings → Permalinks** (**Save Changes**, no change needed).
 
 ### `wpcanai-export` / `wpcanai-import`
 
@@ -764,7 +591,6 @@ Site name, tagline, and archive/search/404 SEO title+description live in a per-l
 - `include_network: true` additionally makes **real outbound HTTP requests** (outbound HTTPS, REST loopback, skills-endpoint reachability, auth-header pass-through) — slower; use it when connectivity or environment issues are suspected instead of guessing.
 - **(v1.80.0)** a `page_cache` check (plugin detected, purge hooks, auto-purge on/off) and an `integrations` group (one row per tool label: present, tools registered, disabled). **(v1.82.0)** `integrations` rows count tools by their *declared* labels (`touches` + `requires`), so an absent integration still reports how many tools declare it, and carry `hidden_by_recommendation`.
 - **(v1.82.0)** group `tools`: `tool_budget` (exposed vs total tools, bytes, ~tokens) and `tool_recommendations` (warn when "Follow recommendations" is off and a recommendation differs from the current state; the `fix` is the exact `manage-tools` call). Group `languages`: `languages` (the configured native languages, or none) and `translation_tools` — the language list paired with the Languages tool group: none/off → pass (not in use), none/on → **warn** (add a language with `i18n-set-settings` or switch the group off), some/on → pass, some/off → info (a legitimate owner choice; opt in with `manage-tools` if translations are wanted). This is the only place diagnostics mentions translation; without an opt-in nothing else does.
-- **(v1.83.0)** group `skills`: the gate mode (warns while it is `off`), one row per known skill (current, outdated or never seen, with the version and client it was last seen with), this session's declared skills, and the site's counters (`sessions_declared`, `sessions_undeclared`, `writes_undeclared`, `denied`).
 
 ### `wpcanai-purge-cache` (plugin v1.80.0; requires `cache`)
 
@@ -1178,7 +1004,6 @@ If the damage spans several posts (a bad preset install or import), skip straigh
 
 | Goal                             | Tools                    |
 | -------------------------------- | ------------------------ |
-| Start a session (declare skills) | `wpcanai-hello`              |
 | List templates                   | `wpcanai-list-templates`     |
 | List CanAI pages                   | `wpcanai-list-pages`         |
 | Read fields                      | `wpcanai-read-meta`          |

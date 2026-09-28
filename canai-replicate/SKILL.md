@@ -2,9 +2,7 @@
 name: canai-replicate
 description: >
   Use when the user wants to replicate, clone, migrate, port or rebuild a live
-  website or a single live URL into CanAI (WordPress + Twig + Tailwind) — including
-  an existing page on the same site (theme-rendered, page builder such as Elementor
-  or Divi, plain block editor) — at any
+  website or a single live URL into CanAI (WordPress + Twig + Tailwind) — at any
   of four objectives: a content-structure inventory, a low-fidelity wireframe, a
   styled semantic migration kit, or a pixel-gated high-fidelity page. Pairs with
   agent-browser for capture and verification.
@@ -13,12 +11,10 @@ description: >
   wpcanai", "port this site", "copy this site", "replica", "migrate any website",
   "convert this site to wordpress", "page mode", "wireframe", "lo-fi", "low
   fidelity", "content structure", "content inventory", "section map", "section
-  breakdown", "pixel-perfect", "high fidelity", "pixelmatch", "migrate this page to canai",
-  "move my page to canai", "convert this page to canai", "elementor to canai",
-  "page builder to canai", "existing page".
+  breakdown", "pixel-perfect", "high fidelity", "pixelmatch".
 metadata:
   author: canai
-  version: "4.2.0"
+  version: "4.3.0"
 allowed-tools: Bash Read Write Edit Grep Glob
 ---
 
@@ -28,18 +24,9 @@ Take a **live website** and rebuild it as a **migration kit**: one
 self-contained HTML file per one-off page (the
 **[canai-prepare](../canai-prepare/SKILL.md)** format) plus a reusable
 **Twig template per repeating page type**, a site-wide **DESIGN.md**, and a
-**CONTENT-MODEL.md** handoff describing the custom post types/fields the
-destination site needs (registered through FluentSnippets via
-**canai-yolo** — see Handoff). Output drops directly into
+**CONTENT-MODEL.md** handoff describing the custom post types/fields a human
+implements on the destination site. Output drops directly into
 **[canai-mcp](../canai-mcp/SKILL.md)** for the WordPress side.
-
-**Existing pages on the same site count.** Moving a page that already lives on
-the destination site — theme-rendered, built with a page builder (Elementor,
-Divi, …), or a plain block-editor page — into CanAI is a migration like any
-other: pass its **live URL**. When the kit is pushed, `canai-mcp` writes onto
-**that page's post ID** instead of creating a new page, so its URL stays (see
-Handoff). If the user only has **HTML files**, not a URL, this is the wrong
-skill: use **[canai-prepare](../canai-prepare/SKILL.md)**.
 
 | | input | output |
 | --- | --- | --- |
@@ -514,11 +501,8 @@ two ready-to-use materializations — **Pods** setup steps and an
 **Easy Code Manager** PHP snippet. WooCommerce types (`woo:product`, etc.)
 get the equivalent treatment for native properties/attributes/meta on the
 *existing* `product` post type — this skill never registers a new `product`
-CPT. This skill never creates CPTs or imports content itself: the document is
-the contract. The CPTs, taxonomies and fields it lists are custom
-functionality, registered through FluentSnippets via the **canai-yolo**
-skill (its CPT recipe) — never by the user editing `functions.php`, a theme
-or plugin file, or `mu-plugins`. Skip this stage when classify
+CPT. This skill never creates CPTs or imports content either way: the
+document is handed to the user to implement. Skip this stage when classify
 found no repeating types (`contentmodel` errors out if `pagetypes.json` has
 none).
 
@@ -792,15 +776,9 @@ runs/<site>/
   `output/structure/` or the static wireframe HTML. Only `styled` and `pixel`
   reach `pushprep` / `handoff-page`.
 
-1. **Materialize CONTENT-MODEL.md** on the destination site through
-   FluentSnippets via the **canai-yolo** skill: its "custom post type or
-   taxonomy" recipe drafts the snippet (group `CanAI custom`), the user
-   approves it, it is published, and the user re-saves **Settings →
-   Permalinks** once so the new types' URLs resolve. Use the generated
-   snippet materialization, not the Pods one. Never hand the user PHP to put in
-   `functions.php`, a theme or plugin file, or `mu-plugins`. Entries of the
-   new types are then written through canai-mcp (`wpcanai-write-post` /
-   `wpcanai-create-page` with `post_type`). CanAI
+1. **Materialize CONTENT-MODEL.md** on the destination site (user step):
+   via the Pods plugin, or by installing the generated PHP snippet with
+   Easy Code Manager / FluentSnippets — both are fully supported. CanAI
    1.43.1+ resolves `item.fields.<name>` (including `.url` on an image/file
    field) whether the field came from Pods or from a plain
    `register_post_meta()` snippet: `PostEnricher::get_post_fields()` falls
@@ -817,10 +795,7 @@ runs/<site>/
    Defect #1, reproduced live). Push the `runs/<site>/output/push/<slug>.json`
    artifacts instead: an entry with `template_type: null` is a canai-prepare
    page (its `html`/`css`/`js` go straight into `_canai_html`/`_canai_css`/
-   `_canai_js` on a new `page` post — or, **when the source URL is a page that
-   already exists on the destination site, onto that page's post ID** with
-   `wpcanai-write-meta`, so its URL, slug, parent and SEO settings stay and
-   no second page is created); an entry with a `template_type` is a
+   `_canai_js` on a new `page` post); an entry with a `template_type` is a
    `wpcanai_template` post — assign that exact value as the `template_type`
    taxonomy term. **Push `header.json` and `footer.json` first**
    (`template_type` `header`/`footer` — CanAI's own pre-seeded terms):

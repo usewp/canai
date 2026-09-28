@@ -4,15 +4,12 @@ description: >
   Prepares CanAI-friendly static sites as one self-contained HTML file per page: semantic HTML5,
   Tailwind utility classes, vanilla JS or Alpine.js for interactivity, Lucide icon markup.
   Use when the user asks to prepare HTML for CanAI, single-html pages, image/mockup to HTML,
-  screenshot to HTML, SPA or PWA to static pages, static site export, existing HTML files to
-  migrate into CanAI (when there is no live URL — with a URL, use canai-replicate), or "canai-prepare".
+  screenshot to HTML, SPA or PWA to static pages, static site export, or "canai-prepare".
   Triggers on: "canai-prepare", "prepare html", "image to html", "mockup to html", "screenshot to html",
-  "spa to html", "pwa to html", "static html", "single html", "per-page html", "convert design to html",
-  "html file to canai", "migrate html to canai", "convert this html", "existing html",
-  "static site folder", "import html".
+  "spa to html", "pwa to html", "static html", "single html", "per-page html", "convert design to html".
 metadata:
   author: canai
-  version: "1.7.0"
+  version: "1.8.0"
 allowed-tools: Bash Read Write Edit Grep Glob
 ---
 
@@ -136,16 +133,6 @@ Example:
 4. Downgrade framework components to semantic HTML + Tailwind + Alpine/vanilla behavior.
 5. Write `**pages.json**` — array of `{ "slug", "title", "file" }` for traceability.
 
-## Workflow C — Existing HTML files → CanAI-ready pages
-
-Use this when the user is **migrating** a page or site into CanAI and only has **HTML files** — an exported page, a static site folder, a file from a designer or another tool. If they have the page's **live URL** instead, `canai-replicate` is the better route (it captures the page as a visitor sees it); say so and stop.
-
-1. **Keep the content and structure.** Same sections, headings, copy, links and images, in the same order. Do not redesign unless the user asks.
-2. **Rework the markup into this skill's conventions:** semantic HTML5 landmarks, **Tailwind utilities instead of the source stylesheet** (translate the rules that matter; drop framework/theme CSS), Alpine.js or vanilla JS instead of jQuery/plugins, Lucide instead of icon fonts, and `<!-- Type / Short Label -->` section comments per [references/STRUCTURE-NAVIGATION.md](references/STRUCTURE-NAVIGATION.md).
-3. **Keep asset references** (relative paths, or the original absolute URLs) so `canai-mcp`'s sideload pre-pass can pull every image into the media library on import. Do not inline images as base64.
-4. **Flag server-side behaviour instead of faking it.** A form that posts somewhere, a login, a search backend, custom PHP: leave a clean placeholder plus an `<!-- @dev … -->` note, and list it for the user. That work is custom functionality — FluentSnippets through the `canai-yolo` skill (see **Scope** in `canai-mcp`), never a `functions.php` or theme-file edit.
-5. **One output file per page**, plus `pages.json` (`{ "slug", "title", "file" }`). If a file replaces a page that already exists on the site, add its existing URL as `"replaces"` so the import writes onto that page (see **Handoff to CanAI**).
-
 ## CanAI compatibility checklist
 
 - Navigation comments use the exact `<!-- Type / Short Label -->` grammar and controlled vocabulary.
@@ -161,7 +148,7 @@ Use this when the user is **migrating** a page or site into CanAI and only has *
 1. **Settings:** Enable Tailwind, Lucide, and Alpine (if used) in **CanAI → Settings** so scripts load via `**wp_head()`** / `**wp_footer()**` as above.
 2. **Document title:** Set the WordPress page/post title (and SEO plugin fields if used); `**wp_head()`** outputs `<title>` on the live site — omit a duplicate `<title>` from imported template fragments when the layout already includes `{{ wp_head() }}`.
 3. **Layout:** Move header markup into the **site header** component template; footer into the **site footer** component; wire them from the main **layout** template (`{{ wpcanai_template('site-header') }}`, `{{ wpcanai_template('site-footer') }}` — use the project’s actual slugs).
-4. **Import:** Use `**canai-mcp**` (convert HTML → Twig, write `_canai_html` / `_canai_css` / `_canai_js`) — follow that skill for storage rules (e.g. no `post_content` for CanAI bodies). **If a prepared file replaces a page that already exists on the site** (Workflow C's `"replaces"`), `canai-mcp` writes onto **that page's post ID** with `wpcanai-write-meta`, so its URL, slug, parent and SEO settings stay — it does not create a second page.
+4. **Import:** Use `**canai-mcp**` (convert HTML → Twig, write `_canai_html` / `_canai_css` / `_canai_js`) — follow that skill for storage rules (e.g. no `post_content` for CanAI bodies).
 5. **Strip** `WPCanAI-PREVIEW-LIBS` blocks when pasting into templates (avoid duplicating what CanAI already injects).
 6. **Images become ID-based helpers at import, not here.** Prepared `.html` keeps **relative** `src="assets/…"` so the folder previews in a plain browser. On import, `canai-mcp` sideloads each asset and rewrites `<img>` → `{{ image_attrs(id, 'src,alt') }}` (and other surfaces → `{{ media_url(id, size) }}`) by media **id** — so keep the prepared markup clean and swappable: one `<img>` per asset, a descriptive `alt`, `width`/`height` when known, and no inline `style` that would fight the helper output.
 7. **Navigation comments map 1:1 on import:** `<!-- Type / Short Label -->` becomes `{# Type / Short Label #}`. Preserve the type and label exactly; only replace the delimiters. Follow [references/STRUCTURE-NAVIGATION.md](references/STRUCTURE-NAVIGATION.md), including the required landmark mappings, so `wpcanai-scan` passes and the editor's Structure metabox stays useful.
@@ -171,5 +158,3 @@ Use this when the user is **migrating** a page or site into CanAI and only has *
 ## Related skills
 
 - `**canai-mcp**` — MCP tools for `_canai_*` on the configured server.
-- `**canai-replicate**` — migrating from a **live URL** (captures and verifies the rendered page); this skill is the route when the user only has HTML files.
-- `**canai-yolo**` — FluentSnippets, for any server-side behaviour flagged in Workflow C.
