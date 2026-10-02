@@ -65,7 +65,7 @@ npx skills add vercel-labs/agent-browser --skill agent-browser
 
 ## After install
 
-**Any site (MCP):** in WP Admin go to **CanAI → AI Agent → Connections**,
+**Any site (MCP):** in WP Admin go to **CanAI → AI Client → Connections**,
 generate an API key, and copy the ready-made MCP client JSON shown there (the
 key rides in the endpoint URL). Then ask your agent to list your CanAI templates (`wpcanai-list-templates`) to
 confirm the connection works.

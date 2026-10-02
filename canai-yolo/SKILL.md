@@ -9,7 +9,7 @@ description: >
   "create snippet".
 metadata:
   author: canai
-  version: "2.6.0"
+  version: "2.6.1"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -42,7 +42,7 @@ Key rules the schemas alone don't make obvious:
 1. **Tools only appear when FluentSnippets is active.** If `easy-code-manager` is inactive the six snippet tools are not registered at all — you won't see them in the tool list.
 2. **Canonical form (plugin v1.80.0).** Send PHP as the body **without `<?php`** — a leading `<?php` and blank lines are **stripped** on write (no longer rejected) and on read. Trailing newlines are kept; a trailing `?>` is removed. `sha256` / `bytes` / `lines` are computed over the code **exactly as `get-snippet` returns it**, so hash that string, not your local file, when comparing. css/js must not be wrapped in their own `<style>` / `<script>` tag. PHP is syntax-checked and test-run once before it is saved: it must not redeclare a function or class that already exists (guard with `function_exists` / `class_exists`), print output, `return` at the top level, or call something that only loads later (use a hook).
 3. **Create defaults to a draft.** `wpcanai-create-snippet` writes a draft unless you pass **`status: "published"`** (v1.80.0), which syntax-checks PHP first and writes nothing on a syntax error. The response `status` is read back — Fluent Snippets' own `auto_publish` can still promote a draft.
-4. **Writes only succeed for allowlisted groups.** An administrator lists agent-writable snippet groups at **CanAI → AI Agent → Guardrails → FluentSnippets group allowlist**. An empty allowlist (the default) means **all** snippet writes are refused (`snippet_writes_disabled`). A write to a non-allowlisted group returns `snippet_group_not_allowed`. Prefer the group `AI` unless the user specifies otherwise. Reads (`list`/`get`) are always allowed regardless of the allowlist.
+4. **Writes only succeed for allowlisted groups.** An administrator lists agent-writable snippet groups at **CanAI → AI Client → Guardrails → FluentSnippets group allowlist**. An empty allowlist (the default) means **all** snippet writes are refused (`snippet_writes_disabled`). A write to a non-allowlisted group returns `snippet_group_not_allowed`. Prefer the group `AI` unless the user specifies otherwise. Reads (`list`/`get`) are always allowed regardless of the allowlist.
 5. **Updates are sparse.** Send only the fields you want to change to `wpcanai-update-snippet`; the server reads the current snippet, merges your changes over its full metadata, and writes it back. Omitting a field keeps its current value — you cannot wipe `group`/`priority`/`run_at`/`created_at` by sending only `code`.
 6. **`run_at` is type-specific.** PHP → `all`|`backend`|`frontend`; `php_content` → `shortcode`|`wp_head`|`wp_body_open`|`wp_footer`|`before_content`|`after_content`; css → `wp_head`|`admin_head`|`everywhere`; js → `wp_head`|`wp_footer`|`admin_head`|`admin_footer`. An invalid pairing is rejected before FluentSnippets is called (`invalid_snippet_type` / `invalid_run_at`).
 7. **Upstream quirks (not fixed here).** CSS `everywhere` does not actually load in admin (a plugin typo, `everywehere`), and PHP `frontend` is not enforced (it runs everywhere) — both values are still accepted because they are what the FluentSnippets UI offers. Prefer `all` / `backend` / `wp_head` when unsure.

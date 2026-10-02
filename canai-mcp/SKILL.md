@@ -18,7 +18,7 @@ description: >
   "reading mode", "reader mode", "reader view", "safari reader".
 metadata:
   author: canai
-  version: "1.40.0"
+  version: "1.40.1"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -58,7 +58,7 @@ This applies to **any** MCP-capable host (IDEs, CLIs, agents): Cursor, Claude De
 - Call CanAI tools through **your host’s MCP tool-calling mechanism** (exact API name varies: e.g. `CallMcpTool`, `use_mcp_tool`, native MCP tool list in the client). The MCP server name the user configured is often `**canai-mcp`**; some hosts **prefix** server names (e.g. `user-canai-mcp`). Use **whatever server identifier your host lists** for the CanAI MCP connection.
 - The MCP client handles **sessions**, **transport**, and **authentication** — **never** reimplement MCP over Shell, Python, curl, or raw HTTP to `{site}/wp-json/mcp/wpcanai`. A **large payload is not an exception**: passing a full `_canai_html` through `wpcanai-write-meta` works at any size, and hand-rolled HTTP to the MCP endpoint will only 403 (no session/auth). If a write feels too big to be worth resending whole, use **`wpcanai-replace-in-meta`** for the targeted change instead — never drop to raw HTTP.
 - **Do not** open tool-descriptor JSON files or probe REST routes to discover parameters — use the **inline tool reference** below.
-- If tool calls fail, ask the user to verify **CanAI → AI Agent** in WordPress (endpoint URL, API key) and their MCP client config — do not improvise workarounds.
+- If tool calls fail, ask the user to verify **CanAI → AI Client** in WordPress (endpoint URL, API key) and their MCP client config — do not improvise workarounds.
 
 ---
 
@@ -71,7 +71,7 @@ When a step genuinely needs local glue — sha256 hashing, assembling a temp fil
 ## Prerequisites (short)
 
 - WordPress with CanAI, `wordpress/abilities-api`, and `wordpress/mcp-adapter`.
-- **MCP endpoint:** `{site}/wp-json/mcp/wpcanai` (copy from **WP Admin → CanAI → AI Agent → Connections**).
+- **MCP endpoint:** `{site}/wp-json/mcp/wpcanai` (copy from **WP Admin → CanAI → AI Client → Connections**).
 - **API key** as `JWT_TOKEN` for `@automattic/mcp-wordpress-remote` (or your client’s env).
 
 Add to your **MCP client’s server configuration** (example; keys may differ by client):
@@ -91,7 +91,7 @@ Add to your **MCP client’s server configuration** (example; keys may differ by
 }
 ```
 
-**Important:** `WP_API_URL` must be the **full** path `…/wp-json/mcp/wpcanai`, not only the site home URL — use the value from **AI Agent → Connections**.
+**Important:** `WP_API_URL` must be the **full** path `…/wp-json/mcp/wpcanai`, not only the site home URL — use the value from **AI Client → Connections**.
 
 Verify with `**wpcanai-list-templates`** (or your client’s tool list for the CanAI server).
 
@@ -129,7 +129,7 @@ Before relying on CanAI for full-page output, the site should have:
 
 If prerequisites are missing or the user asks to **“proceed all recommended setup”**, call `**wpcanai-setup`** `{ }` first. It installs/activates **WPCanAi Starter** (`wpcanai-empty`), creates the default layout (via the plugin’s default-layout helper), adds basic header/footer templates, creates a Home page, sets the static front page, sets `**wpcanai_default_layout**`, and enables **Tailwind CSS** (`wpcanai_tailwind_settings`: `load_tailwind` = `yes`, `source` = `plugin` / internal bundled Play CDN).
 
-For **WordPress / WooCommerce / CanAI options** (e.g. static front page, `users_can_register`, checkout/account registration, Tailwind settings), use `**wpcanai-read-settings`** / `**wpcanai-update-settings`**. For **other plugin options** stored in `wp_options`, use `**wpcanai-get-option`** / `**wpcanai-update-options`** after the site owner configures allowlists under **CanAI → AI Agent → Guardrails** (read list, auto-apply list, and optional approval list). For a new **page** with optional CanAI meta, use `**wpcanai-create-page`**.
+For **WordPress / WooCommerce / CanAI options** (e.g. static front page, `users_can_register`, checkout/account registration, Tailwind settings), use `**wpcanai-read-settings`** / `**wpcanai-update-settings`**. For **other plugin options** stored in `wp_options`, use `**wpcanai-get-option`** / `**wpcanai-update-options`** after the site owner configures allowlists under **CanAI → AI Client → Guardrails** (read list, auto-apply list, and optional approval list). For a new **page** with optional CanAI meta, use `**wpcanai-create-page`**.
 
 ### Menus — two locations, never hardcoded
 
@@ -157,7 +157,7 @@ For **WordPress / WooCommerce / CanAI options** (e.g. static front page, `users_
 - **`write-menu` writes into the menu already assigned to the location; it never renames or replaces it.** A site whose `primary` holds "Journal Primary" keeps "Journal Primary". Only a location with no menu gets a new one, named `Primary` / `Footer`, assigned in the same call.
 - **`menus.json` from `canai-prepare`** sits next to `pages.json` as `{ "primary": [ … ], "footer": [ … ] }`, already in `write-menu`'s `items` shape: one `write-menu` call per key, after the pages it names exist. Its `page` values are `pages.json` slugs — pass the created page's id where the slug on the site differs (e.g. `index` became the front page). The prepared HTML marks each nav `<nav data-canai-menu="primary">` / `"footer"`; that `<nav>`'s links are what the loop replaces.
 - **Translation needs no template work.** On a non-default language `get_menu()` returns each `title` and `description` from the string store and each internal `url` with the language prefix; `raw_title` / `raw_description` hold the untranslated text. Menu titles and descriptions are translated like any other string — see **Native string translation**. A language that has its own menu is the exception: see **Menus per language**.
-- **Upgrade note.** Templates written before plugin v1.88.0 call `get_menu('wpcanai_primary')` / `get_menu('wpcanai_footer')`. Both names still resolve, and `wpcanai-scan` reports each call as `legacy_menu_location`; rename them with `wpcanai-replace-in-meta` (`{ "from": "get_menu('wpcanai_primary')", "to": "get_menu('primary')" }`, the same for `footer`). `wpcanai-get-menus` lists any menu still assigned under an old name in `legacy_assignments`.
+- **Upgrade note.** Templates written before plugin v1.88.0 call `get_menu('wpcanai_primary')` / `get_menu('wpcanai_footer')`. Both names still resolve, and `wpcanai-scan` reports each call as `legacy_menu_location`; rename them with `wpcanai-replace-in-meta` (`{ "post_id": <id>, "replacements": [{ "from": "get_menu('wpcanai_primary')", "to": "get_menu('primary')" }, { "from": "get_menu('wpcanai_footer')", "to": "get_menu('footer')" }] }`). `wpcanai-get-menus` lists any menu still assigned under an old name in `legacy_assignments`.
 
 #### Mega menus — headings, icons, descriptions, images (plugin v1.89.0)
 
@@ -423,7 +423,7 @@ The list a client gets from `tools/list` is **not** "everything registered". Eac
 - **Returns:** object with any of `html`, `css`, `js`, `context` (strings), `layout` (int), `format` (`"twig"`|`"blocks"`), `blocks` (string, raw block markup), `tailwind_build` (string), `tailwind_hash` (string), `hashes` (object).
 - **(v1.58.0) `hashes`.** Whenever `fields` includes, or defaults to, `html`, `css`, and/or `js`, the response also carries `hashes` — a SHA-1 per requested content field, e.g. `{ "html": "<sha1>" }`. Absent from metadata-only reads (no `html`/`css`/`js` requested). Feed these straight into `wpcanai-write-meta`'s `expected_hash` to make your next write conditional on that field not having changed since this read.
 - **(v1.65.0) `format` and `blocks`.** `format` is in the default set. `blocks` returns the raw block markup and is only valid on a blocks page (`format_mismatch` otherwise); it is not hashed.
-- **(v1.71.0) `lines`.** `"lines": [from, to]` (1-based, inclusive, ≤ 400 lines) returns only that slice of the **single** requested content field — `fields` must name exactly one of `html`/`css`/`js` (non-content fields like `layout` may ride along) — and adds `line_counts: { html: 1240 }`. `hashes` are still computed over the **full** field, so they remain valid for `write-meta`'s `expected_hash`. Use it to inspect a region a `grep-content` hit points at instead of pulling the whole document.
+- **(v1.71.0) `lines`.** `"lines": [from, to]` (1-based, inclusive, ≤ 400 lines) returns only that slice of the **single** requested content field — `fields` must name exactly one of `html`/`css`/`js` (non-content fields like `layout` may ride along) — and adds `line_counts: { html: 1240 }`. `hashes` are still computed over the **full** field, so they remain valid for `write-meta`'s `expected_hash`. Use it to inspect a region a `grep-content` hit points at instead of pulling the whole document. **Always send `fields` with `lines`** — `{ "post_id": 12, "fields": ["html"], "lines": [200, 260] }`. Without `fields` the call fails with `invalid_input` *lines applies to exactly one content field*, because `fields` then defaults to html, css and js.
 - **(v1.80.0) `hash_only`.** `"hash_only": true` returns only `hashes` and `line_counts` for the content fields named in `fields` (`html`/`css`/`js`; all three when none is named), plus `format` and `layout` — **no content**. It is the cheap way to confirm a write landed or to get an `expected_hash` before a `write-meta`. Cannot be combined with `lines`.
 
 ### `wpcanai-write-meta`
@@ -441,7 +441,7 @@ The list a client gets from `tools/list` is **not** "everything registered". Eac
 
 ### `wpcanai-replace-in-meta`
 
-- **Args:** `{ "post_id": int, "field"?: "html"|"css"|"js", "replacements": [{ "from": string, "to": string }], "require_all"?: bool, "ignore_whitespace"?: bool, "regex"?: bool, "scope"?: { "text": string, "occurrence"?: int }, "dry_run"?: bool }` — `post_id` and `replacements` required; `field` defaults to `html`. Replacements apply server-side, in order, everywhere `from` occurs — the document never crosses the wire. **(v1.71.0)** `ignore_whitespace` makes every whitespace run in `from` match any whitespace run (indentation- and wrap-tolerant; `to` is written literally). `regex` treats `from` as PCRE and `to` as a `preg_replace` template (`$1`); exclusive with `ignore_whitespace`. `scope.text` restricts all replacements to the **nearest enclosing element** of the n-th literal occurrence of that text (`occurrence`, default 1) — the way to say "the heading that says *conference*" without knowing its markup. `dry_run` computes counts and diagnostics and writes nothing. `require_all: true` errors (422, nothing written) if any `from` matches 0×. Same `lang_mismatch` enforcement as `write-meta`.
+- **Args:** `{ "post_id": int, "field"?: "html"|"css"|"js", "replacements": [{ "from": string, "to": string }], "require_all"?: bool, "ignore_whitespace"?: bool, "regex"?: bool, "scope"?: { "text": string, "occurrence"?: int }, "dry_run"?: bool }` — `post_id` and `replacements` required; `field` defaults to `html`. **`replacements` is an array even for one pair** — `{ "post_id": 12, "replacements": [{ "from": "a", "to": "b" }] }`. There is no top-level `from` / `to`; a call without `replacements` fails schema validation with *replacements is a required property of input*. Replacements apply server-side, in order, everywhere `from` occurs — the document never crosses the wire. **(v1.71.0)** `ignore_whitespace` makes every whitespace run in `from` match any whitespace run (indentation- and wrap-tolerant; `to` is written literally). `regex` treats `from` as PCRE and `to` as a `preg_replace` template (`$1`); exclusive with `ignore_whitespace`. `scope.text` restricts all replacements to the **nearest enclosing element** of the n-th literal occurrence of that text (`occurrence`, default 1) — the way to say "the heading that says *conference*" without knowing its markup. `dry_run` computes counts and diagnostics and writes nothing. `require_all: true` errors (422, nothing written) if any `from` matches 0×. Same `lang_mismatch` enforcement as `write-meta`.
 - **Returns:** `{ "success": bool, "post_id": int, "field": string, "total": int, "dry_run": bool, "scope"?: { "text", "occurrences", "used", "start", "end", "line" }, "replacements": [{ "from", "to", "count", "suggestion"? }] }`. A zero-count pair (without `require_all`) carries a `suggestion` explaining the miss.
 - **(v1.71.0) Miss diagnostics.** A `require_all` miss returns `replace_no_match` and the **error message itself** carries the diagnosis — over MCP you only ever see the message, never `data`: `"from" at index 1 not found, nothing written: <from>. Nearest match: <kind> at line 227, column 13 — <snippet> — <hint>. Pairs before it: 1 (counts: 3).` (`index` is 0-based; the same fields exist as `data.failed_index`, `data.results`, `data.suggestion` for REST callers). Kinds, in the order the server checks them: `whitespace_only` — the exact bytes differ only in whitespace **inside your scope** — retry the *same* call with `ignore_whitespace: true`, keeping `scope`. `outside_scope` — the literal exists only in a *different* element than the one `scope.text` selected — pick `scope.text` (or `scope.occurrence`) from that other element; **do not drop `scope`** to make it match, that rewrites the wrong element (and if the target really is the scoped element, re-check its exact bytes with a scoped `grep-content` — it is probably a whitespace or attribute-order difference). `partial` points at the longest token of your `from`. `none` — the anchor is absent from the field/scope; check `post_id`/`field`. Never fall back to a local copy of the document to "see the bytes" — the suggestion snippet and a scoped `grep-content` with `max_length: 1000` give you the exact line.
 - **Errors:** `scope_not_found`, `scope_no_element` (422, nothing written), `invalid_regex` (pattern does not compile), `regex_error` (422, nothing written — the pattern compiled but the PCRE engine hit a backtrack/JIT limit while running it, on a `regex` or `ignore_whitespace` pair; simplify the pattern, no rewrite was applied), `invalid_input` (regex + ignore_whitespace together).
@@ -602,13 +602,13 @@ Every type except `embed` accepts `className` (Tailwind classes on the block's r
 
 - **Args:** `{ "name": string }` — `wp_options.option_name`.
 - **Returns:** `{ "name": string, "value": mixed }`.
-- **Policy:** The name must be on the **read allowlist** in **WP Admin → CanAI → AI Agent → Guardrails**. A denylist blocks dangerous keys (e.g. `active_plugins`, `cron`). Names starting with `wpcanai_mcp_` are always blocked (MCP internals). If **`WPCANAI_MCP_OPTIONS_UNRESTRICTED`** is defined in `wp-config.php`, any other non-denied name may be read.
+- **Policy:** The name must be on the **read allowlist** in **WP Admin → CanAI → AI Client → Guardrails**. A denylist blocks dangerous keys (e.g. `active_plugins`, `cron`). Names starting with `wpcanai_mcp_` are always blocked (MCP internals). If **`WPCANAI_MCP_OPTIONS_UNRESTRICTED`** is defined in `wp-config.php`, any other non-denied name may be read.
 
 ### `wpcanai-update-options`
 
 - **Args:** `{ "options": { "<option_name>": <value>, ... } }` — JSON-safe scalars and arrays only.
 - **Returns (applied):** `{ "success": true, "status": "applied", "updated": string[], "pending_id": null }`.
-- **Returns (queued):** `{ "success": true, "status": "pending_approval", "pending_id": string, "option_keys": string[], "message": string }` — no DB write until an administrator clicks **Approve** on **WP Admin → CanAI → AI Agent → Guardrails → Pending MCP option updates**.
+- **Returns (queued):** `{ "success": true, "status": "pending_approval", "pending_id": string, "option_keys": string[], "message": string }` — no DB write until an administrator clicks **Approve** on **WP Admin → CanAI → AI Client → Guardrails → Pending MCP option updates**.
 - **Policy:** Configure **auto-apply** and **requires approval** allowlists on the **Guardrails** tab. If a name appears on both lists, **approval wins**. If **any** key in the request requires approval, the **entire** `options` object is queued as one pending request. Names must be on at least one write list (unless unrestricted mode). Same denylist as `get-option`.
 
 ### `wpcanai-get-pending`
@@ -828,7 +828,7 @@ CanAI has one translation model: **native string translation** (one post per pag
 
 1. **Settings** — `wpcanai-i18n-get-settings { }`. If languages are missing or wrong, confirm with the user and write with `wpcanai-i18n-set-settings` (it **replaces the whole list** — include ALL languages plus `default`).
 
-2. **Authoring precondition — every user-facing string must be `{{ t('…') }}`.** Only `t()` sources are indexed and translatable. If pages carry hardcoded strings, wrap them first: `wpcanai-read-meta` → build replacement pairs → `wpcanai-replace-in-meta`, e.g. `{ "from": ">Shop now<", "to": ">{{ t('Shop now') }}<" }` (anchor on surrounding markup so the match is unique). Keep markup OUTSIDE the source: `<strong>{{ t('Best seller') }}</strong>`, never `{{ t("<strong>Best seller</strong>") }}` — translations are stored as plain text and HTML is stripped on save. When authoring NEW pages on a native-i18n site, wrap user-facing strings in `t()` from the start (see the helper table in **Implement HTML → CanAI**).
+2. **Authoring precondition — every user-facing string must be `{{ t('…') }}`.** Only `t()` sources are indexed and translatable. If pages carry hardcoded strings, wrap them first: `wpcanai-read-meta` → build replacement pairs → `wpcanai-replace-in-meta`, e.g. `{ "post_id": <id>, "replacements": [{ "from": ">Shop now<", "to": ">{{ t('Shop now') }}<" }] }` (anchor on surrounding markup so the match is unique). Keep markup OUTSIDE the source: `<strong>{{ t('Best seller') }}</strong>`, never `{{ t("<strong>Best seller</strong>") }}` — translations are stored as plain text and HTML is stripped on save. When authoring NEW pages on a native-i18n site, wrap user-facing strings in `t()` from the start (see the helper table in **Implement HTML → CanAI**).
 
 3. **Rebuild the index** — `wpcanai-i18n-rescan { }` after any content edit. `wpcanai-i18n-list-strings` reads the index, not live meta — a stale index lists stale strings.
 
@@ -898,7 +898,7 @@ If step 3 returns `replace_no_match`, read the **message** (`Nearest match: <kin
 1. **Resolve ID** — `wpcanai-list-pages` `{ }` or `wpcanai-resolve-content-id` `{ "type": "shop" }` (etc.). Use returned `content_post_id` (or row `id` from list-pages).
 2. **Read** — `wpcanai-read-meta` `{ "post_id": <id>, "fields": ["html"] }` (add other fields if needed).
 3. **Prefer a targeted replace.** Build `{from, to}` pairs anchored on the byte-exact lines from `grep-content` (`post_id`, `max_length: 1000`) and call `wpcanai-replace-in-meta` with `require_all: true` — add `dry_run: true` first when the pairs are many. Use `ignore_whitespace: true` when the source wraps attributes across lines.
-4. **Fall back to a full write only for structural rewrites** — `wpcanai-read-meta` `{ "post_id": <id>, "fields": ["html"] }` (or a `lines` slice), edit, then `wpcanai-write-meta` `{ "post_id": <id>, "html": "<full updated HTML>" }` with `expected_hash`.
+4. **Fall back to a full write only for structural rewrites** — `wpcanai-read-meta` `{ "post_id": <id>, "fields": ["html"] }` (or a slice: `{ "post_id": <id>, "fields": ["html"], "lines": [from, to] }`), edit, then `wpcanai-write-meta` `{ "post_id": <id>, "html": "<full updated HTML>" }` with `expected_hash`.
 
 ### Fix broken asset URLs on an existing page
 
@@ -1064,7 +1064,7 @@ preset install touching 14 posts). Roll the whole thing back with `wpcanai-resto
 rather than restoring 14 snapshots one at a time.
 
 **Kill-switch.** Like every `wpcanai/*` ability, each of these can be disabled by the site owner
-under **CanAI → AI Agent → Tools**; a disabled tool simply won't be in your tool list.
+under **CanAI → AI Client → Tools**; a disabled tool simply won't be in your tool list.
 
 ### `wpcanai-list-snapshots`
 
@@ -1178,5 +1178,5 @@ If the damage spans several posts (a bad preset install or import), skip straigh
 
 ## Security
 
-- Treat API keys like passwords; revoke in **AI Agent → Connections** when unused.
+- Treat API keys like passwords; revoke in **AI Client → Connections** when unused.
 - Prefer HTTPS for non-local sites.
