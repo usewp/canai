@@ -18,7 +18,7 @@ description: >
   "reading mode", "reader mode", "reader view", "safari reader".
 metadata:
   author: canai
-  version: "1.42.0"
+  version: "1.43.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -213,7 +213,10 @@ Rich navigation is menu data too: never hardcode a mega menu's links because the
 - **A language menu only when the links differ** — a Malay-only page, a shorter footer. `wpcanai-write-menu { "location": "footer", "lang": "ms", "items": [ … ] }` writes that language's menu for the location, creating `Footer (Bahasa Melayu)` (the language's native name) and assigning it to that language on the first call. Its items are written **in that language**: `get_menu()` renders them as written (no string-store pass) and still prefixes internal URLs.
 - **No third location.** A language menu is an assignment stored by CanAI, not a registered location: Appearance → Menus → Manage Locations still lists Primary and Footer, templates still call `get_menu('primary')` / `get_menu('footer')` and nothing changes in them.
 - **Switch back** with `wpcanai-assign-menu { "location": "footer", "lang": "ms", "menu_id": null }` — Malay then shows the translated default menu again (the language menu is kept, unassigned). `assign-menu` with a `menu_id` points a language (or, without `lang`, the location itself) at an existing menu.
-- **See it** in `wpcanai-get-menus`: `languages.ms.footer` is the language's menu or `null` (inherits the translated default). The owner does the same in CanAI → Translations → **Menus** (per language, per location: "Same as default — titles translated" or a menu).
+- **Start from a copy** (v1.93.0): `wpcanai-write-menu { "location": "footer", "lang": "ms", "copy_default": true }` creates `Footer (Bahasa Melayu)` from the default menu with its labels already translated where the string store has them; edit what differs afterwards.
+- **See it** in `wpcanai-get-menus`: `languages.ms.footer` is the language's menu or `null` (inherits the translated default). **(v1.93.0)** The owner does the same in CanAI → Translations → **Menus**. Per language and location there are two choices:
+  - "the same menu as English, with its labels in Bahasa Melayu": a label count, plus "Translate the labels", which opens the menu in Appearance → Menus;
+  - "a separate menu, with different links": pick a menu, or "Create one from a copy".
 - **Strings.** For a language with its own menu for a location, `wpcanai-i18n-list-strings` and the Strings tab leave out that location's default-menu titles and descriptions: they never render in that language.
 
 ### Implement HTML → CanAI (agent workflows)
@@ -571,6 +574,7 @@ Every type except `embed` accepts `className` (Tailwind classes on the block's r
 - **Args:** `{ "location": "primary"|"footer", "items": [{ "title": string, "page"?: int|string, "url"?: string, "target"?: ""|"_blank", "classes"?: string, "description"?: string, "attr_title"?: string, "icon"?: string, "image"?: int, "children"?: [ …same shape ] }], "merge"?: bool, "lang"?: string }` — `location` and `items` required. Every item has a non-empty `title` and **exactly one** of `page` (a post id or slug of any public post type → a page item that follows the page if its slug changes) or `url` (a custom link, site-relative or absolute) — except a **heading**: an item with `children` may have neither (it renders as a label, `url: ""`). Nesting is at most 3 levels.
 - **(v1.89.0) Rich fields.** `description` (one line), `attr_title`, `icon` (a Lucide name matching `^[a-z0-9-]{0,64}$`), `image` (an attachment id that is an image). On `merge` a field you leave out keeps its value; `""` / `0` clears it.
 - **(v1.89.0) `lang`** — a non-default language slug: write that language's own menu for the location instead of the default one (see **Menus per language**). The first call creates `Primary (<native name>)` / `Footer (<native name>)` (a same-name menu is reused) and assigns it to the language; the default location is untouched and the result carries `lang`. A default or unknown slug, or a site without native translation, → `invalid_lang`.
+- **(v1.93.0) `copy_default: true`** with `lang` (no `items`) gives that language its own menu for the location as a **copy of the default menu**. Labels (titles, descriptions) take their stored translation where one exists; page and post items stay linked to their post; other items become custom links at their current URL. It returns `menu_exists` (data: `menu_id`) when the language already has its own menu there, `no_default_menu` when the location has none, and `invalid_input` without `lang`. `items` is required for every other call.
 - **Replace by default.** The location's items become exactly `items`, in the order and nesting given; `items: []` empties the menu. `merge: true` keeps the existing items, updates the one with the same `title` under the same parent, and appends the rest.
 - **One menu per location.** It writes into the menu already assigned to the location and never renames it. Only a location with no menu gets a new one, named `Primary` / `Footer` and assigned on the spot. There is no delete tool: the owner deletes menus in wp-admin.
 - **The whole tree is validated before anything is written.** A `location` other than `primary` / `footer` is refused by input validation. `unknown_page` (a `page` that resolves to nothing — create the page first), `invalid_item` (no `title`, both of `page` / `url`, neither on an item without `children`, a `target` other than `""` / `"_blank"`, an invalid `icon`, an `image` that is not an image attachment), `too_deep` (more than 3 levels). Any of them leaves the menu untouched.
@@ -623,12 +627,25 @@ Every type except `embed` accepts `className` (Tailwind classes on the block's r
 ### `wpcanai-i18n-get-settings`
 
 - **Args:** `{ }`.
-- **Returns:** `{ "default": string, "languages": [{ "slug", "native_name", "hreflang" }], "enabled": bool }` — `enabled` is `true` when at least one non-default language is configured. This is the **router probe**: call it first on any translation request (see **Translation model router**).
+- **Returns:** `{ "default": string, "languages": [{ "slug", "locale", "native_name", "hreflang" }], "enabled": bool }` — `enabled` is `true` when at least one non-default language is configured. **(v1.92.0)** `locale` is the WordPress locale the language was picked as (`ms_MY`), or `""` for one WordPress doesn't list and for languages saved before v1.92.0. This is the **router probe**: call it first on any translation request (see **Translation model router**).
 
 ### `wpcanai-i18n-set-settings`
 
-- **Args:** `{ "default": string, "languages": [{ "slug": string, "native_name"?: string, "hreflang"?: string }] }` — both required. **Replaces the entire language list** — include every language, not just the new one. `default` must be one of the slugs (else `invalid_input`). `native_name` / `hreflang` default to the slug.
-- **Returns:** the resulting settings (same shape as `wpcanai-i18n-get-settings`).
+- **Args:** `{ "default": string, "languages": [{ "slug"?: string, "locale"?: string, "native_name"?: string, "hreflang"?: string }], "confirm_default_change"?: bool }` — `default` and `languages` required. **Replaces the entire language list:** include every language, not just the new one.
+- **(v1.92.0) Pass the WordPress locale.** Each language needs a `slug` or a `locale` (a WordPress locale: `ms_MY`, `ja`, `pt_BR`, `en_US`). A locale fills in whatever you omit, exactly as the admin language picker does:
+  - `slug`: the ISO 639-1 code, region-qualified only when another language already uses it (`pt` then `pt-pt`).
+  - `native_name`: WordPress's own name for the locale, and "English" for `en_US`.
+  - `hreflang`: the bare language code (`ms`), or language-REGION when another language shares the code (`pt-PT`).
+
+  So `{ "default": "en", "languages": [{ "slug": "en" }, { "locale": "ms_MY" }] }` adds Malay as `ms` / Bahasa Melayu / `ms`. An existing language that omits `locale` keeps its stored one; `"locale": ""` clears it. Without a locale, `native_name` and `hreflang` default to the slug.
+- **(v1.92.0) Errors.** All of them leave the settings untouched, and `error.data.value` names the offending input:
+  - `unknown_locale`: not a WordPress locale; the message names close matches ("th_TH is not a WordPress locale. Did you mean th?");
+  - `missing_slug`: a language with neither slug nor locale;
+  - `invalid_hreflang`: hreflang is normalised (`ms_my` → `ms-MY`), must be `language[-Script][-REGION]`, and `x-default` is refused;
+  - `duplicate_slug`, `duplicate_hreflang` (case-insensitive);
+  - `invalid_default`: `default` isn't one of the slugs (before v1.92.0 this was `invalid_input`).
+- **(v1.92.0) Changing the default is a confirmed step.** The default language is the one the pages are written in, so changing it changes every URL and which translations are used. On a site that already has languages, a call whose `default` differs from the stored one returns `confirm_required` (data: `from`, `to`, `changes`) and saves nothing. Its message says what would change. **Tell the user what changes, ask, and only then repeat the call with `"confirm_default_change": true`.** The owner does the same on its own page, Languages → "Change default language…", never in the language list.
+- **Returns:** the resulting settings (same shape as `wpcanai-i18n-get-settings`). **(v1.92.0)** It adds `warnings: string[]` when the default changed (what changed), or when a removed language still has translations (they are kept; adding the same slug again restores them).
 
 ### `wpcanai-i18n-list-strings`
 
@@ -823,7 +840,7 @@ CanAI has one translation model: **native string translation** (one post per pag
 0. **(v1.82.0) The `i18n-*` tools are opt-in and hidden by default.** If `wpcanai-i18n-get-settings` is not in your list, do not report that translation is unsupported: `wpcanai-manage-tools { "action": "list" }`, confirm with the user that they want translations on this site, `{ "action": "set", "groups": { "Languages": "on" } }`, reconnect, then continue.
 1. Call `wpcanai-i18n-get-settings { }`.
    - `enabled: true` → follow **Native string translation** below. Do NOT create per-language post copies.
-   - `enabled: false` → native translation is off. Confirm the language list with the user — slugs, native names, hreflang codes, and which one is the default — then bootstrap with `wpcanai-i18n-set-settings` and continue with the native workflow.
+   - `enabled: false` → native translation is off. Confirm the languages with the user (as WordPress locales, e.g. `ms_MY`), and which one is the default (the language the pages are already written in). Then bootstrap with `wpcanai-i18n-set-settings`, passing `locale` per language so CanAI fills in slug, name and hreflang (v1.92.0), and continue with the native workflow.
 
 ---
 
@@ -835,7 +852,7 @@ CanAI has one translation model: **native string translation** (one post per pag
 
 ### Workflow
 
-1. **Settings** — `wpcanai-i18n-get-settings { }`. If languages are missing or wrong, confirm with the user and write with `wpcanai-i18n-set-settings` (it **replaces the whole list** — include ALL languages plus `default`).
+1. **Settings** — `wpcanai-i18n-get-settings { }`. If languages are missing or wrong, confirm with the user and write with `wpcanai-i18n-set-settings` (it **replaces the whole list**: include ALL languages plus `default`; a default change also needs `confirm_default_change: true`, after the user agreed).
 
 2. **Authoring precondition — every user-facing string must be `{{ t('…') }}`.** Only `t()` sources are indexed and translatable. If pages carry hardcoded strings, wrap them first: `wpcanai-read-meta` → build replacement pairs → `wpcanai-replace-in-meta`, e.g. `{ "post_id": <id>, "replacements": [{ "from": ">Shop now<", "to": ">{{ t('Shop now') }}<" }] }` (anchor on surrounding markup so the match is unique). Keep markup OUTSIDE the source: `<strong>{{ t('Best seller') }}</strong>`, never `{{ t("<strong>Best seller</strong>") }}` — translations are stored as plain text and HTML is stripped on save. When authoring NEW pages on a native-i18n site, wrap user-facing strings in `t()` from the start (see the helper table in **Implement HTML → CanAI**).
 

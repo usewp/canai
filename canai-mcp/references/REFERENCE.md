@@ -169,7 +169,7 @@ Two families: the **WordPress gettext** family (`__`, `_x`, `_n`) and **CanAI na
 {{ tmedia(123) }}                   {# attachment URL with per-language swap via the media map; falls back to the original id #}
 {{ tmedia(123, 'large') }}          {# second arg = image size, default 'full' #}
 {{ current_lang() }}                {# native current-language slug; the default-language slug (e.g. 'en') when native i18n is not configured #}
-{% for lang in languages() %}       {# items: slug, native_name, hreflang, is_default, is_current, url #}
+{% for lang in languages() %}       {# items: slug, locale (WordPress locale or "", v1.92.0), native_name, hreflang, is_default, is_current, url #}
   <a href="{{ lang.url }}" hreflang="{{ lang.hreflang }}"
      class="{{ lang.is_current ? 'font-bold' : '' }}">{{ lang.native_name }}</a>
 {% endfor %}
