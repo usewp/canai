@@ -18,7 +18,7 @@ description: >
   "reading mode", "reader mode", "reader view", "safari reader".
 metadata:
   author: canai
-  version: "1.41.0"
+  version: "1.42.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -693,7 +693,11 @@ Site name, tagline, and archive/search/404 SEO title+description live in a per-l
 ### `wpcanai-i18n-list-content`
 
 - **Args:** `{ "lang": string, "post_type"?: string, "untranslated"?: bool }` — the **content work queue**. `lang` must be a configured **non-default** language (the default is the source content; passing it errors `invalid_input`). Covers published posts of public post types except `attachment` (cap 1000 rows; an unknown `post_type` returns `[]`; narrow with `post_type` on big sites).
-- **Returns:** `array` of `{ "id", "title", "post_type", "status" }` — `status`: `untranslated` (no blob), `partial` (blob but no `content` override while the post body is non-empty), `translated`. `untranslated: true` returns untranslated + partial rows.
+- **Returns:** `array` of `{ "id", "title", "post_type", "status", "kind", "done"?, "total"? }`. **(v1.91.0)** One rule with the post lists' Translations column and CanAI → Translations → Content, by `kind`:
+  - **`kind: "content"`** (every post except CanAI Twig pages): the override blob. `status` is `untranslated` (no blob), `partial` (a blob without a `content` override while the post body is non-empty) or `translated`.
+  - **`kind: "strings"`** (a CanAI Twig page, non-blank `_canai_html`): the page's own `t()` sources, layout excluded. `done` / `total` count the translated ones. `status` is `translated` (all), `partial` (some), `untranslated` (none) or `nothing` (the page has no `t()` strings). A title override no longer makes a Twig page "translated".
+  - Before v1.91.0, every row used the blob rule and carried no `kind`.
+  - `untranslated: true` returns untranslated + partial rows only, never `nothing`.
 
 ### `wpcanai-i18n-get-content`
 
@@ -842,10 +846,10 @@ CanAI has one translation model: **native string translation** (one post per pag
    - Translate every `source` yourself (agent-authored translations). **Menu item titles and descriptions are ordinary sources** (rows whose `menus` is `["primary"]` or `["footer"]`): translate them in the same call, and `get_menu()` renders them translated — no `t()` in the template, no rescan. A location the language gives its own menu is left out of the list: that menu is already written in the language (see **Menus per language**).
    - Write in **one bulk call**: `wpcanai-i18n-set-translations { "lang": "ms", "translations": { "Shop now": "Beli sekarang", "Add to cart": "Tambah ke troli" } }`.
    - Report a source → translation table so the user can spot-check; corrections are just another bulk call.
-   - **The owner can do the same from the page's Translate strings button** (plugin v1.88.0): in the page editor's Translations box, the CanAI editor, the CanAI side box on block pages and the All Pages / All Templates row actions, plus **Translate this page** in the front-end admin bar. It opens CanAI → Translations → Strings filtered to that page, with toggles for its layout and the menus. Point a user there when they want to translate by hand.
+   - **The owner can do the same from the page's Translate strings button** (plugin v1.88.0): in the page editor's Translations box, the CanAI editor and the CanAI side box on block pages, plus **Translate this page** in the front-end admin bar. **(v1.91.0)** In All Pages / All Posts / All Templates, the **Translations** column shows a chip per language: `MS` translated, `MS•` partly, `+ MS` not yet, `—` nothing to translate. Each chip opens the matching editor; it replaced the "Translate: {language}" and "Translate strings" row actions. It opens CanAI → Translations → Strings filtered to that page, with toggles for its layout and the menus. Point a user there when they want to translate by hand.
 
 5. **Content (CPT / long-form) — per non-default language:**
-   - `wpcanai-i18n-list-content { "lang": "ms", "untranslated": true }` → the work queue of posts whose title/body/fields still render in the default language.
+   - `wpcanai-i18n-list-content { "lang": "ms", "untranslated": true }` → the work queue of posts whose title/body/fields still render in the default language. **(v1.91.0)** A `kind: "strings"` row is a CanAI Twig page: translate its `t()` strings with step 4 (`i18n-list-strings { "lang": "ms", "post_id": <id> }` → `i18n-set-translations`), not with overrides. The steps below are for `kind: "content"` rows.
    - Per post: `wpcanai-i18n-get-content { "post_id": <id>, "fields": ["subtitle", ...] }` returns the raw default-language `source` (`title`, `content`, `excerpt`, named custom `fields`). Translate it, then one `wpcanai-i18n-set-post-overrides { "post_id": <id>, "lang": "ms", "overrides": { "title": "…", "content": "…", "excerpt": "…", "fields": { "subtitle": "…" } } }`. (Pass `"lang": "ms"` to `i18n-get-content` to also see any existing override side-by-side.) Use the dedicated i18n tools — do not reach for PHP eval for content translation.
    - Taxonomy terms shown in loops/archives: `wpcanai-i18n-set-term-overrides` per term.
    - Report a per-post coverage table (id → status before/after). URLs don't change — the same post serves `/ms/…` with overridden fields (no per-language copies).
