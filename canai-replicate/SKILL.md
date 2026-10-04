@@ -14,7 +14,7 @@ description: >
   breakdown", "pixel-perfect", "high fidelity", "pixelmatch".
 metadata:
   author: canai
-  version: "4.5.0"
+  version: "4.5.1"
 allowed-tools: Bash Read Write Edit Grep Glob
 ---
 
@@ -848,8 +848,8 @@ runs/<site>/
   translation, the receiving skill (canai-mcp) first routes
   on the site's translation model, then the import wraps user-facing strings
   in `{{ t('…') }}` and uses `tmedia()` for per-language media. Produce copy
-  that stays cleanly wrappable (no markup inside translatable strings), same
-  as canai-prepare.
+  that stays cleanly wrappable (one sentence per translatable string, inline
+  tags allowed inside it, no block elements), same as canai-prepare.
 - **Menus.** The kit's nav links go in `menus.json` (canai-prepare format)
   and are written with `wpcanai-write-menu` (canai-mcp), one call per location (`primary`,
   `footer`); the chrome partials' `get_menu()` loops then render them. A mega

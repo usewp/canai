@@ -166,6 +166,7 @@ Two families: the **WordPress gettext** family (`__`, `_x`, `_n`) and **CanAI na
 ```twig
 {# --- CanAI native i18n (single-post string translation, plugin 1.22.0+) --- #}
 {{ t('Shop now') }}                 {# translated via the site string table; passes through for the default language or unknown strings #}
+{{ t('Get <strong class="font-semibold">free shipping</strong> over {amount}.', {amount: threshold}) }}  {# v1.94.0: a whole sentence with inline tags; {placeholders} filled from the vars (escaped; href/src URL-escaped) #}
 {{ tmedia(123) }}                   {# attachment URL with per-language swap via the media map; falls back to the original id #}
 {{ tmedia(123, 'large') }}          {# second arg = image size, default 'full' #}
 {{ current_lang() }}                {# native current-language slug; the default-language slug (e.g. 'en') when native i18n is not configured #}
@@ -291,7 +292,7 @@ Twig unless the template explicitly applies `|raw`.
 
 ```twig
 {% if post.author is defined %}
-  <span>{{ t('By') }} <a href="{{ post.author.posts_url }}">{{ post.author.display_name }}</a></span>
+  <span>{{ t('By <a href="{url}">{name}</a>', {url: post.author.posts_url, name: post.author.display_name}) }}</span>
 {% endif %}
 ```
 

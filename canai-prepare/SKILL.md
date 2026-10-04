@@ -9,7 +9,7 @@ description: >
   "spa to html", "pwa to html", "static html", "single html", "per-page html", "convert design to html".
 metadata:
   author: canai
-  version: "1.10.0"
+  version: "1.10.1"
 allowed-tools: Bash Read Write Edit Grep Glob
 ---
 
@@ -166,7 +166,7 @@ Example:
 5. **Strip** `WPCanAI-PREVIEW-LIBS` blocks when pasting into templates (avoid duplicating what CanAI already injects).
 6. **Images become ID-based helpers at import, not here.** Prepared `.html` keeps **relative** `src="assets/…"` so the folder previews in a plain browser. On import, `canai-mcp` sideloads each asset and rewrites `<img>` → `{{ image_attrs(id, 'src,alt') }}` (and other surfaces → `{{ media_url(id, size) }}`) by media **id** — so keep the prepared markup clean and swappable: one `<img>` per asset, a descriptive `alt`, `width`/`height` when known, and no inline `style` that would fight the helper output.
 7. **Navigation comments map 1:1 on import:** `<!-- Type / Short Label -->` becomes `{# Type / Short Label #}`. Preserve the type and label exactly; only replace the delimiters. Follow [references/STRUCTURE-NAVIGATION.md](references/STRUCTURE-NAVIGATION.md), including the required landmark mappings, so `wpcanai-scan` passes and the editor's Structure metabox stays useful.
-8. **Keep copy translation-ready.** On native-i18n target sites, downstream import turns every user-facing string into a `{{ t('…') }}` translation source. Write copy so each string is a clean, self-contained phrase with **no markup inside it** — `<strong>Best seller</strong>` (wrap the text, not the tag), never a string that bakes in HTML. This mirrors the image → `image_attrs()` and section-comment handoffs.
+8. **Keep copy translation-ready.** On native-i18n target sites, downstream import turns each user-facing sentence into one `{{ t('…') }}` translation source. Write each sentence as one unit inside its block element: inline tags inside the sentence are fine (`<p>Get <strong>free shipping</strong> today.</p>` becomes one source), and no block element ever sits inside a sentence. This mirrors the image → `image_attrs()` and section-comment handoffs.
 9. **WooCommerce pages** — for shop / cart / checkout pages, emit the cart/checkout region as one navigable placeholder such as `<!-- Section / Cart -->`, with any implementation instruction in a separate `<!-- @dev Replace with wc_cart_block() on import -->` comment. Downstream (`canai-mcp`) swaps in the `wc_*` Twig helpers; do not wire helper markup here.
 10. **Navigation becomes WordPress menus on import.** `canai-mcp` writes `menus.json` with `wpcanai-write-menu` (one call per key, after the pages exist) and replaces each marked `<nav data-canai-menu>`'s links with the `get_menu('primary')` / `get_menu('footer')` loop. The prepared file keeps its real links; the site owner edits the menus in WordPress afterwards.
 
