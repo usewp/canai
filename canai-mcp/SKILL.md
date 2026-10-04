@@ -18,7 +18,7 @@ description: >
   "reading mode", "reader mode", "reader view", "safari reader".
 metadata:
   author: canai
-  version: "1.44.0"
+  version: "1.45.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -627,25 +627,39 @@ Every type except `embed` accepts `className` (Tailwind classes on the block's r
 ### `wpcanai-i18n-get-settings`
 
 - **Args:** `{ }`.
-- **Returns:** `{ "default": string, "languages": [{ "slug", "locale", "native_name", "hreflang" }], "enabled": bool }` — `enabled` is `true` when at least one non-default language is configured. **(v1.92.0)** `locale` is the WordPress locale the language was picked as (`ms_MY`), or `""` for one WordPress doesn't list and for languages saved before v1.92.0. This is the **router probe**: call it first on any translation request (see **Translation model router**).
+- **Returns:** `{ "default": string, "languages": [{ "slug", "locale", "native_name", "hreflang" }], "enabled": bool, "site_locale": string }` — `enabled` is `true` when at least one non-default language is configured. **(v1.92.0)** `locale` is the WordPress locale the language was picked as (`ms_MY`), or `""` for one WordPress doesn't list and for languages saved before v1.92.0. **(v1.95.0)** `site_locale` is WordPress's Site Language (Settings → General, `en_US` for English (United States)), which the default language always is. This is the **router probe**: call it first on any translation request (see **Translation model router**).
 
 ### `wpcanai-i18n-set-settings`
 
-- **Args:** `{ "default": string, "languages": [{ "slug"?: string, "locale"?: string, "native_name"?: string, "hreflang"?: string }], "confirm_default_change"?: bool }` — `default` and `languages` required. **Replaces the entire language list:** include every language, not just the new one.
+- **Args:** `{ "languages": [{ "slug"?: string, "locale"?: string, "native_name"?: string, "hreflang"?: string }], "default"?: string }` — `languages` required. **Replaces the entire language list:** include every language, not just the new one. **(v1.95.0)** `default` is optional: see **The default is the Site Language** below.
 - **(v1.92.0) Pass the WordPress locale.** Each language needs a `slug` or a `locale` (a WordPress locale: `ms_MY`, `ja`, `pt_BR`, `en_US`). A locale fills in whatever you omit, exactly as the admin language picker does:
   - `slug`: the ISO 639-1 code, region-qualified only when another language already uses it (`pt` then `pt-pt`).
   - `native_name`: WordPress's own name for the locale, and "English" for `en_US`.
   - `hreflang`: the bare language code (`ms`), or language-REGION when another language shares the code (`pt-PT`).
 
-  So `{ "default": "en", "languages": [{ "slug": "en" }, { "locale": "ms_MY" }] }` adds Malay as `ms` / Bahasa Melayu / `ms`. An existing language that omits `locale` keeps its stored one; `"locale": ""` clears it. Without a locale, `native_name` and `hreflang` default to the slug.
+  So `{ "languages": [{ "slug": "en" }, { "locale": "ms_MY" }] }` adds Malay as `ms` / Bahasa Melayu / `ms`. An existing language that omits `locale` keeps its stored one; `"locale": ""` clears it. Without a locale, `native_name` and `hreflang` default to the slug.
 - **(v1.92.0) Errors.** All of them leave the settings untouched, and `error.data.value` names the offending input:
   - `unknown_locale`: not a WordPress locale; the message names close matches ("th_TH is not a WordPress locale. Did you mean th?");
   - `missing_slug`: a language with neither slug nor locale;
   - `invalid_hreflang`: hreflang is normalised (`ms_my` → `ms-MY`), must be `language[-Script][-REGION]`, and `x-default` is refused;
   - `duplicate_slug`, `duplicate_hreflang` (case-insensitive);
-  - `invalid_default`: `default` isn't one of the slugs (before v1.92.0 this was `invalid_input`).
-- **(v1.92.0) Changing the default is a confirmed step.** The default language is the one the pages are written in, so changing it changes every URL and which translations are used. On a site that already has languages, a call whose `default` differs from the stored one returns `confirm_required` (data: `from`, `to`, `changes`) and saves nothing. Its message says what would change. **Tell the user what changes, ask, and only then repeat the call with `"confirm_default_change": true`.** The owner does the same on its own page, Languages → "Change default language…", never in the language list.
-- **Returns:** the resulting settings (same shape as `wpcanai-i18n-get-settings`). **(v1.92.0)** It adds `warnings: string[]` when the default changed (what changed), or when a removed language still has translations (they are kept; adding the same slug again restores them).
+  - **(v1.95.0)** `default_is_site_language`: `default` isn't the Site Language's slug (data: `site_locale`, `default` = the slug it must be, `value`). It replaces `invalid_default`;
+  - **(v1.95.0)** `site_language_taken`: a second language has the Site Language's locale. The default language can't also be a translation language.
+- **(v1.95.0) The default is the Site Language.** CanAI has no default language of its own. The default (no URL prefix, the language the pages are written in) is WordPress's Site Language, `site_locale`. The call picks that language's row:
+  - first by locale (given, or stored for its slug);
+  - else a row without a locale whose slug or hreflang reads as it (`en` on an `en_US` site);
+  - else it adds one from WordPress's list, first, with a warning.
+
+  Pass `default` only to assert it. `confirm_default_change` (v1.92–v1.94) is ignored.
+- **(v1.95.0) Changing the default means changing the Site Language.** It moves every URL: the new language takes the unprefixed address, and the old default moves under its prefix (`/en/`). **Tell the user what moves and ask first.** Then either:
+  - the owner picks it in **Settings → General → Site Language**, which also installs the language pack; or
+  - you call `wpcanai-update-options { "options": { "WPLANG": "ms_MY" } }`. That needs WPLANG on the update-options allowlist (CanAI → AI Client → Guardrails; without it the tool returns `options_not_allowed`) and the locale's language pack installed (otherwise WordPress keeps the old value). Use `""` for English (United States).
+
+  CanAI follows either way. The new Site Language becomes the default (added from WordPress's list if it isn't configured), the previous default stays as a translation language, nothing is removed, and the next admin page tells the owner what moved. Re-read `wpcanai-i18n-get-settings` afterwards.
+- **Returns:** the resulting settings (same shape as `wpcanai-i18n-get-settings`). `warnings: string[]` appears when:
+  - **(v1.95.0)** the Site Language's row was added;
+  - **(v1.95.0)** the save moved the default onto the Site Language (settings saved before v1.95.0 that disagreed with it, the case where the Languages tab warns before saving), with what moved;
+  - a removed language still has translations. They are kept, and adding the same slug again restores them.
 
 ### `wpcanai-i18n-list-strings`
 
@@ -840,7 +854,7 @@ CanAI has one translation model: **native string translation** (one post per pag
 0. **(v1.82.0) The `i18n-*` tools are opt-in and hidden by default.** If `wpcanai-i18n-get-settings` is not in your list, do not report that translation is unsupported: `wpcanai-manage-tools { "action": "list" }`, confirm with the user that they want translations on this site, `{ "action": "set", "groups": { "Languages": "on" } }`, reconnect, then continue.
 1. Call `wpcanai-i18n-get-settings { }`.
    - `enabled: true` → follow **Native string translation** below. Do NOT create per-language post copies.
-   - `enabled: false` → native translation is off. Confirm the languages with the user (as WordPress locales, e.g. `ms_MY`), and which one is the default (the language the pages are already written in). Then bootstrap with `wpcanai-i18n-set-settings`, passing `locale` per language so CanAI fills in slug, name and hreflang (v1.92.0), and continue with the native workflow.
+   - `enabled: false` → native translation is off. Confirm the languages with the user (as WordPress locales, e.g. `ms_MY`). The default is always the Site Language (`site_locale`, v1.95.0), and it should be the language the pages are already written in. If it isn't, say so, and have the Site Language changed first (see `wpcanai-i18n-set-settings` → **Changing the default means changing the Site Language**). Then bootstrap with `wpcanai-i18n-set-settings`, passing `locale` per language so CanAI fills in slug, name and hreflang (v1.92.0), and continue with the native workflow.
 
 ---
 
@@ -852,7 +866,7 @@ CanAI has one translation model: **native string translation** (one post per pag
 
 ### Workflow
 
-1. **Settings** — `wpcanai-i18n-get-settings { }`. If languages are missing or wrong, confirm with the user and write with `wpcanai-i18n-set-settings` (it **replaces the whole list**: include ALL languages plus `default`; a default change also needs `confirm_default_change: true`, after the user agreed).
+1. **Settings** — `wpcanai-i18n-get-settings { }`. If languages are missing or wrong, confirm with the user and write with `wpcanai-i18n-set-settings` (it **replaces the whole list**: include ALL languages). The default is the Site Language (v1.95.0); a different default is a Site Language change, which the user decides.
 
 2. **Authoring precondition — every user-facing string must be `{{ t('…') }}`.** Only `t()` sources are indexed and translatable. If pages carry hardcoded strings, wrap them first: `wpcanai-read-meta` → build replacement pairs → `wpcanai-replace-in-meta`, e.g. `{ "post_id": <id>, "replacements": [{ "from": ">Shop now<", "to": ">{{ t('Shop now') }}<" }] }` (anchor on surrounding markup so the match is unique). **(v1.94.0) One `t()` per sentence, with its inline tags inside.**
    - Write `{{ t('Get <strong class="font-semibold">free shipping</strong> today.') }}`, not `{{ t('Get') }} <strong>{{ t('free shipping') }}</strong> {{ t('today.') }}`. Translators need the whole sentence: word order differs between languages, and fragments can't be reordered.
