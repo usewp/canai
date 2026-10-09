@@ -14,7 +14,7 @@ description: >
   breakdown", "pixel-perfect", "high fidelity", "pixelmatch".
 metadata:
   author: canai
-  version: "4.5.1"
+  version: "4.6.0"
 allowed-tools: Bash Read Write Edit Grep Glob
 ---
 
@@ -815,6 +815,21 @@ runs/<site>/
    `warnings` entry on `header.json`/`footer.json`, but the actual WordPress
    post creation step — outside this skill — is where the slug must
    actually be forced).
+
+   **A source URL with more than one path segment is a nested page**
+   (CanAI 1.96.0+). The kit joins the segments with `__`, so
+   `/gallery/auditorium/` arrives as `output/push/gallery__auditorium.json`
+   with `slug` `gallery__auditorium` — never push that string, or a
+   hyphen-flattened `gallery-auditorium`, as the page slug. Create its
+   parents first, in path order (`gallery`, then each deeper segment):
+   from their own artifact when the kit has one (`gallery.json`),
+   otherwise as a plain published page that the handoff lists as needing
+   content, and reuse any that already exist (`wpcanai-list-pages` rows
+   carry `path`). Then create the page with `wpcanai-create-page`,
+   `parent: <parent id>` and the last segment as `slug` (`auditorium`).
+   A kit link to `gallery__auditorium.html` becomes
+   `{{ turl(id_url(<id>)) }}` or `{{ slug_url('gallery/auditorium') }}`.
+   canai-mcp's **Nested pages** rule has the details.
 3. **Sideload images referenced by absolute/hotlinked URL, not just local
    paths.** A `pushprep` artifact's `html` still contains the source
    site's original absolute image URLs (e.g.

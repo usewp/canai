@@ -72,9 +72,11 @@ as-is — that row just has fewer columns than the others.
 
    Put the returned `id` into the block. `cover` and `media_text` take the same id.
 2. **Page:** new page → `wpcanai-create-page { "title", "slug", "format": "blocks", "blocks",
-   "layout"?, "status"? }`; existing page → `wpcanai-resolve-content-id` / `wpcanai-list-pages`
+   "layout"?, "status"?, "parent"?, "menu_order"? }`; existing page → `wpcanai-resolve-content-id` / `wpcanai-list-pages`
    for the id, then `wpcanai-write-page { "post_id", "blocks", "css", "layout"? }` (add
    `convert: true` only when the page is Twig with a body, and say so to the user first).
+   A nested page (`/gallery/auditorium/`) needs its parent first: pass the parent's id as
+   `parent` and only the last segment as `slug` (`auditorium`, never `gallery-auditorium`).
 3. **CSS:** `create-page` has no `css` on the blocks path — after creating, call
    `wpcanai-write-page { "post_id", "blocks", "css" }` once with the same blocks, or
    `wpcanai-write-meta { "post_id", "css" }`.

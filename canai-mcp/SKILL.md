@@ -15,10 +15,11 @@ description: >
   "menu", "nav menu", "primary menu", "footer menu", "set up the menu", "wpcanai-write-menu", "turl",
   "mega menu", "dropdown menu", "menu icon", "menu per language", "wpcanai-assign-menu",
   "translate this page", "translate strings",
+  "parent page", "child page", "subpage", "nested page", "move a page", "rename a page", "wpcanai-update-page",
   "reading mode", "reader mode", "reader view", "safari reader".
 metadata:
   author: canai
-  version: "1.45.0"
+  version: "1.46.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -140,7 +141,7 @@ For **WordPress / WooCommerce / CanAI options** (e.g. static front page, `users_
 **Workflow — one nav list at a time:**
 
 1. **Look first** — `wpcanai-get-menus { }` shows what each location holds (`locations.primary` / `locations.footer`, `null` when nothing is assigned).
-2. **Read the list's links in order.** The link text is `title`. A link to a page on this site is `page` (its id or slug) — create the page first; a `page` that resolves to nothing is `unknown_page` and nothing is written. Any other link is `url`; add `"target": "_blank"` only when the source opens it in a new tab. A nested list is `children` (at most 3 levels). A dropdown trigger or mega-menu column heading that is not a link is an item with `children` and **neither** `page` nor `url`; a link's one-line blurb is `description`, its icon `icon` (a Lucide name), its thumbnail `image` (an attachment id from `wpcanai-sideload-url`) — see **Mega menus** below (plugin v1.89.0).
+2. **Read the list's links in order.** The link text is `title`. A link to a page on this site is `page` (its id or slug) — create the page first; a `page` that resolves to nothing is `unknown_page` and nothing is written. A slug resolves like `slug_url()` (plugin v1.96.0): a child page by its bare slug while only one page has it, otherwise by its path (`"page": "gallery/theatrettes"`) or id. Any other link is `url`; add `"target": "_blank"` only when the source opens it in a new tab. A nested list is `children` (at most 3 levels). A dropdown trigger or mega-menu column heading that is not a link is an item with `children` and **neither** `page` nor `url`; a link's one-line blurb is `description`, its icon `icon` (a Lucide name), its thumbnail `image` (an attachment id from `wpcanai-sideload-url`) — see **Mega menus** below (plugin v1.89.0).
 3. **Write** — `wpcanai-write-menu { "location": "primary", "items": [ { "title": "Home", "page": "home" }, { "title": "Services", "page": 42, "children": [ { "title": "Design", "page": "design" } ] }, { "title": "Docs", "url": "https://docs.example.com", "target": "_blank" } ] }`. The list replaces the location's items; `"merge": true` instead updates items with the same title and appends the rest.
 4. **Replace the list with the loop** in the header or footer template:
    ```twig
@@ -271,8 +272,9 @@ When converting a static HTML file (e.g. `index.html`) into CanAI via MCP tools:
 2. Put page-level JavaScript (e.g. `lucide.createIcons()`, Alpine init, custom handlers) in **`_canai_js`**, not as inline `<script>` in `_canai_html`. CanAI injects `_canai_js` at `wp_footer()`. **`_canai_js` is Twig-rendered** (same engine as `_canai_html`) — `{# #}` comments are valid there and stripped before the script is emitted; prefer them over `/* */` for anything that names internals. The only `<script>` allowed inline in layout `_canai_html` is `tailwind.config = { ... }` (after `{{ wp_head() }}`, so it runs after the Tailwind script CanAI injects).
 3. **Reuse layouts:** call `wpcanai-list-templates` first. If a **layout** already exists, reuse its `id` for `_canai_layout` / references — do not create a duplicate layout template unless the user asks for a second shell.
 4. **Page body vs layout:** put `<main>` / primary page markup in a **`page`** created with `wpcanai-create-page` (set `layout` to the layout template ID) — not as a `wpcanai_template` of type `layout`. Layout templates are the document shell (`{{ page_content }}`, header/footer includes); page bodies are not `template_type` `layout`.
+   - **Nested pages (plugin v1.96.0).** A source page at `/gallery/auditorium/` is a child page, not a top-level `gallery-auditorium`. Create the parent first, published (`status: "publish"`, the default), then each child with `parent: <parent id>` and its own last path segment as `slug` (`auditorium`), in path order. **Never flatten `/a/b/` into an `a-b` slug.** Reuse a parent that already exists — `wpcanai-list-pages` rows carry `path`. Link to the page with the `path` / `url` the create call returned (see rule 6). To move, rename or re-slug an existing page, use `wpcanai-update-page`; after moving a published page, run the `wpcanai-grep-content` its URL-changed warning names and fix each hit with `wpcanai-replace-in-meta`.
 5. **Auto-detect and sideload local media BEFORE writing HTML.** Static site folders almost always reference local assets (`./images/hero.jpg`, `assets/logo.svg`, `videos/intro.mp4`, favicons, OG images, CSS `url(...)` backgrounds). If you push the HTML/CSS as-is, every one of those references 404s on the live site. Run the **Static-site asset sideload pre-pass** (next subsection) before any `wpcanai-create-page` / `wpcanai-write-meta` call so the HTML you write resolves media **by ID** through `{{ image_attrs(...) }}` / `{{ media_url(...) }}`, not relative paths or pinned upload URLs.
-6. **Rewrite internal links to CanAI helpers** (instance of the principle above). Static sources keep `<a href="about.html">` / `href="/about">`; these break on the live site (wrong base path, non-permalink, moved slugs). Rewrite each internal link to the matching helper: cross-page links → `{{ slug_url('<slug>') }}` (or `{{ turl(id_url(<id>)) }}` when the target page id is known from `wpcanai-create-page`); term / archive links → `{{ turl(term_url(<term_id>)) }}`; any other site path → `{{ turl('/path/') }}`. A header or footer nav list is not rewritten link by link — it becomes a `get_menu()` loop (see **Menus**). **Leave untouched:** external / absolute (`https://other.com`), protocol-relative (`//cdn…`), and anchor-only (`#section`) links. Report the rewrites in the manifest.
+6. **Rewrite internal links to CanAI helpers** (instance of the principle above). Static sources keep `<a href="about.html">` / `href="/about">`; these break on the live site (wrong base path, non-permalink, moved slugs). Rewrite each internal link to the matching helper: cross-page links → `{{ turl(id_url(<id>)) }}` when the target page id is known (from `wpcanai-create-page` or `wpcanai-list-pages`), else `{{ slug_url('<slug>') }}`. For a child page (plugin v1.96.0), `slug_url()` matches the exact path first, then a bare slug that exactly one page has: `slug_url('auditorium')` finds `/gallery/auditorium/` and keeps finding it after the page moves. A top-level page wins a bare slug it shares with a child; when two child pages share a slug the bare form resolves to nothing (`href=""`), so pass the path — `slug_url('gallery/theatrettes')`. Term / archive links → `{{ turl(term_url(<term_id>)) }}`; any other site path → `{{ turl('/path/') }}`. A header or footer nav list is not rewritten link by link — it becomes a `get_menu()` loop (see **Menus**). **Leave untouched:** external / absolute (`https://other.com`), protocol-relative (`//cdn…`), and anchor-only (`#section`) links. Report the rewrites in the manifest.
 7. **Normalize section comments to Twig navigation labels.** Convert every HTML nav comment that `canai-prepare` emitted into the exact form `{# Type / Short Label #}` — for example, `{# Section / Hero #}`. **Never** carry HTML nav comments into `_canai_html` (they pollute rendered output and are view-source reconnaissance). Guarantee every landmark has its matching type immediately before the opening tag: `<main>` → `Container`, `<section>` → `Section`, `<header>` → `Header`, `<footer>` → `Footer`, `<nav>` → `Navigation`, `<aside>` → `Sidebar`. Follow [references/STRUCTURE-NAVIGATION.md](references/STRUCTURE-NAVIGATION.md) for the controlled vocabulary and exact conversion. Ordinary implementation notes use `{# @dev … #}` and stay out of the editor's Structure outline. A canai-replicate `pushprep` artifact may use the older convention; normalize it before writing.
 8. **After authoring writes (create-page / create-template / implement / import / preset), run `wpcanai-scan` and clear content findings before claiming done.** A surgical edit through `wpcanai-replace-in-meta` (a class, a string, a URL) does not need a scan — skip it. Treat `missing_structure_comment`, `invalid_structure_comment`, `leaky_comment`, and `leaky_secret` like broken layouts: add or correct Twig navigation labels, convert HTML/`/* */` comments to Twig, and remove secret-shaped literals from meta. Clear the navigation findings too (`hardcoded_nav`, `legacy_menu_location`, `unknown_menu_location`, `menu_fallback_chain`, `menu_children_twice`, `menu_not_assigned`, `hardcoded_lang_prefix`, `unlocalised_internal_href` — plugin v1.88.0; `menu_children_twice` v1.89.0), and on native-i18n sites `split_sentence` (one sentence cut into several `t()`; merge it, see **Native string translation** step 2) and `unsupported_t_markup` (block elements or unpaired tags inside a `t()`, which show as text; plugin v1.94.0): each message names its fix, and **Menus** above is the workflow. A `render_warning` (v1.90.0) is a line that output an array while a page rendered — fix it the same way (see **Render warnings** under `wpcanai-scan`). For a full-site pass, use the **Comment / secret security sweep** recipe below.
 
@@ -377,6 +379,7 @@ The prefix you see is **resolved for the site**: a third-party label (`woocommer
 | `canai, core, http, cache` | `diagnostics` |
 | `canai, core, woocommerce` | `setup` |
 | `canai, core, woocommerce, http` | `install-preset` |
+| `core, cache` | `update-page` |
 | `core, filesystem, http` | `sideload-url` |
 | `core, filesystem, cache` | `update-media` |
 | `woocommerce` | `get-wc-page-ids`, `get-wc-css-reference` |
@@ -417,7 +420,7 @@ The list a client gets from `tools/list` is **not** "everything registered". Eac
 ### `wpcanai-list-pages`
 
 - **Args:** `{ }` — no arguments.
-- **Returns:** `array` of objects: `id`, `title`, `post_type`, `layout_id` (int or null), `format` (`"twig"`|`"blocks"`) for posts/pages that have `_canai_html`, or pages marked blocks.
+- **Returns:** `array` of objects: `id`, `title`, `post_type`, `layout_id` (int or null), `format` (`"twig"`|`"blocks"`), `css_lines` / `js_lines` (non-empty lines of the page's own `_canai_css` / `_canai_js`; `0` = none), and **(v1.96.0)** `slug`, `parent` (page id; `0` = top level), `path` (`gallery/auditorium`, no slashes) and `url` — for posts/pages that have `_canai_html`, or pages marked blocks. Use `parent` / `path` to find an existing parent page before creating one, and `path` / `url` to link to a child page.
 - **Published only.** Returns posts with status `publish`. A page created via `wpcanai-create-page` with `status: "draft"` will NOT appear here — re-resolve it by id, don't assume it was lost.
 
 ### `wpcanai-read-meta`
@@ -523,8 +526,26 @@ The list a client gets from `tools/list` is **not** "everything registered". Eac
 
 ### `wpcanai-create-page`
 
-- **Args:** `{ "title": string, "slug"?: string, "status"?: string, "html"?: string, "css"?: string, "js"?: string, "layout"?: int }` — `title` required; creates a `page` post with optional `_canai_*` meta.
-- **Returns:** `{ "post_id": int, "slug": string, "format": string, "warnings": string[] }`.
+- **Args:** `{ "title": string, "slug"?: string, "status"?: string, "html"?: string, "css"?: string, "js"?: string, "layout"?: int, "parent"?: int, "menu_order"?: int }` — `title` required; creates a `page` post with optional `_canai_*` meta. Default `status` is `publish`.
+- **(v1.96.0) `parent` / `menu_order`.** `parent` is the id of an existing page to nest the new one under: its URL becomes `/<parent path>/<slug>/`, and `slug` is only the last segment (`auditorium`, never `gallery/auditorium`). `0`, the default, is top level. `menu_order` is Page Attributes → Order (default `0`). Both must be integers — `"abc"`, `1.5` or `true` → `invalid_input`. A `parent` that does not exist, is trashed or is not a page → `invalid_parent`. Both refusals come before anything is written. See **Nested pages** under rule 4.
+- **Returns:** `{ "post_id": int, "slug": string, "format": string, "warnings": string[], "status": string, "parent": int, "path": string, "url": string }` (`status` … `url` since v1.96.0). `path` has no slashes (`gallery/auditorium`) and is `''` for a draft saved without a slug. Link to the new page with `path` / `url` or its id — not a path you built yourself.
+- **Warnings (v1.96.0, non-fatal):** the slug is already used under the same parent or is reserved, so WordPress saved a suffixed one (`auditorium-2`) — read `slug` / `path` back before linking; the parent page is not published — visitors cannot open it, but the new page's URL still goes through it. A draft keeps the slug you sent; WordPress de-duplicates it when the page is published.
+
+### `wpcanai-update-page` (plugin v1.96.0)
+
+A page's title, slug, status, parent and order — the block editor's Summary and Page Attributes panels over MCP.
+
+- **Args:** `{ "post_id": int, "title"?: string, "slug"?: string, "status"?: "draft"|"publish"|"pending"|"private", "parent"?: int, "menu_order"?: int }` — `post_id` and at least one other field required; only the fields you send change. `parent: 0` moves the page to the top level. `slug` is the last URL segment only. No `future`: it takes no date.
+- **Never touches the body.** `post_content` and every `_canai_*` meta stay as they are, so it works the same on Twig, blocks and plain WordPress pages. Use it — not `write-meta` / `write-page` — to rename, re-slug, publish, unpublish, move or reorder a page.
+- **Errors — every one refused before anything is written:** `not_a_page` (the id does not exist, is trashed or is not a `page`; blog posts take `wpcanai-write-post`), `invalid_input` (no field besides `post_id`, an empty `title` or `slug`, a non-integer `parent` / `menu_order`), `invalid_status`, `invalid_parent` (the parent does not exist, is trashed, is not a page, or is the page itself), `parent_loop` (409 — the requested parent sits under this page; move it out first. WordPress on its own would silently reset the parent to the top level and report success).
+- **Returns:** `{ "post_id", "title", "slug", "status", "parent", "menu_order", "path", "url", "edit_url", "previous": { "title", "slug", "status", "parent", "menu_order", "url" }, "warnings": string[], "purged" }`. `previous` holds the values before the call; its `slug` is left out when the page had none (a slug-less draft).
+- **Undo = re-send `previous`.** `{ "post_id": <id>, …previous }` puts the title, slug, status, parent and order back; the extra `url` key is ignored. Snapshots hold `_canai_*` meta only and WordPress revisions record none of these fields, so `previous` is the only undo — keep it until the user is happy. A `previous.status` of `future` (a scheduled page) cannot be re-sent: leave `status` out and have the owner reschedule it in the editor.
+- **Warnings (non-fatal):**
+  - *URL changed* — a published (or private) page got a new slug or parent. It says how many subpages moved with it and that menus, `id_url()` and `slug_url()` links follow the page. WordPress keeps **no** redirect from a page's old URL (some sites redirect through core's 404 guess; don't rely on it), so run the `wpcanai-grep-content "/old/path/"` the warning names and fix each hit with `wpcanai-replace-in-meta`.
+  - *Unpublished* — a published (or private) page is now `draft` / `pending`: its old URL no longer opens for visitors.
+  - *Slug suffixed* — WordPress saved a different slug (`x-2`): a sibling already uses it, or it is reserved. It can fire when you did not send `slug`, because core re-checks a published page's slug on every save and when a draft is published.
+  - *Parent not published* — as in `wpcanai-create-page`.
+- **Cache.** Changing the slug or parent of a page that is published before and after purges the whole page cache (`purged.scope: "all"`): every cached menu and subpage link points at the old URL. A title change purges that page.
 
 ### `wpcanai-write-post`
 
@@ -572,6 +593,7 @@ Every type except `embed` accepts `className` (Tailwind classes on the block's r
 ### `wpcanai-write-menu` (plugin v1.88.0)
 
 - **Args:** `{ "location": "primary"|"footer", "items": [{ "title": string, "page"?: int|string, "url"?: string, "target"?: ""|"_blank", "classes"?: string, "description"?: string, "attr_title"?: string, "icon"?: string, "image"?: int, "children"?: [ …same shape ] }], "merge"?: bool, "lang"?: string }` — `location` and `items` required. Every item has a non-empty `title` and **exactly one** of `page` (a post id or slug of any public post type → a page item that follows the page if its slug changes) or `url` (a custom link, site-relative or absolute) — except a **heading**: an item with `children` may have neither (it renders as a label, `url: ""`). Nesting is at most 3 levels.
+- **(v1.96.0) `page` by slug.** The exact path first (`gallery/auditorium`), then a bare slug that exactly one page has, so a child page resolves by its own slug and keeps resolving after a move. A top-level page wins a bare slug it shares; a bare slug two child pages share matches neither (`unknown_page`), so pass the path or the id. An unattached image with the same slug no longer hides the page.
 - **(v1.89.0) Rich fields.** `description` (one line), `attr_title`, `icon` (a Lucide name matching `^[a-z0-9-]{0,64}$`), `image` (an attachment id that is an image). On `merge` a field you leave out keeps its value; `""` / `0` clears it.
 - **(v1.89.0) `lang`** — a non-default language slug: write that language's own menu for the location instead of the default one (see **Menus per language**). The first call creates `Primary (<native name>)` / `Footer (<native name>)` (a same-name menu is reused) and assigns it to the language; the default location is untouched and the result carries `lang`. A default or unknown slug, or a site without native translation, → `invalid_lang`.
 - **(v1.93.0) `copy_default: true`** with `lang` (no `items`) gives that language its own menu for the location as a **copy of the default menu**. Labels (titles, descriptions) take their stored translation where one exists; page and post items stay linked to their post; other items become custom links at their current URL. It returns `menu_exists` (data: `menu_id`) when the language already has its own menu there, `no_default_menu` when the location has none, and `invalid_input` without `lang`. `items` is required for every other call.
@@ -1089,7 +1111,9 @@ snapshots; these tools are the only surface.**
 
 **What is captured.** Exactly eight meta keys: `_canai_html`, `_canai_css`, `_canai_js`,
 `_canai_layout`, `_canai_delegate_page_id`, `_canai_context`, `_canai_context_mode`,
-`_canai_format`. Nothing else — not `post_title`, not `post_content`, not attachments.
+`_canai_format`. Nothing else — not `post_title`, not `post_content`, not attachments. Nor a
+page's slug, status, parent or order: `wpcanai-update-page` takes no snapshot, and the `previous`
+in its response is its undo.
 
 **Restoring an incoherent snapshot reproduces the incoherence.** A snapshot taken while a page
 was marked `blocks` but still carried a non-empty `_canai_html` (a stale Twig body left behind
@@ -1185,6 +1209,7 @@ If the damage spans several posts (a bad preset install or import), skip straigh
 | Write fields                     | `wpcanai-write-meta`         |
 | New template post                | `wpcanai-create-template`    |
 | New page (with CanAI meta)         | `wpcanai-create-page`        |
+| Rename, re-slug, publish or move a page (any format) | `wpcanai-update-page` |
 | Read the two menus (primary, footer) | `wpcanai-get-menus`        |
 | Set up or change a menu's links    | `wpcanai-write-menu` (see **Menus**) |
 | Point a location or a language at an existing menu, or clear it | `wpcanai-assign-menu` |

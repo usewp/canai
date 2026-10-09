@@ -12,7 +12,7 @@ description: >
   "wpcanai-write-page", "convert to blocks", "convert to twig", "page css", "block page css".
 metadata:
   author: canai
-  version: "1.7.0"
+  version: "1.7.1"
 allowed-tools: "Read Write Edit Grep Glob"
 ---
 
@@ -133,16 +133,23 @@ repeated here.
 ### `wpcanai-create-page` (the `format: "blocks"` path)
 
 This is the same `wpcanai-create-page` tool `canai-mcp` documents for Twig pages
-(`{ "title", "slug"?, "status"?, "html"?, "css"?, "js"?, "layout"? }`)
+(`{ "title", "slug"?, "status"?, "html"?, "css"?, "js"?, "layout"?, "parent"?, "menu_order"? }`)
 — this section only covers its block-authoring arguments.
 
 - **Additional args:** `"format"?: "twig"|"blocks"`, `"blocks"?: object[]`.
 - **(v1.65.0) `format: "blocks"`.** `blocks` is then required and `html`/`css`/`js` are
-  rejected; the page is created with a block body and marked blocks. `warnings` is empty on the
-  Twig path. The reverse is also refused: sending `blocks` without `format: "blocks"` errors
-  `invalid_input` rather than silently publishing an empty page.
+  rejected; the page is created with a block body and marked blocks. The block builder's
+  warnings come only on this path. The reverse is also refused: sending `blocks` without
+  `format: "blocks"` errors `invalid_input` rather than silently publishing an empty page.
+- **(v1.96.0) `parent` / `menu_order`** work on the blocks path too: `parent` (an existing
+  page's id; `0` = top level) nests the page at `/<parent path>/<slug>/` with `slug` as the last
+  segment only, and `menu_order` is Page Attributes → Order. Non-integers → `invalid_input`, a
+  bad parent → `invalid_parent`, nothing written. Rules and warnings are `canai-mcp`'s
+  (`wpcanai-create-page`, **Nested pages**). To move or re-slug an existing blocks page,
+  or rename or publish it without re-sending its blocks, use `canai-mcp`'s
+  `wpcanai-update-page` — `write-page` takes no `slug` or `parent`.
 - **Returns:** `{ "post_id": int, "slug": string, "format": string,
-  "warnings": string[] }`.
+  "warnings": string[], "status": string, "parent": int, "path": string, "url": string }`.
 
 ### `wpcanai-write-page`
 
