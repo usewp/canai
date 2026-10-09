@@ -14,7 +14,7 @@ description: >
   breakdown", "pixel-perfect", "high fidelity", "pixelmatch".
 metadata:
   author: canai
-  version: "4.7.1"
+  version: "4.7.2"
 allowed-tools: Bash Read Write Edit Grep Glob
 ---
 
@@ -869,7 +869,9 @@ runs/<site>/
    - **If a page already exists at its `path`, reuse its id** — from an
      earlier push (a placeholder an earlier `--only` run created, say) or the
      site's own. Find it with `wpcanai-list-pages { "all_pages": true }`
-     (CanAI 1.97.0+), matching the row's `path`. For a real entry, write its
+     (CanAI 1.97.0+), matching the row's `path`; on CanAI 1.96.x,
+     `list-pages` shows only CanAI pages, so ask the user for the id of a
+     plain or draft page at that path. For a real entry, write its
      artifact into that page with `wpcanai-write-meta` (and its title with
      `wpcanai-update-page` if the page was a placeholder) — never create a
      second page, which would get the slug `gallery-2` and leave the
