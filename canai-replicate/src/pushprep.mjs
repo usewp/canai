@@ -123,27 +123,75 @@ function byDepthThenPath(a, b) {
   return pathDepth(a) - pathDepth(b) || (a < b ? -1 : a > b ? 1 : 0);
 }
 
-// The push manifest for a set of artifacts (pure — the caller writes it):
-// `pages` lists every page artifact in creation order, `file` relative to
-// output/; `missing_parents` lists every ancestor path no page artifact in
-// the set covers (a kit with only `venues__hall` needs a `venues` page first),
-// in the same parents-first order. Templates have no place in the page tree
-// and are left out.
-export function buildPushOrder(artifacts) {
-  const pages = artifacts
+function ancestorsOf(p) {
+  const segments = p === "" ? [] : p.split("/");
+  const out = [];
+  for (let i = 1; i < segments.length; i++) out.push(segments.slice(0, i).join("/"));
+  return out;
+}
+
+function hierarchyEntry(p) {
+  const segments = p.split("/");
+  return {
+    page_slug: segments[segments.length - 1],
+    parent_path: segments.length > 1 ? segments.slice(0, -1).join("/") : null,
+  };
+}
+
+// The push manifest (pure — the caller writes it). `pages` is ONE list in
+// creation order: every page artifact (`placeholder: false`, `file` relative
+// to output/) plus a `placeholder: true` entry (`file: null`) for each
+// ancestor path no artifact covers — a kit with only `venues__hall` needs a
+// `venues` page first. Sorted by depth, then path, so every non-null
+// `parent_path` is the `path` of an earlier entry by construction; `index`
+// comes first. `missing_parents` summarises the placeholder paths.
+//
+// `failedPages` ([{ path, source }]) are page files that did not convert. A
+// failed page is never turned into a placeholder: its descendants are held
+// back out of `pages` and reported under `blocked_parents`
+// ([{ path, source, held_back }]) until the file is fixed and pushprep re-run.
+// Templates have no place in the page tree and are left out.
+export function buildPushOrder(artifacts, failedPages = []) {
+  const real = artifacts
     .filter((a) => a.kind === "page")
-    .map((a) => ({ file: `push/${a.slug}.json`, path: a.path, page_slug: a.page_slug, parent_path: a.parent_path }))
-    .sort((a, b) => byDepthThenPath(a.path, b.path));
-  const have = new Set(pages.map((p) => p.path));
+    .map((a) => ({
+      file: `push/${a.slug}.json`,
+      placeholder: false,
+      path: a.path,
+      page_slug: a.page_slug,
+      parent_path: a.parent_path,
+    }));
+  const have = new Set(real.map((p) => p.path));
+  const failed = new Map(failedPages.filter((f) => !have.has(f.path)).map((f) => [f.path, f.source]));
+
+  const blocked = new Map(); // failed path -> held-back descendant paths
+  const kept = [];
+  for (const entry of real) {
+    const failedAncestors = ancestorsOf(entry.path).filter((a) => failed.has(a));
+    for (const a of failedAncestors) {
+      if (!blocked.has(a)) blocked.set(a, []);
+      blocked.get(a).push(entry.path);
+    }
+    if (failedAncestors.length === 0) kept.push(entry);
+  }
+
   const missing = new Set();
-  for (const p of pages) {
-    const segments = p.path === "" ? [] : p.path.split("/");
-    for (let i = 1; i < segments.length; i++) {
-      const ancestor = segments.slice(0, i).join("/");
-      if (!have.has(ancestor)) missing.add(ancestor);
+  for (const entry of kept) {
+    for (const a of ancestorsOf(entry.path)) {
+      if (!have.has(a)) missing.add(a);
     }
   }
-  return { pages, missing_parents: [...missing].sort(byDepthThenPath) };
+  const placeholders = [...missing].map((p) => ({ file: null, placeholder: true, path: p, ...hierarchyEntry(p) }));
+
+  return {
+    pages: [...kept, ...placeholders].sort((a, b) => byDepthThenPath(a.path, b.path)),
+    missing_parents: [...missing].sort(byDepthThenPath),
+    blocked_parents: [...blocked.keys()].sort(byDepthThenPath).map((p) => ({
+      path: p,
+      source: failed.get(p),
+      held_back: blocked.get(p).sort(byDepthThenPath),
+    })),
+  };
 }
 
 // Pure extraction core — no I/O. Exported directly so tests can feed it real
@@ -357,10 +405,12 @@ export function convertKitFile(html, { filename, kind }) {
 // It also writes output/push-order.json (see buildPushOrder) — beside push/,
 // never inside it, so a push/*.json glob can't mistake it for an artifact —
 // covering the page artifacts THIS run converted: a --only run writes the
-// order for its own subset. `writePushOrder: false` leaves the file alone; for
-// a caller adding chrome templates on top of a page it just prepared
-// (handoff-page), whose order a template-only run would otherwise empty.
-export async function preparePushArtifacts({ site, runsDir = "runs", only = null, writePushOrder = true }) {
+// order for its own subset. A run with no page file at all (`--only header`,
+// handoff-page's chrome runs, a templates-only kit) leaves the file as it was
+// and returns `pushOrder: null`. Two page files that map to the same page path
+// (`__.html` and `index.html`, `a____b.html` and `a__b.html`) fail loudly,
+// like a slug collision.
+export async function preparePushArtifacts({ site, runsDir = "runs", only = null }) {
   const runDir = path.join(runsDir, site);
   const outDir = path.resolve(runDir, "output", "push");
 
@@ -385,6 +435,8 @@ export async function preparePushArtifacts({ site, runsDir = "runs", only = null
   const failures = [];
   const artifacts = [];
   const claimedSlugs = new Map(); // slug -> source file that already wrote output/push/<slug>.json
+  const claimedPaths = new Map(); // page path -> source file whose artifact creates that page
+  const failedPages = []; // page files that did not convert: [{ path, source }]
 
   await mkdir(outDir, { recursive: true });
 
@@ -395,6 +447,9 @@ export async function preparePushArtifacts({ site, runsDir = "runs", only = null
     if (!result.ok) {
       failures.push({ file: relSource, errors: result.errors });
       process.stderr.write(`  ✗ ${relSource}: ${result.errors.join("; ")}\n`);
+      if (job.kind === "page") {
+        failedPages.push({ path: pageHierarchy(job.slug).path, source: `${job.sub}/${job.filename}` });
+      }
       continue;
     }
 
@@ -404,6 +459,17 @@ export async function preparePushArtifacts({ site, runsDir = "runs", only = null
       failures.push({ file: relSource, errors: [msg] });
       process.stderr.write(`  ✗ ${relSource}: ${msg}\n`);
       continue;
+    }
+    if (job.kind === "page") {
+      const pagePath = result.artifact.path;
+      const pathOwner = claimedPaths.get(pagePath);
+      if (pathOwner) {
+        const msg = `page path "/${pagePath}${pagePath ? "/" : ""}" collides with ${pathOwner} — both would create the same page; refusing to write output/push/${job.slug}.json`;
+        failures.push({ file: relSource, errors: [msg] });
+        process.stderr.write(`  ✗ ${relSource}: ${msg}\n`);
+        continue;
+      }
+      claimedPaths.set(pagePath, relSource);
     }
     claimedSlugs.set(job.slug, relSource);
 
@@ -415,9 +481,9 @@ export async function preparePushArtifacts({ site, runsDir = "runs", only = null
     artifacts.push({ ...result.artifact, sourcePath: relSource, outputPath: destPath });
   }
 
-  const order = buildPushOrder(artifacts);
+  const order = buildPushOrder(artifacts, failedPages);
   let pushOrder = null;
-  if (writePushOrder) {
+  if (jobs.some((j) => j.kind === "page")) {
     pushOrder = path.resolve(runDir, "output", "push-order.json");
     await writeFile(pushOrder, JSON.stringify(order, null, 2) + "\n");
   }
@@ -430,6 +496,7 @@ export async function preparePushArtifacts({ site, runsDir = "runs", only = null
     failures,
     outDir,
     pushOrder,
-    missingParents: order.missing_parents,
+    missingParents: pushOrder ? order.missing_parents : [],
+    blockedParents: pushOrder ? order.blocked_parents : [],
   };
 }

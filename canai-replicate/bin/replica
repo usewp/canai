@@ -109,6 +109,26 @@ export function transformNextStepHint(objective) {
 }
 
 /**
+ * The push-order lines `pushprep` and `handoff-page` print after converting:
+ * where output/push-order.json went (or that a run with no page file left it
+ * alone), the missing parents it lists as placeholders, and any parent page
+ * that failed to convert and holds its children back.
+ */
+export function pushOrderSummary({ pushOrder, missingParents = [], blockedParents = [] }) {
+  if (!pushOrder) return `  push order unchanged (no pages in this run)\n`;
+  let out = `  push order → ${pushOrder}\n`;
+  if (missingParents.length > 0) {
+    out += `  missing parents (no artifact — listed as placeholders in push-order.json): ${missingParents.join(", ")}\n`;
+  }
+  for (const b of blockedParents) {
+    out +=
+      `  ✗ blocked parent /${b.path}/: fix output/${b.source} and re-run before pushing its children ` +
+      `(${b.held_back.join(", ")} — held out of push-order.json)\n`;
+  }
+  return out;
+}
+
+/**
  * Resolve capture `--page`. Absent → null (full-site). A bare `--page` with
  * no URL string must fail loud — never silently fall into full-site capture.
  */
@@ -366,12 +386,7 @@ async function main() {
       const r = await preparePushArtifacts({ site, runsDir, only });
       const { mark, failedSuffix, isTotalFailure } = summarizeCountOutcome(r.ok, r.count);
       stderr.write(`${mark} ${r.ok}/${r.count} file(s) converted${failedSuffix} → ${r.outDir}\n`);
-      stderr.write(`  push order → ${r.pushOrder}\n`);
-      if (r.missingParents.length > 0) {
-        stderr.write(
-          `  missing parents (no artifact — create each as a placeholder page first): ${r.missingParents.join(", ")}\n`,
-        );
-      }
+      stderr.write(pushOrderSummary(r));
       if (r.failures.length > 0) {
         stderr.write(`\nFailed conversions (never silently skipped):\n`);
         for (const f of r.failures) {
@@ -477,6 +492,7 @@ async function main() {
         `${mark} handoff-page ${r.slug}: chrome→Twig, backup ${r.backupPath} (chrome: ${r.chrome})\n` +
           `${mark} ${r.ok}/${r.count} push artifact(s)${failedSuffix} → ${r.outDir}\n`,
       );
+      stderr.write(pushOrderSummary(r));
       if (r.failures.length > 0) {
         stderr.write(`\nFailed conversions:\n`);
         for (const f of r.failures) {

@@ -779,16 +779,60 @@ test("convertKitFile: a template artifact carries all three hierarchy fields as 
   }
 });
 
-test("buildPushOrder: a missing grandparent and parent are both listed, parents first", () => {
-  const order = buildPushOrder([{ kind: "page", slug: "a__b__c", ...pageHierarchy("a__b__c") }]);
-  assert.deepEqual(order.pages, [{ file: "push/a__b__c.json", path: "a/b/c", page_slug: "c", parent_path: "a/b" }]);
-  assert.deepEqual(order.missing_parents, ["a", "a/b"]);
+// Every non-null parent_path must be the path of an EARLIER entry — the
+// property the agent's single top-to-bottom loop relies on.
+function assertParentsFirst(order) {
+  const seen = new Set();
+  for (const entry of order.pages) {
+    if (entry.parent_path !== null) {
+      assert.ok(seen.has(entry.parent_path), `${entry.path}: parent ${entry.parent_path} is not an earlier entry`);
+    }
+    seen.add(entry.path);
+  }
+}
+
+const art = (slug) => ({ kind: "page", slug, ...pageHierarchy(slug) });
+
+test("buildPushOrder: placeholders sit in the one ordered list — a + a__b__c__d gets a/b and a/b/c before the leaf", () => {
+  const order = buildPushOrder([art("a__b__c__d"), art("a")]);
+  assert.deepEqual(order.pages, [
+    { file: "push/a.json", placeholder: false, path: "a", page_slug: "a", parent_path: null },
+    { file: null, placeholder: true, path: "a/b", page_slug: "b", parent_path: "a" },
+    { file: null, placeholder: true, path: "a/b/c", page_slug: "c", parent_path: "a/b" },
+    { file: "push/a__b__c__d.json", placeholder: false, path: "a/b/c/d", page_slug: "d", parent_path: "a/b/c" },
+  ]);
+  assert.deepEqual(order.missing_parents, ["a/b", "a/b/c"]);
+  assert.deepEqual(order.blocked_parents, []);
+  assertParentsFirst(order);
+});
+
+test("buildPushOrder: two children of one missing parent share a single placeholder", () => {
+  const order = buildPushOrder([art("venues__room"), art("venues__hall")]);
+  assert.deepEqual(
+    order.pages.map((p) => [p.path, p.placeholder]),
+    [["venues", true], ["venues/hall", false], ["venues/room", false]],
+  );
+  assert.deepEqual(order.missing_parents, ["venues"]);
+  assertParentsFirst(order);
+});
+
+test("buildPushOrder: a parent that failed to convert is never a placeholder — its children are held back and reported", () => {
+  const order = buildPushOrder(
+    [art("gallery__auditorium"), art("gallery__auditorium__stage"), art("about")],
+    [{ path: "gallery", source: "pages/gallery.html" }],
+  );
+  assert.deepEqual(order.pages.map((p) => p.path), ["about"]);
+  assert.deepEqual(order.missing_parents, []);
+  assert.deepEqual(order.blocked_parents, [
+    { path: "gallery", source: "pages/gallery.html", held_back: ["gallery/auditorium", "gallery/auditorium/stage"] },
+  ]);
+  assertParentsFirst(order);
 });
 
 const page = (title) => SK_ABOUT_PAGE.replace("About – smitten kitchen", title);
 
 test(
-  "preparePushArtifacts: writes output/push-order.json beside push/ — pages by depth then path, templates left out, missing parents listed",
+  "preparePushArtifacts: writes output/push-order.json beside push/ — one parents-first list, placeholders included, templates left out",
   withSilencedStderr(async () => {
     const { root, runDir, cleanup } = await mkRun("example.com", {
       "output/pages/venues__hall.html": page("Hall"),
@@ -807,18 +851,28 @@ test(
       const orderPath = path.resolve(runDir, "output", "push-order.json");
       assert.equal(r.pushOrder, orderPath);
       assert.deepEqual(r.missingParents, ["venues"]);
+      assert.deepEqual(r.blockedParents, []);
 
       const order = JSON.parse(await readFile(orderPath, "utf8"));
       assert.deepEqual(order, {
         pages: [
-          { file: "push/index.json", path: "", page_slug: "", parent_path: null },
-          { file: "push/about.json", path: "about", page_slug: "about", parent_path: null },
-          { file: "push/gallery.json", path: "gallery", page_slug: "gallery", parent_path: null },
-          { file: "push/gallery__auditorium.json", path: "gallery/auditorium", page_slug: "auditorium", parent_path: "gallery" },
-          { file: "push/venues__hall.json", path: "venues/hall", page_slug: "hall", parent_path: "venues" },
+          { file: "push/index.json", placeholder: false, path: "", page_slug: "", parent_path: null },
+          { file: "push/about.json", placeholder: false, path: "about", page_slug: "about", parent_path: null },
+          { file: "push/gallery.json", placeholder: false, path: "gallery", page_slug: "gallery", parent_path: null },
+          { file: null, placeholder: true, path: "venues", page_slug: "venues", parent_path: null },
+          {
+            file: "push/gallery__auditorium.json",
+            placeholder: false,
+            path: "gallery/auditorium",
+            page_slug: "auditorium",
+            parent_path: "gallery",
+          },
+          { file: "push/venues__hall.json", placeholder: false, path: "venues/hall", page_slug: "hall", parent_path: "venues" },
         ],
         missing_parents: ["venues"],
+        blocked_parents: [],
       });
+      assertParentsFirst(order);
 
       // The pushed artifact itself carries the same fields.
       const hall = JSON.parse(await readFile(path.join(runDir, "output", "push", "venues__hall.json"), "utf8"));
@@ -838,7 +892,7 @@ test(
 );
 
 test(
-  "preparePushArtifacts: a page whose conversion fails is left out of push-order.json",
+  "preparePushArtifacts: a child page whose conversion fails is left out of push-order.json",
   withSilencedStderr(async () => {
     const { root, runDir, cleanup } = await mkRun("example.com", {
       "output/pages/about.html": SK_ABOUT_PAGE,
@@ -850,6 +904,7 @@ test(
       const order = JSON.parse(await readFile(path.join(runDir, "output", "push-order.json"), "utf8"));
       assert.deepEqual(order.pages.map((p) => p.path), ["about"]);
       assert.deepEqual(order.missing_parents, []);
+      assert.deepEqual(order.blocked_parents, []);
     } finally {
       await cleanup();
     }
@@ -857,7 +912,31 @@ test(
 );
 
 test(
-  "preparePushArtifacts: a --only run writes the order for its own subset — its parent outside the subset is a missing parent",
+  "preparePushArtifacts: a failing parent with a converting child — no placeholder for the parent, the child is held back as blocked",
+  withSilencedStderr(async () => {
+    const { root, runDir, cleanup } = await mkRun("example.com", {
+      "output/pages/gallery.html": "",
+      "output/pages/gallery__auditorium.html": page("Auditorium"),
+    });
+    try {
+      const r = await preparePushArtifacts({ site: "example.com", runsDir: path.join(root, "runs") });
+      assert.equal(r.ok, 1);
+      assert.deepEqual(r.missingParents, []);
+      const order = JSON.parse(await readFile(path.join(runDir, "output", "push-order.json"), "utf8"));
+      assert.deepEqual(order, {
+        pages: [],
+        missing_parents: [],
+        blocked_parents: [{ path: "gallery", source: "pages/gallery.html", held_back: ["gallery/auditorium"] }],
+      });
+      assert.deepEqual(r.blockedParents, order.blocked_parents);
+    } finally {
+      await cleanup();
+    }
+  }),
+);
+
+test(
+  "preparePushArtifacts: a --only run writes the order for its own subset — its parent outside the subset is a placeholder",
   withSilencedStderr(async () => {
     const { root, runDir, cleanup } = await mkRun("example.com", {
       "output/pages/gallery.html": page("Gallery"),
@@ -874,9 +953,17 @@ test(
       const order = JSON.parse(await readFile(path.join(runDir, "output", "push-order.json"), "utf8"));
       assert.deepEqual(order, {
         pages: [
-          { file: "push/gallery__auditorium.json", path: "gallery/auditorium", page_slug: "auditorium", parent_path: "gallery" },
+          { file: null, placeholder: true, path: "gallery", page_slug: "gallery", parent_path: null },
+          {
+            file: "push/gallery__auditorium.json",
+            placeholder: false,
+            path: "gallery/auditorium",
+            page_slug: "auditorium",
+            parent_path: "gallery",
+          },
         ],
         missing_parents: ["gallery"],
+        blocked_parents: [],
       });
     } finally {
       await cleanup();
@@ -885,7 +972,7 @@ test(
 );
 
 test(
-  "preparePushArtifacts: writePushOrder false leaves an existing push-order.json alone and returns pushOrder null",
+  "preparePushArtifacts: a run with no page file (--only header) leaves push-order.json alone and returns pushOrder null",
   withSilencedStderr(async () => {
     const { root, runDir, cleanup } = await mkRun("example.com", {
       "output/pages/about.html": SK_ABOUT_PAGE,
@@ -894,8 +981,10 @@ test(
     try {
       const runsDir = path.join(root, "runs");
       await preparePushArtifacts({ site: "example.com", runsDir, only: "about" });
-      const r = await preparePushArtifacts({ site: "example.com", runsDir, only: "header", writePushOrder: false });
+      const r = await preparePushArtifacts({ site: "example.com", runsDir, only: "header" });
+      assert.equal(r.ok, 1);
       assert.equal(r.pushOrder, null);
+      assert.deepEqual(r.missingParents, []);
       const order = JSON.parse(await readFile(path.join(runDir, "output", "push-order.json"), "utf8"));
       assert.deepEqual(order.pages.map((p) => p.path), ["about"]);
     } finally {
@@ -904,21 +993,68 @@ test(
   }),
 );
 
+for (const [first, second, pagePath] of [
+  ["__.html", "index.html", "/"],
+  ["a____b.html", "a__b.html", "/a/b/"],
+]) {
+  test(
+    `preparePushArtifacts: two page files with the same page path (${first} + ${second}) fail loudly, like a slug collision`,
+    withSilencedStderr(async () => {
+      const { root, runDir, cleanup } = await mkRun("example.com", {
+        [`output/pages/${first}`]: page("First"),
+        [`output/pages/${second}`]: page("Second"),
+      });
+      try {
+        const r = await preparePushArtifacts({ site: "example.com", runsDir: path.join(root, "runs") });
+        assert.equal(r.count, 2);
+        assert.equal(r.ok, 1, "only the first-processed file for a page path should succeed");
+        assert.equal(r.failures.length, 1);
+        assert.ok(r.failures[0].errors[0].includes(`page path "${pagePath}" collides with`), r.failures[0].errors[0]);
+        const order = JSON.parse(await readFile(path.join(runDir, "output", "push-order.json"), "utf8"));
+        assert.equal(order.pages.filter((p) => !p.placeholder).length, 1, "the colliding file never reaches the order");
+      } finally {
+        await cleanup();
+      }
+    }),
+  );
+}
+
+const runCli = (args) =>
+  promisify(execFile)(process.execPath, [new URL("../bin/replica", import.meta.url).pathname, ...args]);
+
 test("bin/replica pushprep prints the push order path and the missing parents", async () => {
   const { root, runDir, cleanup } = await mkRun("example.com", {
     "output/pages/venues__hall.html": page("Hall"),
   });
   try {
-    const bin = new URL("../bin/replica", import.meta.url).pathname;
-    const { stderr } = await promisify(execFile)(process.execPath, [
-      bin,
-      "pushprep",
-      "example.com",
-      "--runs",
-      path.join(root, "runs"),
-    ]);
+    const { stderr } = await runCli(["pushprep", "example.com", "--runs", path.join(root, "runs")]);
     assert.ok(stderr.includes(`push order → ${path.resolve(runDir, "output", "push-order.json")}`), stderr);
-    assert.match(stderr, /missing parents .*: venues\n/);
+    assert.match(stderr, /missing parents \(no artifact — listed as placeholders in push-order\.json\): venues\n/);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("bin/replica pushprep names a blocked parent's file to fix", async () => {
+  const { root, cleanup } = await mkRun("example.com", {
+    "output/pages/gallery.html": "",
+    "output/pages/gallery__auditorium.html": page("Auditorium"),
+  });
+  try {
+    const { stderr } = await runCli(["pushprep", "example.com", "--runs", path.join(root, "runs")]);
+    assert.match(stderr, /blocked parent \/gallery\/: fix output\/pages\/gallery\.html and re-run before pushing its children \(gallery\/auditorium/);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("bin/replica pushprep --only <template> says the push order is unchanged", async () => {
+  const { root, cleanup } = await mkRun("example.com", {
+    "output/templates/header.html": SK_HEADER_CHROME,
+  });
+  try {
+    const { stderr } = await runCli(["pushprep", "example.com", "--only", "header", "--runs", path.join(root, "runs")]);
+    assert.match(stderr, /push order unchanged \(no pages in this run\)/);
   } finally {
     await cleanup();
   }

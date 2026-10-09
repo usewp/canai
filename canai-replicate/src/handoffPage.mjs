@@ -227,11 +227,11 @@ export async function runHandoffPage({ site, runsDir = "runs", only } = {}) {
   const swapped = handoffPageHtml({ html, report, chrome });
   await writeFile(htmlPath, swapped);
 
-  // Only the page run writes output/push-order.json — the chrome runs convert
-  // templates alone and would leave an order with no pages in it.
+  // Only the page run writes output/push-order.json; the chrome runs have no
+  // page file, so they leave it as the page run wrote it.
   const pagePush = await preparePushArtifacts({ site, runsDir, only: slug });
-  const headerPush = await preparePushArtifacts({ site, runsDir, only: "header", writePushOrder: false });
-  const footerPush = await preparePushArtifacts({ site, runsDir, only: "footer", writePushOrder: false });
+  const headerPush = await preparePushArtifacts({ site, runsDir, only: "header" });
+  const footerPush = await preparePushArtifacts({ site, runsDir, only: "footer" });
 
   const ok =
     (pagePush.ok ?? 0) + (headerPush.ok ?? 0) + (footerPush.ok ?? 0);
@@ -254,6 +254,8 @@ export async function runHandoffPage({ site, runsDir = "runs", only } = {}) {
     failures,
     outDir: pagePush.outDir,
     pushOrder: pagePush.pushOrder,
+    missingParents: pagePush.missingParents,
+    blockedParents: pagePush.blockedParents,
     push: { page: pagePush, header: headerPush, footer: footerPush },
   };
 }

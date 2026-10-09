@@ -14,7 +14,7 @@ description: >
   breakdown", "pixel-perfect", "high fidelity", "pixelmatch".
 metadata:
   author: canai
-  version: "4.7.0"
+  version: "4.7.1"
 allowed-tools: Bash Read Write Edit Grep Glob
 ---
 
@@ -234,9 +234,9 @@ COMMANDS
                           page_slug, parent_path, template_type, html, css, js,
                           warnings }) — **this is what gets pushed to WordPress**,
                           never a raw output/pages/ or output/templates/ file (see
-                          Handoff below) — + runs/<site>/output/push-order.json (the
-                          pages in creation order, parents first, and the
-                          missing_parents to create as placeholders)
+                          Handoff below) — + runs/<site>/output/push-order.json (one
+                          parents-first list of the pages to create, placeholders
+                          for missing parents included)
   slice        <site>  Cut full-page screenshots into per-section PNGs (browser-free)
   check        <site>  Validate capture artifacts — decodes PNGs, blank slices FAIL
   verify       <site>  Write the screenshot bundle — YOU run it
@@ -671,19 +671,32 @@ Defect #7).
 not inside it, so a `push/*.json` glob only ever sees artifacts:
 
 ```json
-{ "pages": [ { "file": "push/gallery.json", "path": "gallery", "page_slug": "gallery", "parent_path": null },
-             { "file": "push/gallery__auditorium.json", "path": "gallery/auditorium", "page_slug": "auditorium",
-               "parent_path": "gallery" } ],
-  "missing_parents": [ "venues" ] }
+{ "pages": [ { "file": "push/gallery.json", "placeholder": false, "path": "gallery", "page_slug": "gallery",
+               "parent_path": null },
+             { "file": null, "placeholder": true, "path": "venues", "page_slug": "venues", "parent_path": null },
+             { "file": "push/gallery__auditorium.json", "placeholder": false, "path": "gallery/auditorium",
+               "page_slug": "auditorium", "parent_path": "gallery" },
+             { "file": "push/venues__hall.json", "placeholder": false, "path": "venues/hall",
+               "page_slug": "hall", "parent_path": "venues" } ],
+  "missing_parents": [ "venues" ],
+  "blocked_parents": [] }
 ```
 
-`pages` lists the page artifacts in creation order — by depth, then path, so
-every parent comes before its children (`index` first); `file` is relative to
-`output/`. `missing_parents` lists each ancestor path no artifact covers (a kit
-with `venues__hall` but no `venues`), parents first. A `--only` run writes the
-order for the pages it converted, so a parent outside that subset is listed as
-missing. The CLI prints `push order → …/output/push-order.json` and the missing
-parents, if any.
+`pages` is the one list to create, in order: by depth, then path, so every
+`parent_path` is the `path` of an earlier entry (`index` first). A real page
+has its artifact in `file` (relative to `output/`); an ancestor path no
+artifact covers (a kit with `venues__hall` but no `venues`) is a
+`placeholder: true` entry with `file: null`. `missing_parents` summarises the
+placeholder paths. A parent page that **failed** to convert is never a
+placeholder: its children are held out of `pages` and listed under
+`blocked_parents` (`{ path, source, held_back }`) — fix `output/<source>` and
+re-run `pushprep` before pushing them. Two page files that would create the same
+page (`__.html` and `index.html`; `a____b.html` and `a__b.html`) fail loudly,
+like a slug collision. A `--only` run writes the order for the pages it
+converted, so a parent outside that subset becomes a placeholder entry; a run
+with no page file at all (`--only header`) leaves the file as it was. The CLI
+prints `push order → …/output/push-order.json` (or `push order unchanged`), the
+missing parents and any blocked parent; `handoff-page` prints the same lines.
 
 **8. verify** — screenshot every generated HTML; pixel-score the Twig-free
 ones against their original capture (in practice rarely any), and flag
@@ -789,7 +802,7 @@ runs/<site>/
 ├── output/push/<slug>.json           # pushprep output — THIS is what gets pushed to
 │                                      #   WordPress (see Handoff below), never a raw
 │                                      #   output/pages/ or output/templates/ file
-├── output/push-order.json            # pushprep: pages in creation order + missing_parents
+├── output/push-order.json            # pushprep: one parents-first page list (placeholders included)
 └── verify/
     ├── <slug>-generated.png          # screenshot of the output, for review (full-site verify)
     ├── <slug>-desktop-generated.png  # page-mode: verify-page screenshot @ 1440
@@ -847,27 +860,35 @@ runs/<site>/
    post creation step — outside this skill — is where the slug must
    actually be forced).
 
-   **Create the pages in the order `output/push-order.json` gives**
-   (CanAI 1.96.0+ for nested pages). A source URL with more than one path
-   segment is a nested page: `/gallery/auditorium/` arrives as
-   `push/gallery__auditorium.json` with `slug` `gallery__auditorium` — never
-   push that string, or a hyphen-flattened `gallery-auditorium`, as the page
-   slug. First create each of `missing_parents` as a plain placeholder page
-   (status `publish`, title from its last segment) and tell the user each
-   one still needs content — unless a page already exists at that path
-   (an earlier push, or the site's own), in which case reuse its id. Then
-   create each entry of `pages`, in order, from its `file` with
-   `wpcanai-create-page`, `slug: page_slug` and, when `parent_path` is set,
-   `parent: <the id created for parent_path>`; `index` (`path` `""`) is the
-   home page — leave `slug` out and make it the static front page
-   (`page_on_front`). The one exception to "missing parents first": a
-   missing parent whose own parent is in `pages` (the kit has `a` and
-   `a__b__c` but no `a__b`) waits until that page exists. Keep every id you
-   create — children and links need them, and a plain placeholder has no
-   CanAI content, so `wpcanai-list-pages` only shows it with
-   `all_pages: true` (CanAI 1.97.0+).
-   A kit link to `gallery__auditorium.html` becomes
-   `{{ turl(id_url(<id>)) }}`, which follows a move, or `slug_url()` on
+   **Create the pages by walking `output/push-order.json`'s `pages` top to
+   bottom** (CanAI 1.96.0+ for nested pages), keeping `ids[path]`. A source
+   URL with more than one path segment is a nested page:
+   `/gallery/auditorium/` arrives as `push/gallery__auditorium.json` with
+   `slug` `gallery__auditorium` — never push that string, or a
+   hyphen-flattened `gallery-auditorium`, as the page slug. For each entry:
+   - **If a page already exists at its `path`, reuse its id** — from an
+     earlier push (a placeholder an earlier `--only` run created, say) or the
+     site's own. Find it with `wpcanai-list-pages { "all_pages": true }`
+     (CanAI 1.97.0+), matching the row's `path`. For a real entry, write its
+     artifact into that page with `wpcanai-write-meta` (and its title with
+     `wpcanai-update-page` if the page was a placeholder) — never create a
+     second page, which would get the slug `gallery-2` and leave the
+     children under the first.
+   - **Otherwise create it** with `wpcanai-create-page`, `slug: page_slug`
+     and `parent: ids[parent_path]` (no `parent` when `parent_path` is
+     `null`): a `placeholder: true` entry as a plain published page titled
+     from its `page_slug` — tell the user each one still needs content — and
+     a real entry from its `file`.
+
+   `index` (`path` `""`) is the home page: the existing page to reuse is the
+   static front page (`wpcanai-read-settings { "keys": ["page_on_front"] }`);
+   a new one leaves `slug` out and becomes the front page with
+   `wpcanai-update-settings { "settings": { "page_on_front": <id> } }`, which
+   also sets `show_on_front` to `page`. Keep every id — children and links
+   need them. A `blocked_parents` entry's children are not in `pages`: fix
+   its `source` and re-run `pushprep` to push them (see step 7). A kit link
+   to `gallery__auditorium.html` becomes `{{ turl(id_url(<id>)) }}`, which
+   follows a move, or `slug_url()` on
    the returned `slug` (its `path`, `gallery/auditorium`, when the slug is
    shared) — never the pasted `url`. canai-mcp's **Nested pages** rule
    has the details.

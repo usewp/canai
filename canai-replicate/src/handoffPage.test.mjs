@@ -147,7 +147,9 @@ test("runHandoffPage: pass report → backup static, swap in place, pushprep pag
     // The chrome runs come after the page run; they must not empty its order.
     assert.equal(r.pushOrder, path.resolve(runDir, "output", "push-order.json"));
     const order = JSON.parse(await readFile(r.pushOrder, "utf8"));
-    assert.deepEqual(order.pages, [{ file: "push/about.json", path: "about", page_slug: "about", parent_path: null }]);
+    assert.deepEqual(order.pages, [
+      { file: "push/about.json", placeholder: false, path: "about", page_slug: "about", parent_path: null },
+    ]);
   } finally {
     await cleanup();
   }
@@ -309,6 +311,16 @@ test("runHandoffPage: pixel run.json + hard report + matching chrome proceeds (c
     assert.match(swapped, /wpcanai_template\('header'\) \}\}\n<main/);
   } finally {
     process.stderr.write = originalWrite;
+    await cleanup();
+  }
+});
+
+test("CLI: `replica handoff-page` prints the push order it wrote", async () => {
+  const { runsDir, runDir, cleanup } = await stageRun("example.com");
+  try {
+    const { stderr } = await execFileP("node", [BIN, "handoff-page", "example.com", "--only", "about", "--runs", runsDir]);
+    assert.ok(stderr.includes(`push order → ${path.resolve(runDir, "output", "push-order.json")}`), stderr);
+  } finally {
     await cleanup();
   }
 });
