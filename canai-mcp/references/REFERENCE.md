@@ -111,7 +111,7 @@ Use these for **main-query** archives so URLs respect **pretty permalinks**, CPT
 {{ post_url(post_id) }}                  {# Post permalink #}
 {{ term_url(term_id) }}                  {# Term archive URL #}
 {{ slug_url('shop') }}                   {# Page URL by slug; a child page too while only one page has the slug #}
-{{ slug_url('gallery/auditorium') }}     {# Child page by path — use it when the slug is shared #}
+{{ slug_url('gallery/auditorium') }}     {# Child page by path when the slug is shared; does not follow a move — prefer turl(id_url(id)) #}
 {{ slug_url('my-post', 'post') }}        {# Any post type URL by slug #}
 {{ turl('/') }}                          {# Home for the current language: https://site/ (default), https://site/ms/ (ms) #}
 {{ turl('/contact/') }}                  {# Any site path, same rule #}

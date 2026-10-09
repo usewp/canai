@@ -12,7 +12,7 @@ description: >
   "wpcanai-write-page", "convert to blocks", "convert to twig", "page css", "block page css".
 metadata:
   author: canai
-  version: "1.7.1"
+  version: "1.7.2"
 allowed-tools: "Read Write Edit Grep Glob"
 ---
 
@@ -143,8 +143,9 @@ This is the same `wpcanai-create-page` tool `canai-mcp` documents for Twig pages
   `format: "blocks"` errors `invalid_input` rather than silently publishing an empty page.
 - **(v1.96.0) `parent` / `menu_order`** work on the blocks path too: `parent` (an existing
   page's id; `0` = top level) nests the page at `/<parent path>/<slug>/` with `slug` as the last
-  segment only, and `menu_order` is Page Attributes → Order. Non-integers → `invalid_input`, a
-  bad parent → `invalid_parent`, nothing written. Rules and warnings are `canai-mcp`'s
+  segment only, and `menu_order` is Page Attributes → Order. Non-integers are refused by the
+  tool's input schema, and a bad parent with `invalid_parent`, both before anything is written.
+  Rules and warnings are `canai-mcp`'s
   (`wpcanai-create-page`, **Nested pages**). To move or re-slug an existing blocks page,
   or rename or publish it without re-sending its blocks, use `canai-mcp`'s
   `wpcanai-update-page` — `write-page` takes no `slug` or `parent`.
