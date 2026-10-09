@@ -93,6 +93,59 @@ function sectionCommentsToTwig(html) {
   return html.replace(/<!--\s*Section:\s*([\s\S]*?)-->/gi, (_, text) => `{# Section: ${text.trim()} #}`);
 }
 
+// A page artifact's place in the WordPress page tree, read off its file slug.
+// Kit filenames come from slug.mjs's urlToSlug(), which joins a URL's path
+// segments with `__` and names the home page `index` — so
+// `gallery__auditorium` is `/gallery/auditorium/`: `path` "gallery/auditorium",
+// `page_slug` (the WordPress post slug, the last segment) "auditorium",
+// `parent_path` "gallery" (`null` for a top-level page). `index` is the home
+// page: `path` and `page_slug` "", no parent. Empty segments (a `//` in the
+// source URL) are dropped, as WordPress itself ignores them.
+export function pageHierarchy(slug) {
+  if (slug === "index") return { path: "", page_slug: "", parent_path: null };
+  const segments = String(slug).split("__").filter(Boolean);
+  return {
+    path: segments.join("/"),
+    page_slug: segments[segments.length - 1] ?? "",
+    parent_path: segments.length > 1 ? segments.slice(0, -1).join("/") : null,
+  };
+}
+
+const NO_HIERARCHY = { path: null, page_slug: null, parent_path: null };
+
+function pathDepth(p) {
+  return p === "" ? 0 : p.split("/").length;
+}
+
+// Parents before children: by depth, then path (plain code-unit order, so the
+// file is byte-identical across machines/locales).
+function byDepthThenPath(a, b) {
+  return pathDepth(a) - pathDepth(b) || (a < b ? -1 : a > b ? 1 : 0);
+}
+
+// The push manifest for a set of artifacts (pure — the caller writes it):
+// `pages` lists every page artifact in creation order, `file` relative to
+// output/; `missing_parents` lists every ancestor path no page artifact in
+// the set covers (a kit with only `venues__hall` needs a `venues` page first),
+// in the same parents-first order. Templates have no place in the page tree
+// and are left out.
+export function buildPushOrder(artifacts) {
+  const pages = artifacts
+    .filter((a) => a.kind === "page")
+    .map((a) => ({ file: `push/${a.slug}.json`, path: a.path, page_slug: a.page_slug, parent_path: a.parent_path }))
+    .sort((a, b) => byDepthThenPath(a.path, b.path));
+  const have = new Set(pages.map((p) => p.path));
+  const missing = new Set();
+  for (const p of pages) {
+    const segments = p.path === "" ? [] : p.path.split("/");
+    for (let i = 1; i < segments.length; i++) {
+      const ancestor = segments.slice(0, i).join("/");
+      if (!have.has(ancestor)) missing.add(ancestor);
+    }
+  }
+  return { pages, missing_parents: [...missing].sort(byDepthThenPath) };
+}
+
 // Pure extraction core — no I/O. Exported directly so tests can feed it real
 // kit file contents without touching the filesystem.
 //
@@ -282,6 +335,7 @@ export function convertKitFile(html, { filename, kind }) {
       source: filename,
       kind,
       slug,
+      ...(kind === "page" ? pageHierarchy(slug) : NO_HIERARCHY),
       title,
       template_type: templateType,
       html: fragment,
@@ -299,7 +353,14 @@ export function convertKitFile(html, { filename, kind }) {
 // templates/ never legitimately collide; this stage still guards against a
 // collision loudly rather than silently overwriting, in case it's ever fed a
 // hand-edited or pre-dedup run dir).
-export async function preparePushArtifacts({ site, runsDir = "runs", only = null }) {
+//
+// It also writes output/push-order.json (see buildPushOrder) — beside push/,
+// never inside it, so a push/*.json glob can't mistake it for an artifact —
+// covering the page artifacts THIS run converted: a --only run writes the
+// order for its own subset. `writePushOrder: false` leaves the file alone; for
+// a caller adding chrome templates on top of a page it just prepared
+// (handoff-page), whose order a template-only run would otherwise empty.
+export async function preparePushArtifacts({ site, runsDir = "runs", only = null, writePushOrder = true }) {
   const runDir = path.join(runsDir, site);
   const outDir = path.resolve(runDir, "output", "push");
 
@@ -354,5 +415,21 @@ export async function preparePushArtifacts({ site, runsDir = "runs", only = null
     artifacts.push({ ...result.artifact, sourcePath: relSource, outputPath: destPath });
   }
 
-  return { site, count: jobs.length, ok: artifacts.length, artifacts, failures, outDir };
+  const order = buildPushOrder(artifacts);
+  let pushOrder = null;
+  if (writePushOrder) {
+    pushOrder = path.resolve(runDir, "output", "push-order.json");
+    await writeFile(pushOrder, JSON.stringify(order, null, 2) + "\n");
+  }
+
+  return {
+    site,
+    count: jobs.length,
+    ok: artifacts.length,
+    artifacts,
+    failures,
+    outDir,
+    pushOrder,
+    missingParents: order.missing_parents,
+  };
 }

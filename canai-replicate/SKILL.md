@@ -14,7 +14,7 @@ description: >
   breakdown", "pixel-perfect", "high fidelity", "pixelmatch".
 metadata:
   author: canai
-  version: "4.6.1"
+  version: "4.7.0"
 allowed-tools: Bash Read Write Edit Grep Glob
 ---
 
@@ -230,10 +230,13 @@ COMMANDS
                        wpcanai-template comment. A file that doesn't match the
                        expected shape fails loudly (per file), never a silently-wrong
                        fragment.
-                       → runs/<site>/output/push/<slug>.json ({ title, slug,
-                          template_type, html, css, js, warnings }) — **this is what
-                          gets pushed to WordPress**, never a raw output/pages/ or
-                          output/templates/ file (see Handoff below)
+                       → runs/<site>/output/push/<slug>.json ({ title, slug, path,
+                          page_slug, parent_path, template_type, html, css, js,
+                          warnings }) — **this is what gets pushed to WordPress**,
+                          never a raw output/pages/ or output/templates/ file (see
+                          Handoff below) — + runs/<site>/output/push-order.json (the
+                          pages in creation order, parents first, and the
+                          missing_parents to create as placeholders)
   slice        <site>  Cut full-page screenshots into per-section PNGs (browser-free)
   check        <site>  Validate capture artifacts — decodes PNGs, blank slices FAIL
   verify       <site>  Write the screenshot bundle — YOU run it
@@ -262,6 +265,7 @@ COMMANDS
                        pixel objective only — refuses wireframe/styled run.json and a
                        page-report scored under another gate mode or chrome).
                        → <slug>.page-mode.static.html backup + push/<slug|header|footer>.json
+                          + push-order.json (the page only)
 
 FLAGS
   --profile <path>        agent-browser Chrome profile dir (use "$HOME/.canai-browser")
@@ -641,8 +645,16 @@ Output:
 runs/<site>/output/push/<slug>.json
 ```
 
-Each file: `{ "source", "kind": "page"|"template", "slug", "title",
-"template_type", "html", "css", "js", "warnings" }`. `title` is the page's
+Each file: `{ "source", "kind": "page"|"template", "slug", "path",
+"page_slug", "parent_path", "title", "template_type", "html", "css", "js",
+"warnings" }`. `slug` is the file slug (it names the file and drives
+`--only`), never the WordPress slug. A page's place in the page tree comes
+from its filename — the kit joins a URL's path segments with `__`, so
+`gallery__auditorium` is `/gallery/auditorium/`: `path`
+`gallery/auditorium`, `page_slug` `auditorium` (the slug to create the page
+with), `parent_path` `gallery` (`null` for a top-level page); `index`, the
+home page, has `path` and `page_slug` `""`. A template carries all three as
+`null`. `title` is the page's
 `<title>` text (`null` for a chrome partial, which has no `<head>`); `html`
 is the corrected `_canai_html` value; `css`/`js` are usually empty (real
 kit output rarely has stray `<style>`/inline `<script>` to route) but exist
@@ -654,6 +666,24 @@ descriptive/prefixed title) — `wpcanai_template('header')` resolves by
 slug, not title or `template_type` term, and a "prefix everything" instinct
 silently breaks every include site-wide with no error anywhere (dogfood A2
 Defect #7).
+
+`pushprep` also writes `runs/<site>/output/push-order.json` — beside `push/`,
+not inside it, so a `push/*.json` glob only ever sees artifacts:
+
+```json
+{ "pages": [ { "file": "push/gallery.json", "path": "gallery", "page_slug": "gallery", "parent_path": null },
+             { "file": "push/gallery__auditorium.json", "path": "gallery/auditorium", "page_slug": "auditorium",
+               "parent_path": "gallery" } ],
+  "missing_parents": [ "venues" ] }
+```
+
+`pages` lists the page artifacts in creation order — by depth, then path, so
+every parent comes before its children (`index` first); `file` is relative to
+`output/`. `missing_parents` lists each ancestor path no artifact covers (a kit
+with `venues__hall` but no `venues`), parents first. A `--only` run writes the
+order for the pages it converted, so a parent outside that subset is listed as
+missing. The CLI prints `push order → …/output/push-order.json` and the missing
+parents, if any.
 
 **8. verify** — screenshot every generated HTML; pixel-score the Twig-free
 ones against their original capture (in practice rarely any), and flag
@@ -759,6 +789,7 @@ runs/<site>/
 ├── output/push/<slug>.json           # pushprep output — THIS is what gets pushed to
 │                                      #   WordPress (see Handoff below), never a raw
 │                                      #   output/pages/ or output/templates/ file
+├── output/push-order.json            # pushprep: pages in creation order + missing_parents
 └── verify/
     ├── <slug>-generated.png          # screenshot of the output, for review (full-site verify)
     ├── <slug>-desktop-generated.png  # page-mode: verify-page screenshot @ 1440
@@ -816,19 +847,26 @@ runs/<site>/
    post creation step — outside this skill — is where the slug must
    actually be forced).
 
-   **A source URL with more than one path segment is a nested page**
-   (CanAI 1.96.0+). The kit joins the segments with `__`, so
-   `/gallery/auditorium/` arrives as `output/push/gallery__auditorium.json`
-   with `slug` `gallery__auditorium` — never push that string, or a
-   hyphen-flattened `gallery-auditorium`, as the page slug. Create its
-   parents first, in path order (`gallery`, then each deeper segment):
-   from their own artifact when the kit has one (`gallery.json`),
-   otherwise as a plain published page (tell the user it still needs
-   content), and reuse any that already exist. Keep the ids you create
-   during the push: a plain parent has no CanAI content, so a later
-   `wpcanai-list-pages` will not show it. Then create the page with
-   `wpcanai-create-page`, `parent: <parent id>` and the last segment as
-   `slug` (`auditorium`). A kit link to `gallery__auditorium.html` becomes
+   **Create the pages in the order `output/push-order.json` gives**
+   (CanAI 1.96.0+ for nested pages). A source URL with more than one path
+   segment is a nested page: `/gallery/auditorium/` arrives as
+   `push/gallery__auditorium.json` with `slug` `gallery__auditorium` — never
+   push that string, or a hyphen-flattened `gallery-auditorium`, as the page
+   slug. First create each of `missing_parents` as a plain placeholder page
+   (status `publish`, title from its last segment) and tell the user each
+   one still needs content — unless a page already exists at that path
+   (an earlier push, or the site's own), in which case reuse its id. Then
+   create each entry of `pages`, in order, from its `file` with
+   `wpcanai-create-page`, `slug: page_slug` and, when `parent_path` is set,
+   `parent: <the id created for parent_path>`; `index` (`path` `""`) is the
+   home page — leave `slug` out and make it the static front page
+   (`page_on_front`). The one exception to "missing parents first": a
+   missing parent whose own parent is in `pages` (the kit has `a` and
+   `a__b__c` but no `a__b`) waits until that page exists. Keep every id you
+   create — children and links need them, and a plain placeholder has no
+   CanAI content, so `wpcanai-list-pages` only shows it with
+   `all_pages: true` (CanAI 1.97.0+).
+   A kit link to `gallery__auditorium.html` becomes
    `{{ turl(id_url(<id>)) }}`, which follows a move, or `slug_url()` on
    the returned `slug` (its `path`, `gallery/auditorium`, when the slug is
    shared) — never the pasted `url`. canai-mcp's **Nested pages** rule

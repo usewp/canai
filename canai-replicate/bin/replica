@@ -137,7 +137,7 @@ COMMANDS
   designmd  <site>           Prepare bundle + prompt for design-md skill
   contentmodel <site>        Prepare CPT/custom-field handoff bundle → agent writes runs/<site>/CONTENT-MODEL.md
   transform <site>           Prepare per-page/per-type bundles + prompts; agent writes runs/<site>/output/pages/<slug>.html or output/templates/<type>-single.html
-  pushprep  <site>           Convert output/pages + output/templates into push-ready runs/<site>/output/push/<slug>.json (strips the doctype/head/body shell + preview-libs). NEVER push a raw output/pages|templates/*.html file into _canai_html — push the output/push/ artifact instead.
+  pushprep  <site>           Convert output/pages + output/templates into push-ready runs/<site>/output/push/<slug>.json (strips the doctype/head/body shell + preview-libs) + output/push-order.json (pages parents-first, missing_parents). NEVER push a raw output/pages|templates/*.html file into _canai_html — push the output/push/ artifact instead.
   verify    <site>           Write the agent-browser screenshot bundle → runs/<site>/.verify/PROMPT.md (YOU run it)
   verify-score <site>        Pixel-score the screenshots, write report.md
   verify-structure <site>
@@ -366,6 +366,12 @@ async function main() {
       const r = await preparePushArtifacts({ site, runsDir, only });
       const { mark, failedSuffix, isTotalFailure } = summarizeCountOutcome(r.ok, r.count);
       stderr.write(`${mark} ${r.ok}/${r.count} file(s) converted${failedSuffix} → ${r.outDir}\n`);
+      stderr.write(`  push order → ${r.pushOrder}\n`);
+      if (r.missingParents.length > 0) {
+        stderr.write(
+          `  missing parents (no artifact — create each as a placeholder page first): ${r.missingParents.join(", ")}\n`,
+        );
+      }
       if (r.failures.length > 0) {
         stderr.write(`\nFailed conversions (never silently skipped):\n`);
         for (const f of r.failures) {
