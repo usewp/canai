@@ -145,8 +145,8 @@ test("runHandoffPage: pass report → backup static, swap in place, pushprep pag
     }
 
     // The chrome runs come after the page run; they must not empty its order.
-    assert.equal(r.pushOrder, path.resolve(runDir, "output", "push-order.json"));
-    const order = JSON.parse(await readFile(r.pushOrder, "utf8"));
+    assert.equal(r.push.page.pushOrder, path.resolve(runDir, "output", "push-order.json"));
+    const order = JSON.parse(await readFile(r.push.page.pushOrder, "utf8"));
     assert.deepEqual(order.pages, [
       { file: "push/about.json", placeholder: false, path: "about", page_slug: "about", parent_path: null },
     ]);

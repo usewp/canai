@@ -1,6 +1,26 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { onlyToSlug, matchesOnly } from "./slug.mjs";
+import { onlyToSlug, matchesOnly, slugToPath, urlToSlug } from "./slug.mjs";
+
+test("slugToPath: inverts urlToSlug — index is the home page, `__` separates segments", () => {
+  assert.equal(slugToPath("index"), "");
+  assert.equal(slugToPath("about"), "about");
+  assert.equal(slugToPath("gallery__auditorium"), "gallery/auditorium");
+  assert.equal(slugToPath("our_team__jane-doe"), "our_team/jane-doe", "a single underscore stays in its segment");
+  for (const [url, pagePath] of [
+    ["https://x.com/", ""],
+    ["https://x.com/about/", "about"],
+    ["https://x.com/a/b/c", "a/b/c"],
+  ]) {
+    assert.equal(slugToPath(urlToSlug(url)), pagePath, `round trip: ${url}`);
+  }
+});
+
+test("slugToPath: empty segments are dropped, as WordPress ignores them", () => {
+  assert.equal(slugToPath("a____b"), "a/b");
+  assert.equal(slugToPath("__"), "");
+  assert.equal(slugToPath("__a__"), "a");
+});
 
 test("onlyToSlug: a URL pathname normalizes to the output slug", () => {
   assert.equal(onlyToSlug("/"), "index");

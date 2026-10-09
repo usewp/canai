@@ -15,6 +15,15 @@ export function urlToSlug(url) {
     .replace(/^-|-$/g, "");
 }
 
+// The inverse of urlToSlug(): a file slug → its URL path, no leading or
+// trailing slash. `index` is the home page (""); `__` separates segments, so
+// `gallery__auditorium` is "gallery/auditorium". Empty segments (a `//` in the
+// source URL) are dropped, as WordPress itself ignores them.
+export function slugToPath(slug) {
+  if (slug === "index") return "";
+  return String(slug).split("__").filter(Boolean).join("/");
+}
+
 export function siteFromUrl(url) {
   return new URL(url).hostname.replace(/^www\./, "");
 }

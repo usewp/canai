@@ -492,7 +492,7 @@ async function main() {
         `${mark} handoff-page ${r.slug}: chrome→Twig, backup ${r.backupPath} (chrome: ${r.chrome})\n` +
           `${mark} ${r.ok}/${r.count} push artifact(s)${failedSuffix} → ${r.outDir}\n`,
       );
-      stderr.write(pushOrderSummary(r));
+      stderr.write(pushOrderSummary(r.push.page));
       if (r.failures.length > 0) {
         stderr.write(`\nFailed conversions:\n`);
         for (const f of r.failures) {

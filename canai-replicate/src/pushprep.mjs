@@ -39,7 +39,7 @@
 
 import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
 import path from "node:path";
-import { matchesOnly } from "./slug.mjs";
+import { matchesOnly, slugToPath } from "./slug.mjs";
 
 async function listHtmlFiles(dir) {
   try {
@@ -93,49 +93,43 @@ function sectionCommentsToTwig(html) {
   return html.replace(/<!--\s*Section:\s*([\s\S]*?)-->/gi, (_, text) => `{# Section: ${text.trim()} #}`);
 }
 
-// A page artifact's place in the WordPress page tree, read off its file slug.
-// Kit filenames come from slug.mjs's urlToSlug(), which joins a URL's path
-// segments with `__` and names the home page `index` — so
-// `gallery__auditorium` is `/gallery/auditorium/`: `path` "gallery/auditorium",
-// `page_slug` (the WordPress post slug, the last segment) "auditorium",
-// `parent_path` "gallery" (`null` for a top-level page). `index` is the home
-// page: `path` and `page_slug` "", no parent. Empty segments (a `//` in the
-// source URL) are dropped, as WordPress itself ignores them.
+// A page path's place in the WordPress page tree: `page_slug` is its last
+// segment (the WordPress post slug), `parent_path` everything before it —
+// `null` for a top-level page and for the home page (path "", page_slug "").
+// The one decoder of a path's shape: page artifacts, placeholders, ancestors
+// and depth all go through it.
+function hierarchyOfPath(p) {
+  const cut = p.lastIndexOf("/");
+  return { path: p, page_slug: p.slice(cut + 1), parent_path: cut === -1 ? null : p.slice(0, cut) };
+}
+
+// A page artifact's place in the page tree, read off its file slug (see
+// slug.mjs's slugToPath(), the inverse of the urlToSlug() that named the kit
+// file) — so `gallery__auditorium` is `/gallery/auditorium/`: `path`
+// "gallery/auditorium", `page_slug` "auditorium", `parent_path` "gallery".
+// `index` is the home page: `path` and `page_slug` "", no parent.
 export function pageHierarchy(slug) {
-  if (slug === "index") return { path: "", page_slug: "", parent_path: null };
-  const segments = String(slug).split("__").filter(Boolean);
-  return {
-    path: segments.join("/"),
-    page_slug: segments[segments.length - 1] ?? "",
-    parent_path: segments.length > 1 ? segments.slice(0, -1).join("/") : null,
-  };
+  return hierarchyOfPath(slugToPath(slug));
 }
 
 const NO_HIERARCHY = { path: null, page_slug: null, parent_path: null };
 
+// Every ancestor of a page path, nearest first: its parent_path chain.
+function ancestorsOf(p) {
+  const out = [];
+  for (let a = hierarchyOfPath(p).parent_path; a !== null; a = hierarchyOfPath(a).parent_path) out.push(a);
+  return out;
+}
+
+// The home page "" is depth 0, a top-level page 1.
 function pathDepth(p) {
-  return p === "" ? 0 : p.split("/").length;
+  return p === "" ? 0 : ancestorsOf(p).length + 1;
 }
 
 // Parents before children: by depth, then path (plain code-unit order, so the
 // file is byte-identical across machines/locales).
 function byDepthThenPath(a, b) {
   return pathDepth(a) - pathDepth(b) || (a < b ? -1 : a > b ? 1 : 0);
-}
-
-function ancestorsOf(p) {
-  const segments = p === "" ? [] : p.split("/");
-  const out = [];
-  for (let i = 1; i < segments.length; i++) out.push(segments.slice(0, i).join("/"));
-  return out;
-}
-
-function hierarchyEntry(p) {
-  const segments = p.split("/");
-  return {
-    page_slug: segments[segments.length - 1],
-    parent_path: segments.length > 1 ? segments.slice(0, -1).join("/") : null,
-  };
 }
 
 // The push manifest (pure — the caller writes it). `pages` is ONE list in
@@ -152,36 +146,33 @@ function hierarchyEntry(p) {
 // ([{ path, source, held_back }]) until the file is fixed and pushprep re-run.
 // Templates have no place in the page tree and are left out.
 export function buildPushOrder(artifacts, failedPages = []) {
-  const real = artifacts
-    .filter((a) => a.kind === "page")
-    .map((a) => ({
+  const pageArtifacts = artifacts.filter((a) => a.kind === "page");
+  const have = new Set(pageArtifacts.map((a) => a.path));
+  const failed = new Map(failedPages.filter((f) => !have.has(f.path)).map((f) => [f.path, f.source]));
+
+  const kept = [];
+  const missing = new Set();
+  const blocked = new Map(); // failed path -> held-back descendant paths
+  for (const a of pageArtifacts) {
+    const ancestors = ancestorsOf(a.path);
+    const failedAncestors = ancestors.filter((p) => failed.has(p));
+    if (failedAncestors.length > 0) {
+      for (const p of failedAncestors) {
+        if (!blocked.has(p)) blocked.set(p, []);
+        blocked.get(p).push(a.path);
+      }
+      continue;
+    }
+    kept.push({
       file: `push/${a.slug}.json`,
       placeholder: false,
       path: a.path,
       page_slug: a.page_slug,
       parent_path: a.parent_path,
-    }));
-  const have = new Set(real.map((p) => p.path));
-  const failed = new Map(failedPages.filter((f) => !have.has(f.path)).map((f) => [f.path, f.source]));
-
-  const blocked = new Map(); // failed path -> held-back descendant paths
-  const kept = [];
-  for (const entry of real) {
-    const failedAncestors = ancestorsOf(entry.path).filter((a) => failed.has(a));
-    for (const a of failedAncestors) {
-      if (!blocked.has(a)) blocked.set(a, []);
-      blocked.get(a).push(entry.path);
-    }
-    if (failedAncestors.length === 0) kept.push(entry);
+    });
+    for (const p of ancestors) if (!have.has(p)) missing.add(p);
   }
-
-  const missing = new Set();
-  for (const entry of kept) {
-    for (const a of ancestorsOf(entry.path)) {
-      if (!have.has(a)) missing.add(a);
-    }
-  }
-  const placeholders = [...missing].map((p) => ({ file: null, placeholder: true, path: p, ...hierarchyEntry(p) }));
+  const placeholders = [...missing].map((p) => ({ file: null, placeholder: true, ...hierarchyOfPath(p) }));
 
   return {
     pages: [...kept, ...placeholders].sort((a, b) => byDepthThenPath(a.path, b.path)),
@@ -437,6 +428,11 @@ export async function preparePushArtifacts({ site, runsDir = "runs", only = null
   const claimedSlugs = new Map(); // slug -> source file that already wrote output/push/<slug>.json
   const claimedPaths = new Map(); // page path -> source file whose artifact creates that page
   const failedPages = []; // page files that did not convert: [{ path, source }]
+  // Every refusal is recorded AND printed — never silently skipped.
+  const fail = (relSource, ...errors) => {
+    failures.push({ file: relSource, errors });
+    process.stderr.write(`  ✗ ${relSource}: ${errors.join("; ")}\n`);
+  };
 
   await mkdir(outDir, { recursive: true });
 
@@ -445,28 +441,29 @@ export async function preparePushArtifacts({ site, runsDir = "runs", only = null
     const html = await readFile(path.join(job.dir, job.filename), "utf8");
     const result = convertKitFile(html, { filename: job.filename, kind: job.kind });
     if (!result.ok) {
-      failures.push({ file: relSource, errors: result.errors });
-      process.stderr.write(`  ✗ ${relSource}: ${result.errors.join("; ")}\n`);
+      fail(relSource, ...result.errors);
       if (job.kind === "page") {
-        failedPages.push({ path: pageHierarchy(job.slug).path, source: `${job.sub}/${job.filename}` });
+        failedPages.push({ path: slugToPath(job.slug), source: `${job.sub}/${job.filename}` });
       }
       continue;
     }
 
     const existingOwner = claimedSlugs.get(job.slug);
     if (existingOwner) {
-      const msg = `slug "${job.slug}" collides with ${existingOwner} — both would write output/push/${job.slug}.json; refusing to overwrite`;
-      failures.push({ file: relSource, errors: [msg] });
-      process.stderr.write(`  ✗ ${relSource}: ${msg}\n`);
+      fail(
+        relSource,
+        `slug "${job.slug}" collides with ${existingOwner} — both would write output/push/${job.slug}.json; refusing to overwrite`,
+      );
       continue;
     }
     if (job.kind === "page") {
       const pagePath = result.artifact.path;
       const pathOwner = claimedPaths.get(pagePath);
       if (pathOwner) {
-        const msg = `page path "/${pagePath}${pagePath ? "/" : ""}" collides with ${pathOwner} — both would create the same page; refusing to write output/push/${job.slug}.json`;
-        failures.push({ file: relSource, errors: [msg] });
-        process.stderr.write(`  ✗ ${relSource}: ${msg}\n`);
+        fail(
+          relSource,
+          `page path "/${pagePath}${pagePath ? "/" : ""}" collides with ${pathOwner} — both would create the same page; refusing to write output/push/${job.slug}.json`,
+        );
         continue;
       }
       claimedPaths.set(pagePath, relSource);
@@ -481,12 +478,11 @@ export async function preparePushArtifacts({ site, runsDir = "runs", only = null
     artifacts.push({ ...result.artifact, sourcePath: relSource, outputPath: destPath });
   }
 
+  // With no page job, the order is empty (no pages, missing or blocked parents)
+  // and the file on disk is left alone.
   const order = buildPushOrder(artifacts, failedPages);
-  let pushOrder = null;
-  if (jobs.some((j) => j.kind === "page")) {
-    pushOrder = path.resolve(runDir, "output", "push-order.json");
-    await writeFile(pushOrder, JSON.stringify(order, null, 2) + "\n");
-  }
+  const pushOrder = jobs.some((j) => j.kind === "page") ? path.resolve(runDir, "output", "push-order.json") : null;
+  if (pushOrder) await writeFile(pushOrder, JSON.stringify(order, null, 2) + "\n");
 
   return {
     site,
@@ -496,7 +492,7 @@ export async function preparePushArtifacts({ site, runsDir = "runs", only = null
     failures,
     outDir,
     pushOrder,
-    missingParents: pushOrder ? order.missing_parents : [],
-    blockedParents: pushOrder ? order.blocked_parents : [],
+    missingParents: order.missing_parents,
+    blockedParents: order.blocked_parents,
   };
 }

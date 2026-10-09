@@ -253,9 +253,6 @@ export async function runHandoffPage({ site, runsDir = "runs", only } = {}) {
     ok,
     failures,
     outDir: pagePush.outDir,
-    pushOrder: pagePush.pushOrder,
-    missingParents: pagePush.missingParents,
-    blockedParents: pagePush.blockedParents,
     push: { page: pagePush, header: headerPush, footer: footerPush },
   };
 }
