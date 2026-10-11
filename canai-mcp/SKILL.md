@@ -16,11 +16,10 @@ description: >
   "mega menu", "dropdown menu", "menu icon", "menu per language", "wpcanai-assign-menu",
   "translate this page", "translate strings",
   "parent page", "child page", "subpage", "nested page", "move a page", "rename a page", "wpcanai-update-page",
-  "reading mode", "reader mode", "reader view", "safari reader",
-  "stitch", "google stitch", "stitch screen", "stitch design", "deploy stitch", "import from stitch", "canai stitch", "wpcanai-stitch-deploy-screen".
+  "reading mode", "reader mode", "reader view", "safari reader".
 metadata:
   author: canai
-  version: "1.48.0"
+  version: "1.48.1"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -798,50 +797,13 @@ Site name, tagline, and archive/search/404 SEO title+description live in a per-l
 - **Returns:** `{ "purged": [{ "scope", "target" }], "plugin": "litespeed"|"wp-rocket"|"w3tc"|"wp-super-cache"|"wp-optimize"|null, "note"? }`. `plugin: null` means no supported cache plugin was detected — **not an error**; then only `post` does anything (it clears the WordPress post cache) and `all`/`url` return a note.
 - **You usually don't need it.** With purge after writes on (`wpcanai_purge_after_write`, default on), every CanAI write purges once at the end of the request — a template change purges the whole site, a page change purges that page — and says so in the write's `purged` field (see **Tool labels**). Call `purge-cache` only when `purged` came back `null` while a cache plugin is present (auto-purge off), or for a URL the write didn't cover (e.g. an archive that lists the page you edited).
 
-## Deploying Google Stitch screens (CanAI Stitch add-on)
+## Deploying Google Stitch screens → the `canai-stitch` skill
 
-Google Stitch (stitch.withgoogle.com) designs web and app screens. The **CanAI Stitch** add-on (`canai-stitch` 1.0.0+, on CanAI 1.98.0+) deploys a Stitch screen straight to a CanAI page: the site holds the owner's Stitch API key and calls Stitch's official API itself, so you never fetch Stitch HTML yourself and never see the key after it is connected.
-
-**No `wpcanai-stitch-*` tools in your list?** The add-on is not installed or not active on this site. Ask the owner to install it (https://github.com/usewp/canai-stitch); don't rebuild a Stitch screen by hand from its exported HTML instead.
-
-**Workflow**
-
-1. `wpcanai-stitch-connect` with no arguments → `{ connected, key_hint }`. Not connected: ask the owner to create a key in **Stitch → Settings → API Keys** and paste it in **CanAI → Tools → Import from Stitch** (preferred: the key stays out of the chat), or to give it to you for `wpcanai-stitch-connect { "api_key": … }`.
-2. `wpcanai-stitch-list-projects` → choose the project; `wpcanai-stitch-list-screens { "project_id" }` → choose the screen. `deployed_page_id > 0` means an earlier deploy made a page for it.
-3. `wpcanai-stitch-deploy-screen { "project_id", "screen_id" }` → a **draft** page plus a layout of its own. Open `url` (the draft preview) and check it.
-4. **Bring it up to CanAI conventions.** A deploy is a faithful copy of the design: its nav is hard-coded `<a>` links and its text is literal, so `wpcanai-scan` flags it. Turn the nav into the site's menus (`wpcanai-write-menu`, then `get_menu('primary')` / `get_menu('footer')` in the markup), wrap strings in `t()`, and move a header/footer you want on other pages into templates. Run `wpcanai-scan` again.
-
-**What a deploy writes**
-
-- **Layout** `Stitch: <screen title>` (`template_type` `layout`, published): CanAI's document shell with `{{ wp_head() }}`, the screen's Google Fonts links (Material Symbols included), its `tailwind.config` in a `<script id="tailwind-config">` after `wp_head()`, and its `<html>` / `<body>` classes and attributes. The screen's head `<style>` goes to the layout's `_canai_css`. Stitch's Tailwind CDN script is dropped: CanAI serves its own Tailwind v3.
-- **Page** (`status` `draft` unless you pass one): `_canai_html` is the screen's `<body>` after a one-line `{# Stitch: … #}` note; `_canai_layout` points at the layout. Any `{{`, `{%` or `{#` in the design (page and layout `_canai_css` included) is printed literally (`{{ '{{' }}`), so a design can never run Twig. Images that carried only `data-alt` get a real `alt`.
-- **Images** are copied to the media library and attached to the page (`images.rehosted`), reused on a re-deploy (`images.reused`). A copy that fails, or that the 25-second budget does not reach, keeps loading from the remote URL (`images.failed` / `images.remote`, with a warning) — deploy again to copy the rest. Stitch sometimes generates image URLs Google itself answers with 400; those stay remote on every deploy and look broken in Stitch too.
-- **`prepare_site`** (default `true`) turns on Tailwind and the Tailwind plugins the screen uses, listed in `site_changes`. With `false` the gaps come back as warnings.
-- One snapshot operation covers the page and the layout: `wpcanai-restore-operation { "operation_id", "confirm": true }` undoes the deploy.
-
-**Re-deploying** the same screen updates that page and its layout in place and keeps the page's title, slug, status and parent; `status` changes only when you pass it. If the page's `_canai_html`, the layout's code, or the page's layout choice was changed in CanAI since the last deploy — your step-4 cleanup included — the deploy stops with `stitch_page_edited` (409; `page_id` and `edited` — `page` / `layout` / `layout_choice` — in the error data) and writes nothing. Content a snapshot restore put back is not a change. Pass `overwrite: true` only when the owner wants the new design over those edits; the snapshot keeps the edited version restorable.
-
-### `wpcanai-stitch-connect` (canai-stitch 1.0.0)
-
-- **Args:** `{ "api_key"?: string, "disconnect"?: boolean }`. With `api_key`, Stitch checks the key before it is stored; a key Stitch rejects is not stored and an existing one is kept. `disconnect: true` removes the stored key. Neither → the current status.
-- **Returns:** `{ "connected": bool, "key_hint": "…ab12", "projects"?: int }` — never the key. `wpcanai-get-option` refuses the key's option.
-
-### `wpcanai-stitch-list-projects` (canai-stitch 1.0.0)
-
-- **Args:** `{ "view"?: "owned"|"shared" }` (default `owned`).
-- **Returns:** `{ "projects": [{ "id", "title", "updated", "device", "thumbnail" }] }`.
-
-### `wpcanai-stitch-list-screens` (canai-stitch 1.0.0)
-
-- **Args:** `{ "project_id": string }`.
-- **Returns:** `{ "project_id", "screens": [{ "id", "title", "device", "width", "height", "thumbnail", "deployed_page_id", "deployed_at", "page_status", "edit_url" }] }`.
-
-### `wpcanai-stitch-deploy-screen` (canai-stitch 1.0.0)
-
-- **Args:** `{ "project_id": string, "screen_id": string, "status"?: "draft"|"publish"|"pending"|"private", "rehost_images"?: bool (default true), "prepare_site"?: bool (default true), "overwrite"?: bool (default false) }`.
-- **Returns:** `{ "page_id", "layout_id", "created": bool, "status", "url", "edit_url", "images": { "rehosted", "reused", "remote", "failed" }, "site_changes": string[], "warnings": string[], "operation_id", "purged" }`.
-- **Who:** writes raw `_canai_html` / `_canai_css`, so it follows `wpcanai-write-meta`'s rule: an API-key request, or a user with `unfiltered_html` (`forbidden` otherwise).
-- **Errors (nothing written):** `stitch_not_connected` (connect first), `stitch_unauthorized` (the key was deleted or revoked in Stitch — connect a new one), `stitch_not_found` (wrong id, or a project of another account), `stitch_rate_limited` (wait a minute), `stitch_unavailable` / `stitch_bad_response` (retry later), `stitch_link_expired` (the download link expired twice in a row — retry), `stitch_html_too_large` (over 5 MB), `stitch_parse_failed` (the screen's HTML could not be read), `stitch_page_edited` (see **Re-deploying**), `forbidden`, `invalid_input`.
+Google Stitch deploys (the CanAI Stitch add-on's `wpcanai-stitch-connect`, `-list-projects`, `-list-screens` and
+`-deploy-screen` tools) have their own skill, **canai-stitch** (`npx skills add usewp/canai --skill canai-stitch`):
+choosing between "Stitch stays the source" and "hand over to CanAI", the deploy and re-deploy workflow with its
+`stitch_page_edited` guard, and the cleanup that turns the faithful copy into CanAI conventions. Load it for any
+Stitch request. Never pass `overwrite: true` to `wpcanai-stitch-deploy-screen` unless the owner asked to replace edits.
 
 ---
 

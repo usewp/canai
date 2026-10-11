@@ -28,6 +28,7 @@ npx skills add usewp/canai --skill canai-blocks
 npx skills add usewp/canai --skill canai-eeat
 npx skills add usewp/canai --skill canai-prepare
 npx skills add usewp/canai --skill canai-replicate
+npx skills add usewp/canai --skill canai-stitch
 npx skills add usewp/canai --skill canai-yolo
 ```
 
@@ -51,6 +52,7 @@ npx skills remove canai-mcp
 | `canai-eeat` | Audit posts, pages, and drafts for people-first usefulness, E-E-A-T evidence, creator/process transparency, and search-engine-first warning signs; optionally guide evidence-safe remediation. |
 | `canai-prepare` | Produce **single self-contained HTML files** per page (semantic HTML5, Tailwind utilities, vanilla JS/Alpine, Lucide) for later CanAI import. Not tied to a WordPress install. |
 | `canai-replicate` | **Replicate a whole live site** into `canai-prepare` format: discover → classify → capture → `DESIGN.md` → transform to Twig templates + pages → verify by visual diff. Hands off to `canai-mcp` to push. |
+| `canai-stitch` | **Companion to `canai-mcp`, needs the [CanAI Stitch](https://github.com/usewp/canai-stitch) add-on.** Deploy Google Stitch screens as CanAI pages, re-deploy when the design changes, and turn the copy into CanAI conventions (menus, `t()`, header/footer templates). |
 | `canai-yolo` | **Opt-in / high risk.** FluentSnippets create/update/publish via the same MCP server. Install only when you need site PHP/code workflows. |
 
 ## Companion skills
