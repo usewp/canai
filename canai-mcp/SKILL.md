@@ -19,7 +19,7 @@ description: >
   "reading mode", "reader mode", "reader view", "safari reader".
 metadata:
   author: canai
-  version: "1.48.1"
+  version: "1.48.2"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -799,7 +799,7 @@ Site name, tagline, and archive/search/404 SEO title+description live in a per-l
 
 ## Deploying Google Stitch screens → the `canai-stitch` skill
 
-Google Stitch deploys (the CanAI Stitch add-on's `wpcanai-stitch-connect`, `-list-projects`, `-list-screens` and
+Google Stitch deploys (the CanAI Stitch add-on's `wpcanai-stitch-connect`, `-list-projects`, `-set-projects`, `-list-screens` and
 `-deploy-screen` tools) have their own skill, **canai-stitch** (`npx skills add usewp/canai --skill canai-stitch`):
 choosing between "Stitch stays the source" and "hand over to CanAI", the deploy and re-deploy workflow with its
 `stitch_page_edited` guard, and the cleanup that turns the faithful copy into CanAI conventions. Load it for any

@@ -11,7 +11,7 @@ description: >
   "redeploy stitch", "update from stitch", "canai stitch", "canai-stitch", "wpcanai-stitch-deploy-screen".
 metadata:
   author: canai
-  version: "1.0.0"
+  version: "1.1.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -19,7 +19,7 @@ allowed-tools: "Read Grep Glob"
 
 Google Stitch (stitch.withgoogle.com) designs web and app screens. The **CanAI Stitch** add-on deploys a Stitch
 screen straight to a CanAI page: the site holds the owner's Stitch API key and calls Stitch's official API itself.
-You drive it with four MCP tools; you never fetch Stitch HTML yourself and never see the key once it is connected.
+You drive it with five MCP tools; you never fetch Stitch HTML yourself and never see the key once it is connected.
 
 **This skill is a companion to [canai-mcp](../canai-mcp/SKILL.md).** Everything canai-mcp says about the transport
 (CanAI MCP server only, no WP-CLI, no file edits) and about CanAI's conventions (menus, `t()`, templates, structure
@@ -28,7 +28,7 @@ comments, `wpcanai-scan`) applies here; this skill only adds the Stitch tools an
 ## Requirements
 
 - CanAI **1.98.0+** with its MCP server connected (canai-mcp's prerequisites).
-- The **CanAI Stitch** add-on (`canai-stitch` **1.0.0+**) active on the site.
+- The **CanAI Stitch** add-on (`canai-stitch` **1.1.0+**) active on the site.
 - **No `wpcanai-stitch-*` tools in your list?** The add-on is not installed or not active. Ask the owner to install it
   (https://github.com/usewp/canai-stitch). If they can't, a screen's HTML exported from Stitch is just an HTML file: prepare it with [canai-prepare](../canai-prepare/SKILL.md) and deploy it with canai-mcp like any other.
 - **The key.** The owner creates it in **Stitch → Settings → API Keys** and pastes it in **CanAI → Tools → Import
@@ -57,19 +57,26 @@ duplicates the screen in Stitch and you deploy the duplicate (a new screen id, s
 
 1. **Connected?** `wpcanai-stitch-connect` with no arguments → `{ connected, key_hint }`. Not connected → the key
    step under **Requirements**.
-2. **Find the screen.** `wpcanai-stitch-list-projects` (`view`: `owned`, or `shared` for projects shared with the
-   owner) → the project; `wpcanai-stitch-list-screens { "project_id" }` → the screen. `deployed_page_id > 0` means
+2. **Find the project.** A Stitch account can hold dozens of projects; the site works with the ones its owner
+   **chose** (CanAI → Tools → Import from Stitch → Add projects). `wpcanai-stitch-list-projects` with no arguments
+   lists exactly those. If the project the owner means is there, use it. If it is not (or nothing is chosen yet), look
+   in the whole account — `wpcanai-stitch-list-projects { "view": "owned" }`, or `"shared"` for projects shared with
+   the owner (each row has `added`) — **ask the owner which project is for this site**, then
+   `wpcanai-stitch-set-projects { "add": ["<id>"] }`. Never add projects the owner did not name.
+   `unavailable` in the site list means a chosen project the key can no longer see (deleted, unshared, another
+   account's key): tell the owner; `wpcanai-stitch-set-projects { "remove": [...] }` clears it.
+3. **Find the screen.** `wpcanai-stitch-list-screens { "project_id" }` → the screen. `deployed_page_id > 0` means
    an earlier deploy made a page for it (re-deploy rules below).
-3. **Deploy.** `wpcanai-stitch-deploy-screen { "project_id", "screen_id" }` → a **draft** page plus a layout of its
+4. **Deploy.** `wpcanai-stitch-deploy-screen { "project_id", "screen_id" }` → a **draft** page plus a layout of its
    own. Pass `status: "publish"` only when the owner asked for it.
-4. **Read the result.**
+5. **Read the result.**
    - `images.remote` > 0 → the 25-second image budget ran out: deploy again (already-copied images are reused) to
      copy the rest.
    - `images.failed` > 0 → read the warning. Stitch sometimes generates image URLs Google itself answers with 400
      (their ids end in repeated patterns); those are broken in Stitch too and stay remote on every deploy — tell the
      owner, who can regenerate the image in Stitch or give you a replacement to sideload.
    - `site_changes` → what `prepare_site` turned on (Tailwind, the Tailwind plugins the screen uses). Mention it.
-5. **Check it.** Open `url` — for a draft, the preview link needs the owner logged in. Compare with the screen in
+6. **Check it.** Open `url` — for a draft, the preview link needs the owner logged in. Compare with the screen in
    Stitch. A `fixed top-0` bar at the very top is hidden behind WordPress's admin bar while logged in; visitors see
    it.
 
@@ -150,8 +157,22 @@ detail of each rule.
 
 ### `wpcanai-stitch-list-projects`
 
-- **Args:** `{ "view"?: "owned"|"shared" }` (default `owned`).
-- **Returns:** `{ "projects": [{ "id", "title", "updated", "device", "thumbnail" }] }`.
+- **Args:** `{ "view"?: "owned"|"shared" }`. Omitted → **this site's projects** (the ones its owner chose).
+  `owned` / `shared` → every project in the connected account, to choose from.
+- **Returns:** `{ "projects": [{ "id", "title", "updated", "device", "thumbnail", "added" }], "unavailable"?: string[] }`
+  — `added`: the project is on this site's list; `unavailable` (site list only): chosen ids the key cannot see.
+
+### `wpcanai-stitch-set-projects`
+
+- **Args:** `{ "add"?: string[], "remove"?: string[] }` — project ids. Neither → the ids chosen so far, without
+  calling Stitch.
+- **Adding** checks every id against the account (owned or shared) first; if one is not found, **nothing** is added
+  (`stitch_project_not_found`). **Removing** only edits the site's list: the project in Stitch and pages already
+  deployed from it are untouched. Disconnecting the key keeps the list.
+- **Returns:** `{ "added": string[], "removed": string[], "projects": string[] }` — the ids now chosen, in the order
+  they were added.
+- The add-on does not stop `wpcanai-stitch-list-screens` / `-deploy-screen` for a project that is not on the list;
+  put the project on the list first so the owner sees it in wp-admin.
 
 ### `wpcanai-stitch-list-screens`
 
@@ -174,6 +195,7 @@ detail of each rule.
 | `stitch_invalid_key` | Not shaped like a Stitch key — have the owner copy it again. |
 | `stitch_unauthorized` | Stitch rejected the key (deleted or revoked) — the owner makes a new one and connects it. |
 | `stitch_not_found` | Wrong id, or a project of another account (try `view: "shared"`). |
+| `stitch_project_not_found` | `wpcanai-stitch-set-projects` `add`: an id is not in the connected account (owned or shared); nothing was added. List the account with `view` and use an id from it. |
 | `stitch_rate_limited` | Wait a minute, then retry. |
 | `stitch_unavailable` / `stitch_bad_response` | Stitch is unreachable or answered oddly — retry later. |
 | `stitch_link_expired` | The download link expired twice in a row — retry. |
