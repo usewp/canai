@@ -11,7 +11,7 @@ description: >
   "redeploy stitch", "update from stitch", "canai stitch", "canai-stitch", "wpcanai-stitch-deploy-screen".
 metadata:
   author: canai
-  version: "1.1.0"
+  version: "1.2.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -66,7 +66,9 @@ duplicates the screen in Stitch and you deploy the duplicate (a new screen id, s
    `unavailable` in the site list means a chosen project the key can no longer see (deleted, unshared, another
    account's key): tell the owner; `wpcanai-stitch-set-projects { "remove": [...] }` clears it.
 3. **Find the screen.** `wpcanai-stitch-list-screens { "project_id" }` → the screen. `deployed_page_id > 0` means
-   an earlier deploy made a page for it (re-deploy rules below).
+   an earlier deploy made a page for it (re-deploy rules below). `hidden` counts items that are not designs
+   (no device, size or preview, such as Stitch's "Extracted text from…" notes): leave them alone — there is no HTML
+   to deploy — and pass `include_other: true` only to look at them.
 4. **Deploy.** `wpcanai-stitch-deploy-screen { "project_id", "screen_id" }` → a **draft** page plus a layout of its
    own. Pass `status: "publish"` only when the owner asked for it.
 5. **Read the result.**
@@ -176,9 +178,10 @@ detail of each rule.
 
 ### `wpcanai-stitch-list-screens`
 
-- **Args:** `{ "project_id": string }`.
-- **Returns:** `{ "project_id", "screens": [{ "id", "title", "device", "width", "height", "thumbnail",
-  "deployed_page_id", "deployed_at", "page_status", "edit_url" }] }`.
+- **Args:** `{ "project_id": string, "include_other"?: bool (default false) }`.
+- **Returns:** `{ "project_id", "screens": [{ "id", "title", "device", "width", "height", "thumbnail", "design": bool,
+  "deployed_page_id", "deployed_at", "page_status", "edit_url" }], "hidden": int }`. Items that are not designs
+  are left out and counted in `hidden`; a screen with a deployed page is never left out.
 
 ### `wpcanai-stitch-deploy-screen`
 
