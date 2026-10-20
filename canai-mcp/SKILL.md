@@ -19,7 +19,7 @@ description: >
   "reading mode", "reader mode", "reader view", "safari reader".
 metadata:
   author: canai
-  version: "1.48.2"
+  version: "1.49.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -950,6 +950,8 @@ CanAI has one translation model: **native string translation** (one post per pag
 - **The default language is read-only.** `wpcanai-i18n-set-translations` / `wpcanai-i18n-set-media-map` reject the default language — the source text IS the default rendering.
 - **Stale index.** After editing `_canai_html` / `_canai_js`, rescan before listing.
 - **No-op until configured.** With no non-default language, prefix routing / redirects / hreflang are off and `t()` / `tmedia()` pass through unchanged.
+- **PHP code follows the language through CanAI's functions (plugin v1.99.0).** Snippets, form plugins and SEO code can't learn the language from `get_locale()` (it stays the Site Language), the request path (CanAI strips the `/ms` prefix) or the `wpcanai_lang` cookie (the last translated page seen, not this one). They call `wpcanai_current_language()` (`null` where it isn't known, e.g. a form posted to `admin-ajax.php`), `wpcanai_language_from_url( $url )` (the Referer, for those posts) and `wpcanai_translate( $source, $vars, $lang )`, which renders like `t()`. A string only PHP uses isn't in `i18n-list-strings` (the index holds template and menu sources): set it with `i18n-set-translations` by its exact source. Writing that PHP is **`canai-yolo`** work.
+- **Cookie redirect.** A logged-out visitor whose `wpcanai_lang` cookie names a translation is sent (302) from an unprefixed CanAI page to that translation. Crawlers send no cookie, so indexing isn't affected. An owner who wants every URL to serve its own language adds `add_filter( 'wpcanai_redirect_to_cookie_language', '__return_false' );` (v1.99.0, a snippet: **`canai-yolo`**).
 - **Content overrides are frontend-only.** Admin, REST edit contexts, and the default language always see the original values; only `/{lang}/` frontend renders swap.
 - **Editors can also translate in wp-admin.** Since plugin v1.70.0 a block-editor post opened with `post.php?post=<id>&action=edit&lang=<slug>` ("language mode") loads and saves that language's override blob — the same `_canai_i18n_<lang>` data `wpcanai-i18n-set-post-overrides` writes. If a user says they edited a translation "in the editor", read it back with `wpcanai-i18n-get-content { "post_id": <id>, "lang": "<slug>" }` rather than assuming it is untranslated.
 - **Search matches default-language text only** — WP search doesn't index override blobs.
