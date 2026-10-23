@@ -14,8 +14,8 @@
 {{ bloginfo('description') }}            {# Site tagline #}
 {{ language_attributes() }}              {# lang="en-US" — a full attribute #}
 {{ body_class() }}                       {# class names only — NOT an attribute #}
-{{ current_url() }}                      {# Current page URL #}
-{{ is_current_url(menu_url) }}           {# Check if URL matches current page #}
+{{ current_url() }}                      {# The URL the visitor asked for, without query; /ms/about/ on a translated page (v1.100.0) #}
+{{ is_current_url(menu_url) }}           {# The same page in the current language: a raw or localized menu URL; trailing slash and query ignored #}
 {{ wp_nonce_field('action','name') }}    {# Security nonce #}
 ```
 
@@ -190,7 +190,7 @@ Two families: the **WordPress gettext** family (`__`, `_x`, `_n`) and **CanAI na
 
 `t()` reads the CanAI string table (managed on the Translations admin page / `wpcanai-i18n-*` MCP tools); `__()/_x()/_n()` are gettext. Templates and pages are not scoped by language — one post per page serves every language, and the post-targeting MCP tools take no `lang` argument. See SKILL.md → **Native string translation** for the full workflow.
 
-**From PHP (plugin 1.99.0+):** code outside Twig (snippets, form and SEO plugins) uses `wpcanai_current_language()`, `wpcanai_language_from_url( $url )` and `wpcanai_translate( $source, $vars = [], $lang = null )`, the PHP counterparts of `current_lang()` and `t()`. Unlike `current_lang()`, `wpcanai_current_language()` returns `null` where the language isn't known (admin, AJAX, REST, cron, WP-CLI, before `setup_theme`) instead of the default. `wpcanai_translate()` returns plain text for a plain source (escape it) and HTML for one with inline tags. The filter `wpcanai_redirect_to_cookie_language` (`$redirect, $lang, $target`) turns off the cookie-language redirect. Writing that PHP: the `canai-yolo` skill.
+**From PHP (plugin 1.99.0+):** code outside Twig (snippets, form and SEO plugins) uses `wpcanai_current_language()`, `wpcanai_language_from_url( $url )` and `wpcanai_translate( $source, $vars = [], $lang = null )`, the PHP counterparts of `current_lang()` and `t()`. Unlike `current_lang()`, `wpcanai_current_language()` returns `null` where the language isn't known (admin, AJAX, REST however it is reached, cron, WP-CLI, WordPress system paths, before `setup_theme`) instead of the default. `wpcanai_translate()` returns plain text for a plain source (escape it) and HTML for one with inline tags. The filter `wpcanai_redirect_to_cookie_language` (`$redirect, $lang, $target`) turns off the cookie-language redirect. **(1.100.0)** `REQUEST_URI` carries the `/ms` prefix from `parse_request` on, `get_locale()` follows a language only where its `switch_locale` is on, and the action `wpcanai_language_detected` (`$lang`, `$request_uri`) fires once per front-end request at `setup_theme` when the language is known. Writing that PHP: the `canai-yolo` skill.
 
 **Where a page's CSS/JS lives (plugin 1.78.0+):** to find where a page's CSS/JS actually lives (an empty `css` on a component is normal — styles are usually on its layout), call `read-meta` with `fields: ["asset_sources"]`. It returns the posts whose CSS/JS reach pages rendered through that post, in output order, one row per non-empty source: `{post_id, title, role, kind, lines, delivery}` — `role` is `self` / `layout` / `default_layout` / `parent_layout`, `kind` is `css` / `js`, `delivery` is `head` / `footer` / `inline`. It is not in the default field set and carries no `hashes`. `list-templates` / `list-pages` rows carry `css_lines` / `js_lines` for a quick scan (0 = none).
 

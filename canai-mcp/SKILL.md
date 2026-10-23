@@ -19,7 +19,7 @@ description: >
   "reading mode", "reader mode", "reader view", "safari reader".
 metadata:
   author: canai
-  version: "1.49.0"
+  version: "1.50.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -658,11 +658,11 @@ Every type except `embed` accepts `className` (Tailwind classes on the block's r
 ### `wpcanai-i18n-get-settings`
 
 - **Args:** `{ }`.
-- **Returns:** `{ "default": string, "languages": [{ "slug", "locale", "native_name", "hreflang" }], "enabled": bool, "site_locale": string }` — `enabled` is `true` when at least one non-default language is configured. **(v1.92.0)** `locale` is the WordPress locale the language was picked as (`ms_MY`), or `""` for one WordPress doesn't list and for languages saved before v1.92.0. **(v1.95.0)** `site_locale` is WordPress's Site Language (Settings → General, `en_US` for English (United States)), which the default language always is. This is the **router probe**: call it first on any translation request (see **Translation model router**).
+- **Returns:** `{ "default": string, "languages": [{ "slug", "locale", "native_name", "hreflang", "switch_locale", "locale_installed" }], "enabled": bool, "site_locale": string }` — `enabled` is `true` when at least one non-default language is configured. **(v1.92.0)** `locale` is the WordPress locale the language was picked as (`ms_MY`), or `""` for one WordPress doesn't list and for languages saved before v1.92.0. **(v1.95.0)** `site_locale` is WordPress's Site Language (Settings → General, `en_US` for English (United States)), which the default language always is. This is the **router probe**: call it first on any translation request (see **Translation model router**). **(v1.100.0)** `switch_locale` (bool): WordPress's own text follows this language on its pages (see `wpcanai-i18n-set-settings`); `locale_installed` (bool): WordPress has the locale's core language pack.
 
 ### `wpcanai-i18n-set-settings`
 
-- **Args:** `{ "languages": [{ "slug"?: string, "locale"?: string, "native_name"?: string, "hreflang"?: string }], "default"?: string }` — `languages` required. **Replaces the entire language list:** include every language, not just the new one. **(v1.95.0)** `default` is optional: see **The default is the Site Language** below.
+- **Args:** `{ "languages": [{ "slug"?: string, "locale"?: string, "native_name"?: string, "hreflang"?: string, "switch_locale"?: bool }], "default"?: string }` — `languages` required. **Replaces the entire language list:** include every language, not just the new one. **(v1.95.0)** `default` is optional: see **The default is the Site Language** below.
 - **(v1.92.0) Pass the WordPress locale.** Each language needs a `slug` or a `locale` (a WordPress locale: `ms_MY`, `ja`, `pt_BR`, `en_US`). A locale fills in whatever you omit, exactly as the admin language picker does:
   - `slug`: the ISO 639-1 code, region-qualified only when another language already uses it (`pt` then `pt-pt`).
   - `native_name`: WordPress's own name for the locale, and "English" for `en_US`.
@@ -687,10 +687,16 @@ Every type except `embed` accepts `className` (Tailwind classes on the block's r
   - you call `wpcanai-update-options { "options": { "WPLANG": "ms_MY" } }`. That needs WPLANG on the update-options allowlist (CanAI → AI Client → Guardrails; without it the tool returns `options_not_allowed`) and the locale's language pack installed (otherwise WordPress keeps the old value). Use `""` for English (United States).
 
   CanAI follows either way. The new Site Language becomes the default (added from WordPress's list if it isn't configured), the previous default stays as a translation language, nothing is removed, and the next admin page tells the owner what moved. Re-read `wpcanai-i18n-get-settings` afterwards.
+- **(v1.100.0) WordPress's own text per language: `switch_locale`.** `true` makes that language's pages switch WordPress's locale, so core, WooCommerce and plugin text and date formats follow it where translations exist (the Languages tab's **Show WordPress and plugin text in this language**).
+  - It needs a `locale`, and it is ignored on the default language. Left out, an existing language keeps its stored value; `false` turns it off.
+  - `true` installs the locale's core language pack when it is missing (the plugins' packs come through **Dashboard → Updates**). The call can take a few seconds while the pack downloads; if it can't be installed, the setting is still saved and a warning says why.
+  - Side effects: on those pages the admin bar of a logged-in user and any mail sent during the request switch too. **Ask the owner before turning it on.**
+  - Pass the rows as `wpcanai-i18n-get-settings` returned them (keep the stored `hreflang`); `locale_installed` is ignored on input.
 - **Returns:** the resulting settings (same shape as `wpcanai-i18n-get-settings`). `warnings: string[]` appears when:
   - **(v1.95.0)** the Site Language's row was added;
   - **(v1.95.0)** the save moved the default onto the Site Language (settings saved before v1.95.0 that disagreed with it, the case where the Languages tab warns before saving), with what moved;
-  - a removed language still has translations. They are kept, and adding the same slug again restores them.
+  - a removed language still has translations. They are kept, and adding the same slug again restores them;
+  - **(v1.100.0)** a language with `switch_locale` whose language pack couldn't be installed (no capability, file changes off or FTP credentials needed, no pack on WordPress.org, or the download failed). The setting stays saved; WordPress text there stays in the Site Language until the pack is installed.
 
 ### `wpcanai-i18n-list-strings`
 
@@ -950,7 +956,7 @@ CanAI has one translation model: **native string translation** (one post per pag
 - **The default language is read-only.** `wpcanai-i18n-set-translations` / `wpcanai-i18n-set-media-map` reject the default language — the source text IS the default rendering.
 - **Stale index.** After editing `_canai_html` / `_canai_js`, rescan before listing.
 - **No-op until configured.** With no non-default language, prefix routing / redirects / hreflang are off and `t()` / `tmedia()` pass through unchanged.
-- **PHP code follows the language through CanAI's functions (plugin v1.99.0).** Snippets, form plugins and SEO code can't learn the language from `get_locale()` (it stays the Site Language), the request path (CanAI strips the `/ms` prefix) or the `wpcanai_lang` cookie (the last translated page seen, not this one). They call `wpcanai_current_language()` (`null` where it isn't known, e.g. a form posted to `admin-ajax.php`), `wpcanai_language_from_url( $url )` (the Referer, for those posts) and `wpcanai_translate( $source, $vars, $lang )`, which renders like `t()`. A string only PHP uses isn't in `i18n-list-strings` (the index holds template and menu sources): set it with `i18n-set-translations` by its exact source. Writing that PHP is **`canai-yolo`** work.
+- **PHP code follows the language through CanAI's functions (plugin v1.99.0).** Snippets, form plugins and SEO code can't learn the language from `get_locale()` (it follows the language only on languages whose owner ticked **Show WordPress and plugin text in this language**, v1.100.0; otherwise it stays the Site Language), the request path (`REQUEST_URI` carries the `/ms` prefix only from `parse_request` on, v1.100.0; before that CanAI strips it) or the `wpcanai_lang` cookie (the last translated page seen, not this one). They call `wpcanai_current_language()` (`null` where it isn't known, e.g. a form posted to `admin-ajax.php`), `wpcanai_language_from_url( $url )` (the Referer, for those posts) and `wpcanai_translate( $source, $vars, $lang )`, which renders like `t()`. Code that must act before `template_redirect` hooks `wpcanai_language_detected` (`$lang`, `$request_uri`, v1.100.0). A string only PHP uses isn't in `i18n-list-strings` (the index holds template and menu sources): set it with `i18n-set-translations` by its exact source. Writing that PHP is **`canai-yolo`** work.
 - **Cookie redirect.** A logged-out visitor whose `wpcanai_lang` cookie names a translation is sent (302) from an unprefixed CanAI page to that translation. Crawlers send no cookie, so indexing isn't affected. An owner who wants every URL to serve its own language adds `add_filter( 'wpcanai_redirect_to_cookie_language', '__return_false' );` (v1.99.0, a snippet: **`canai-yolo`**).
 - **Content overrides are frontend-only.** Admin, REST edit contexts, and the default language always see the original values; only `/{lang}/` frontend renders swap.
 - **Editors can also translate in wp-admin.** Since plugin v1.70.0 a block-editor post opened with `post.php?post=<id>&action=edit&lang=<slug>` ("language mode") loads and saves that language's override blob — the same `_canai_i18n_<lang>` data `wpcanai-i18n-set-post-overrides` writes. If a user says they edited a translation "in the editor", read it back with `wpcanai-i18n-get-content { "post_id": <id>, "lang": "<slug>" }` rather than assuming it is untranslated.

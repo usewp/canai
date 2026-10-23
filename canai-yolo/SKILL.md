@@ -9,7 +9,7 @@ description: >
   "create snippet".
 metadata:
   author: canai
-  version: "2.7.0"
+  version: "2.8.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -70,13 +70,14 @@ Agents often implement browser → WordPress relays as a FluentSnippets PHP rout
 
 ### The visitor's language in a snippet (plugin v1.99.0)
 
-On a site with CanAI native translation (`wpcanai-i18n-get-settings` → `enabled: true`), a snippet that writes visitor-facing text (SEO meta, form labels and messages, emails, redirects after a form) must follow the page's language. **WordPress can't tell PHP the language:** `get_locale()` / `determine_locale()` stay the Site Language on `/ms/` pages, and CanAI removes the `/ms` prefix from `$_SERVER['REQUEST_URI']` at `setup_theme`. Ask CanAI:
+On a site with CanAI native translation (`wpcanai-i18n-get-settings` → `enabled: true`), a snippet that writes visitor-facing text (SEO meta, form labels and messages, emails, redirects after a form) must follow the page's language. **Ask CanAI, not WordPress.** `get_locale()` / `determine_locale()` follow the language only on languages whose owner ticked **Show WordPress and plugin text in this language** (plugin v1.100.0); otherwise they stay the Site Language on `/ms/` pages. `$_SERVER['REQUEST_URI']` carries the `/ms` prefix only from the `parse_request` action onwards (v1.100.0); before that, and always on older plugins, CanAI removes it. Ask CanAI:
 
 | Function | Returns |
 |---|---|
-| `wpcanai_current_language()` | The language slug (`'en'`, `'ms'`), or **`null` where it isn't known**: admin, AJAX, REST, cron, WP-CLI, before `setup_theme`, a site with one language. |
+| `wpcanai_current_language()` | The language slug (`'en'`, `'ms'`), or **`null` where it isn't known**: admin, AJAX, REST (however it is reached), cron, WP-CLI, WordPress system paths such as `wp-login.php` and entry points other than `index.php` (v1.100.0), before `setup_theme`, a site with one language. |
 | `wpcanai_language_from_url( string $url )` | The language a URL of this site renders in (`?lang=`, then the prefix, else the default); `null` for another site, a system path (`/wp-admin/…`, `/wp-json/…`) or one language. |
 | `wpcanai_translate( string $source, array $vars = [], ?string $lang = null )` | The string from CanAI → Translations, rendered exactly as Twig `t()` (inline tags, `{placeholders}`, stale translations never shown); the source for the default or an unknown language. `$lang` null = `wpcanai_current_language()`. |
+| `do_action( 'wpcanai_language_detected', $lang, $request_uri )` (v1.100.0) | An action, not a function: it fires once per front-end request, at `setup_theme` priority 1, as soon as the language is known. `$request_uri` is the visitor's URI, raw and slashed: `wp_unslash()` it, and escape it before printing. |
 
 ```php
 // This request's language: the page's, else the form's hidden field, else the Referer.
@@ -102,8 +103,8 @@ $subject = wpcanai_translate( 'Your download is ready', array(), mysite_request_
 
 Rules:
 
-1. **Read the language inside a hook** (`template_redirect`, `wp_head`, a form plugin's filter), never at the snippet's top level: the functions exist as soon as CanAI loads, but the language is only known from `setup_theme`, and the save-time test run has no page at all (it returns `null`).
-2. **Never derive the language yourself.** No parsing `REQUEST_URI` (already stripped), no `get_locale()`, no `wpcanai_lang` cookie (it keeps the last translated page the visitor saw, not the page they are on), and no CanAI internals (`MenuLocations::language_manager()`, `new StringStore()`, `remove_action` on `LanguageManager` methods) — those can change in any release.
+1. **Read the language inside a hook** (`template_redirect`, `wp_head`, a form plugin's filter), never at the snippet's top level: the functions exist as soon as CanAI loads, but the language is only known from `setup_theme`, and the save-time test run has no page at all (it returns `null`). Hook `wpcanai_language_detected` when the code must act before `template_redirect`.
+2. **Never derive the language yourself.** No parsing `REQUEST_URI` (the prefix is there only after routing, and `?lang=` and system paths follow CanAI's rules), no `get_locale()` (it follows the language only where the owner turned that on), no `wpcanai_lang` cookie (it keeps the last translated page the visitor saw, not the page they are on), and no CanAI internals (`MenuLocations::language_manager()`, `new StringStore()`, `remove_action` on `LanguageManager` methods) — those can change in any release.
 3. **Forms posted to `admin-ajax.php` / REST have no page language** (`wpcanai_current_language()` is `null`). Print the language into the form when it renders (a hidden field from `wpcanai_current_language()`) and read that first; `wpcanai_language_from_url( (string) wp_get_referer() )` is the fallback, because browsers don't always send a Referer. Store the language on the entry if a later step (an email, a queued job) needs it — a cron run has no request to ask.
 4. **Escape the result where you print it.** A plain source comes back as plain text (like `__()`); one with inline tags comes back as HTML with its text already escaped.
 5. **Strings only PHP uses aren't listed** on the Strings tab or in `wpcanai-i18n-list-strings` (both list `t()` sources from templates and menus). Store their translations with `wpcanai-i18n-set-translations` (in `canai-mcp`), keyed by the exact source the snippet passes, and give the user the source → translation table.
