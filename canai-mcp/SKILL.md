@@ -19,7 +19,7 @@ description: >
   "reading mode", "reader mode", "reader view", "safari reader".
 metadata:
   author: canai
-  version: "1.50.0"
+  version: "1.50.1"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -95,6 +95,14 @@ Add to your **MCP client’s server configuration** (example; keys may differ by
 **Important:** `WP_API_URL` must be the **full** path `…/wp-json/mcp/wpcanai`, not only the site home URL — use the value from **AI Client → Connections**.
 
 Verify with `**wpcanai-list-templates`** (or your client’s tool list for the CanAI server).
+
+**When the connection fails** (the npx bridge answers with a "Connection Failed" stub, or no CanAI tools appear), the bridge hides the site's reason, so don't guess. Ask the user to open **WP Admin → CanAI → AI Client → Connections**. Since plugin v1.101.0 that page lists what stopped the agent, with the fix:
+- a maintenance-mode or REST-restriction plugin;
+- a revoked key, or a key whose creator was deleted;
+- a server that drops the `Authorization` header;
+- OAuth under maintenance mode.
+
+Most fixes are a prompt the user pastes back to you. Apply it to the `canai-mcp` entry of your MCP configuration only, reconnect, then run `do canai mcp diagnostics`. Since v1.100.3 a valid key gets past maintenance-mode plugins that let logged-in admins in (ASE, CMP, Disable WP REST API), so "the site is in maintenance" alone no longer stops a key whose creator can edit posts.
 
 ## CanAI Prerequisite Setup (on the site)
 
@@ -793,6 +801,12 @@ Site name, tagline, and archive/search/404 SEO title+description live in a per-l
 - `include_network: true` additionally makes **real outbound HTTP requests** (outbound HTTPS, REST loopback, skills-endpoint reachability, auth-header pass-through) — slower; use it when connectivity or environment issues are suspected instead of guessing.
 - **(v1.80.0)** a `page_cache` check (plugin detected, purge hooks, auto-purge on/off) and an `integrations` group (one row per tool label: present, tools registered, disabled). **(v1.82.0)** `integrations` rows count tools by their *declared* labels (`touches` + `requires`), so an absent integration still reports how many tools declare it, and carry `hidden_by_recommendation`.
 - **(v1.82.0)** group `tools`: `tool_budget` (exposed vs total tools, bytes, ~tokens) and `tool_recommendations` (warn when "Follow recommendations" is off and a recommendation differs from the current state; the `fix` is the exact `manage-tools` call). Group `languages`: `languages` (the configured native languages, or none) and `translation_tools` — the language list paired with the Languages tool group: none/off → pass (not in use), none/on → **warn** (add a language with `i18n-set-settings` or switch the group off), some/on → pass, some/off → info (a legitimate owner choice; opt in with `manage-tools` if translations are wanted). This is the only place diagnostics mentions translation; without an opt-in nothing else does.
+- **(v1.101.0)** group `mcp_connection`: what stops AI agents from connecting. It has one `fail`/`warning` row per problem, or a single `pass` row:
+  - `mcp_key_creator_gone`, `mcp_key_cannot_pass`, `mcp_gate_blocked_key`, `mcp_oauth_gate`, `mcp_unknown_key`, `mcp_auth_header`;
+  - each row carries `actions`: `prompt` (text), `link` (`url`) or `note`;
+  - a fix that needs a new key is a `note` pointing to AI Client → Connections, because keys are never made over MCP.
+
+  Your own connection works if you can read this, but tell the user about `fail` rows: another agent, or an OAuth connection, may be failing.
 - **(v1.90.0)** group `render`: a `pass` row when no template raised a render warning in the last 7 days; otherwise one `warning` row per entry (newest first, at most 10, then an `info` row with the remainder) carrying `post_id`, `field`, `line` and `edit_url` — the same entries `wpcanai-scan` reports as `render_warning`.
 - **(v1.88.0)** group `menus`: one row per location — `pass` with the menu's name and item count, `warning` when nothing is assigned (the `fix` is a `write-menu` call) — plus an `info` row listing menus still assigned under a pre-1.88 location name. **(v1.89.0)** one more `info` row per language menu ("Menu location: footer (Bahasa Melayu)").
 
