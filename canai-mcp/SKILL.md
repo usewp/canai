@@ -20,7 +20,7 @@ description: >
   "preview link", "preview the draft", "check the page in a browser", "screenshot the page", "wpcanai-preview-link".
 metadata:
   author: canai
-  version: "1.51.0"
+  version: "1.51.1"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -302,7 +302,7 @@ Don't call a page done from its source alone. An anonymous browser can't see a d
 3. To check the copy, fetch `url` with the header `Accept: text/markdown`; you get the page as text.
 4. Compare with the brief or design, fix, and look again. The link works until `expires_at` (10 minutes by default, `minutes` up to 60); ask for a new one after that.
 5. **One link is one page.** Links on the page go to the public site as an anonymous visitor sees it (the maintenance page, during maintenance). Ask for another link to check another page. A template (layout, header, footer, component) can't be previewed itself; preview a page that uses it.
-6. **It's a secret until it expires.** Don't paste preview links into chats, issues or documents others read. When you're done, `revoke` it.
+6. **It's a secret until it expires.** Don't paste preview links into chats, issues or documents others read. When you're done, `revoke` it, or let it expire.
 
 ### Blog posts (not CanAI pages)
 
@@ -596,10 +596,13 @@ A link that shows one post or page in any browser, as its editor sees it (no adm
 - **What the link can do:** GET requests to exactly that URL, nothing else.
   - Another page, an extra query parameter, POST, wp-admin, REST or AJAX: the token counts for nothing.
   - An expired, revoked or changed link answers **403** "This CanAI preview link has expired, was revoked, or is not for this page", before any maintenance page.
-  - It sets no login cookie. Responses are `no-store` and `noindex`.
+  - It sets no login cookie. Responses are `no-store`, `noindex` and `Referrer-Policy: no-referrer`.
+  - Revoking the API key that asked for a link ends the link too (plugin v1.102.1).
 - **Errors:**
   - `invalid_post`, `post_trashed` (trashed or auto-draft);
   - `not_viewable` (templates and other non-viewable types: preview a page that uses the template);
+  - `not_previewable` (plugin v1.102.1): WooCommerce's cart, checkout and account pages show the signed-in user's own orders, addresses and cart, so they never get a link. Ask the owner to check them in a logged-in browser;
+  - `no_user` (the request has no signed-in user to show the page as);
   - `invalid_lang`; `minutes` outside 1–60 (input schema);
   - `unknown_link` (revoke of a link that doesn't exist or has expired).
 
