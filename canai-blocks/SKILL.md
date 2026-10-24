@@ -12,7 +12,7 @@ description: >
   "wpcanai-write-page", "convert to blocks", "convert to twig", "page css", "block page css".
 metadata:
   author: canai
-  version: "1.7.2"
+  version: "1.7.3"
 allowed-tools: "Read Write Edit Grep Glob"
 ---
 
@@ -86,7 +86,9 @@ the page's CSS slot.
    `converted: true`. Rewrite the old `_canai_css` against block class names
    (`.wp-block-button__link`, `.wp-block-list li`) or drop it — Twig-specific selectors will not
    match block markup.
-4. Tell the owner to open the page in the block editor and check it.
+4. Look at the rendered page yourself: `wpcanai-preview-link { "post_id": 123 }`, then open its `url` in a browser
+   tool (drafts and maintenance mode included). Then tell the owner to open the page in the block editor and check
+   it.
 
 **Convert to Twig** (owner pastes `Convert post id 123 to twig. /canai-blocks`):
 1. `wpcanai-read-meta` `{ post_id: 123, fields: ["blocks", "css", "layout"] }` — read the CSS slot

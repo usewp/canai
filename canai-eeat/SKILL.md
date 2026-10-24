@@ -8,7 +8,7 @@ description: >
   qualified review of medical, financial, legal, or safety advice.
 metadata:
   author: canai
-  version: "1.0.0"
+  version: "1.0.1"
 allowed-tools: "Read Write Edit Grep Glob"
 ---
 
@@ -150,8 +150,9 @@ When the user asks to apply fixes:
    `wpcanai-write-meta`; use `wpcanai-replace-in-meta` for safe literal replacements.
 5. For native posts or block pages, write only when the complete replacement block list is available.
    `wpcanai-write-post` and `wpcanai-write-page` replace the entire body when `blocks` is sent.
-6. Keep drafts as drafts unless publication was explicit. Re-fetch or preview the result with an
-   available read/browser tool, then summarize exactly what changed and what still needs a human.
+6. Keep drafts as drafts unless publication was explicit. Look at the result: `wpcanai-preview-link
+   { "post_id": … }` gives a link that shows the draft. Open it in a browser tool, or fetch it with
+   `Accept: text/markdown` to read the text. Then summarize exactly what changed and what still needs a human.
 
 An audit is complete when every material conclusion points to observable evidence, every weakness
 has a concrete remedy, unsupported claims are queued for verification, and no experience or

@@ -11,7 +11,7 @@ description: >
   "redeploy stitch", "update from stitch", "canai stitch", "canai-stitch", "wpcanai-stitch-deploy-screen".
 metadata:
   author: canai
-  version: "1.2.0"
+  version: "1.2.1"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -78,9 +78,10 @@ duplicates the screen in Stitch and you deploy the duplicate (a new screen id, s
      (their ids end in repeated patterns); those are broken in Stitch too and stay remote on every deploy — tell the
      owner, who can regenerate the image in Stitch or give you a replacement to sideload.
    - `site_changes` → what `prepare_site` turned on (Tailwind, the Tailwind plugins the screen uses). Mention it.
-6. **Check it.** Open `url` — for a draft, the preview link needs the owner logged in. Compare with the screen in
-   Stitch. A `fixed top-0` bar at the very top is hidden behind WordPress's admin bar while logged in; visitors see
-   it.
+6. **Check it.** Call `wpcanai-preview-link { "post_id": <page_id> }` and open its `url` in your browser tool at phone
+   and desktop widths. It shows the draft, without the admin bar, even during maintenance mode (canai-mcp: **Check
+   your work in a browser**). Compare with the screen in Stitch. A `fixed top-0` bar at the very top is hidden behind
+   WordPress's admin bar for a logged-in owner; visitors and the preview link see it.
 
 ## What a deploy writes
 

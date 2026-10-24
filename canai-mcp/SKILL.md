@@ -16,10 +16,11 @@ description: >
   "mega menu", "dropdown menu", "menu icon", "menu per language", "wpcanai-assign-menu",
   "translate this page", "translate strings",
   "parent page", "child page", "subpage", "nested page", "move a page", "rename a page", "wpcanai-update-page",
-  "reading mode", "reader mode", "reader view", "safari reader".
+  "reading mode", "reader mode", "reader view", "safari reader",
+  "preview link", "preview the draft", "check the page in a browser", "screenshot the page", "wpcanai-preview-link".
 metadata:
   author: canai
-  version: "1.50.1"
+  version: "1.51.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -285,6 +286,23 @@ When converting a static HTML file (e.g. `index.html`) into CanAI via MCP tools:
 6. **Rewrite internal links to CanAI helpers** (instance of the principle above). Static sources keep `<a href="about.html">` / `href="/about">`; these break on the live site (wrong base path, non-permalink, moved slugs). Rewrite each internal link to the matching helper: cross-page links → `{{ turl(id_url(<id>)) }}` when the target page id is known (from `wpcanai-create-page` or `wpcanai-list-pages`), else `{{ slug_url('<slug>') }}`. For a child page (plugin v1.96.0), `slug_url()` matches the exact path first, then a bare slug that exactly one page has: `slug_url('auditorium')` finds `/gallery/auditorium/` and keeps finding it after the page moves. A top-level page wins a bare slug it shares with a child (since plugin v1.97.1 a *published* top-level page also wins over a draft that kept the same slug; two published ones stay ambiguous); when two child pages share a slug the bare form resolves to nothing (`href=""`, which `wpcanai-scan` reports as `link_unresolved` since plugin v1.97.0), so pass the path — `slug_url('gallery/theatrettes')`. A path link does not follow a move (it renders `href=""`), so prefer the id. Term / archive links → `{{ turl(term_url(<term_id>)) }}`; any other site path → `{{ turl('/path/') }}`. A header or footer nav list is not rewritten link by link — it becomes a `get_menu()` loop (see **Menus**). **Leave untouched:** external / absolute (`https://other.com`), protocol-relative (`//cdn…`), and anchor-only (`#section`) links. Report the rewrites in the manifest.
 7. **Normalize section comments to Twig navigation labels.** Convert every HTML nav comment that `canai-prepare` emitted into the exact form `{# Type / Short Label #}` — for example, `{# Section / Hero #}`. **Never** carry HTML nav comments into `_canai_html` (they pollute rendered output and are view-source reconnaissance). Guarantee every landmark has its matching type immediately before the opening tag: `<main>` → `Container`, `<section>` → `Section`, `<header>` → `Header`, `<footer>` → `Footer`, `<nav>` → `Navigation`, `<aside>` → `Sidebar`. Follow [references/STRUCTURE-NAVIGATION.md](references/STRUCTURE-NAVIGATION.md) for the controlled vocabulary and exact conversion. Ordinary implementation notes use `{# @dev … #}` and stay out of the editor's Structure outline. A canai-replicate `pushprep` artifact may use the older convention; normalize it before writing.
 8. **After authoring writes (create-page / create-template / implement / import / preset), run `wpcanai-scan` and clear content findings before claiming done.** A surgical edit through `wpcanai-replace-in-meta` (a class, a string, a URL) does not need a scan — skip it. Treat `missing_structure_comment`, `invalid_structure_comment`, `leaky_comment`, and `leaky_secret` like broken layouts: add or correct Twig navigation labels, convert HTML/`/* */` comments to Twig, and remove secret-shaped literals from meta. Clear the navigation findings too (`hardcoded_nav`, `legacy_menu_location`, `unknown_menu_location`, `menu_fallback_chain`, `menu_children_twice`, `menu_not_assigned`, `hardcoded_lang_prefix`, `unlocalised_internal_href` — plugin v1.88.0; `menu_children_twice` v1.89.0), and on native-i18n sites `split_sentence` (one sentence cut into several `t()`; merge it, see **Native string translation** step 2) and `unsupported_t_markup` (block elements or unpaired tags inside a `t()`, which show as text; plugin v1.94.0): each message names its fix, and **Menus** above is the workflow. A `render_warning` (v1.90.0) is a line that output an array while a page rendered — fix it the same way (see **Render warnings** under `wpcanai-scan`). Clear the link findings (plugin v1.97.0; see **Link findings** under `wpcanai-scan`): `link_unresolved` is a literal `slug_url()` that matches no page or several, so it renders `href=""`. Pass the path (several matches) or fix the slug (no match), or use `turl(id_url(<id>))`; `link_moved` is a literal `turl()` / `href` path to a page that has moved — replace it with the `turl(id_url(N))` the message names. For a full-site pass, use the **Comment / secret security sweep** recipe below.
+9. **Then look at the page** (next section).
+
+### Check your work in a browser (plugin v1.102.0)
+
+Don't call a page done from its source alone. An anonymous browser can't see a draft, a private, scheduled or password-protected page, or anything while a maintenance-mode or coming-soon plugin is on. So ask for a preview link:
+
+1. After a write (`write-page`, `write-meta`, `replace-in-meta`, `create-page`, `write-post`), call `wpcanai-preview-link { "post_id": … }`. Add `"lang": "ms"` to see a translation.
+2. Open `url` with your browser tool and screenshot it at phone and desktop widths. With agent-browser:
+   - `agent-browser open "<url>"`
+   - `agent-browser set viewport 390 844`, then `agent-browser screenshot phone.png`
+   - `agent-browser set viewport 1280 800`, then `agent-browser screenshot desktop.png`
+
+   The link shows the page as its editor sees it, without the admin bar.
+3. To check the copy, fetch `url` with the header `Accept: text/markdown`; you get the page as text.
+4. Compare with the brief or design, fix, and look again. The link works until `expires_at` (10 minutes by default, `minutes` up to 60); ask for a new one after that.
+5. **One link is one page.** Links on the page go to the public site as an anonymous visitor sees it (the maintenance page, during maintenance). Ask for another link to check another page. A template (layout, header, footer, component) can't be previewed itself; preview a page that uses it.
+6. **It's a secret until it expires.** Don't paste preview links into chats, issues or documents others read. When you're done, `revoke` it.
 
 ### Blog posts (not CanAI pages)
 
@@ -563,6 +581,27 @@ A page's title, slug, status, parent and order — the block editor's Summary an
   - *Slug suffixed* — WordPress saved a different slug (`x-2`): a sibling already uses it, or it is reserved. It can fire when you did not send `slug`, because core re-checks a published page's slug on every save and when a draft is published.
   - *Parent not published* — as in `wpcanai-create-page`.
 - **Cache.** Changing the slug or parent of a page that is published before and after purges the whole page cache (`purged.scope: "all"`): every cached menu and subpage link points at the old URL. A title change purges that page. **(v1.97.1)** The same rule applies to every writer (wp-admin, `write-post`): a moved URL purges everything only for a hierarchical type (pages) or a post in a menu; any other post purges just itself.
+
+### `wpcanai-preview-link` (plugin v1.102.0)
+
+A link that shows one post or page in any browser, as its editor sees it (no admin bar), for a few minutes. It works for drafts, scheduled, private and password-protected pages, and while a maintenance-mode or coming-soon plugin hides the site. See **Check your work in a browser** above.
+
+- **Args:**
+  - `{ "post_id": int, "minutes"?: 1–60 (default 10), "lang"?: string }`;
+  - or `{ "revoke": "<a url this tool returned>" }`, which ends that link now.
+- **Returns:** `{ "url", "expires_at" (UTC), "expires_in" (seconds), "post_id", "status", "lang", "how" }`; with `revoke`, `{ "revoked": true }`.
+  - A published page's `url` is its permalink plus `canai_preview=…`.
+  - Every other status gets WordPress's preview URL (`?page_id=…&preview=true&canai_preview=…`).
+  - `lang` puts the URL in that language (`/ms/…`).
+- **What the link can do:** GET requests to exactly that URL, nothing else.
+  - Another page, an extra query parameter, POST, wp-admin, REST or AJAX: the token counts for nothing.
+  - An expired, revoked or changed link answers **403** "This CanAI preview link has expired, was revoked, or is not for this page", before any maintenance page.
+  - It sets no login cookie. Responses are `no-store` and `noindex`.
+- **Errors:**
+  - `invalid_post`, `post_trashed` (trashed or auto-draft);
+  - `not_viewable` (templates and other non-viewable types: preview a page that uses the template);
+  - `invalid_lang`; `minutes` outside 1–60 (input schema);
+  - `unknown_link` (revoke of a link that doesn't exist or has expired).
 
 ### `wpcanai-write-post`
 
