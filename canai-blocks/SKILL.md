@@ -12,7 +12,7 @@ description: >
   "wpcanai-write-page", "convert to blocks", "convert to twig", "page css", "block page css".
 metadata:
   author: canai
-  version: "1.7.3"
+  version: "1.7.4"
 allowed-tools: "Read Write Edit Grep Glob"
 ---
 
