@@ -78,11 +78,17 @@ const CHROME_PROMPT_TEMPLATE = path.resolve(
   new URL("..", import.meta.url).pathname,
   "prompts/transform-chrome.md",
 );
-// Canonical, plugin-verified Twig/WooCommerce variable reference — lives in
+// Canonical, plugin-verified WooCommerce Twig/variable reference — lives in
 // the sibling canai-mcp skill, the single source since the canai-localwp
 // mirror was removed. Cited by name from transform-template.md rather than
-// duplicated there, so the two can't drift out of sync.
+// duplicated there, so the two can't drift out of sync. Since canai-mcp
+// 1.53.0 the WooCommerce part is its own file; the core Twig functions stay
+// in REFERENCE.md, so a Woo page's prompt names both.
 const WC_TWIG_REFERENCE = path.resolve(
+  new URL("..", import.meta.url).pathname,
+  "../canai-mcp/references/WOOCOMMERCE.md",
+);
+const TWIG_REFERENCE = path.resolve(
   new URL("..", import.meta.url).pathname,
   "../canai-mcp/references/REFERENCE.md",
 );
@@ -249,6 +255,7 @@ function buildStructuralPagePrompt({ site, type, sampleDirs, designMdPath, conte
 - Site-wide design system: \`${designMdPath}\`
 - Alpine recipe library: \`${ALPINE_RECIPES}\`
 - WooCommerce Twig variables reference: \`${WC_TWIG_REFERENCE}\`
+- CanAI Twig functions reference: \`${TWIG_REFERENCE}\`
 ${sampleList}
 
 ## Output

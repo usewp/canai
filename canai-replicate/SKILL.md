@@ -14,7 +14,7 @@ description: >
   breakdown", "pixel-perfect", "high fidelity", "pixelmatch".
 metadata:
   author: canai
-  version: "4.7.3"
+  version: "4.7.4"
 allowed-tools: Bash Read Write Edit Grep Glob
 ---
 
