@@ -41,7 +41,7 @@ proceed to the checklist otherwise.
 | Service or product description page whose body is mostly prose (several real paragraphs) | **Recommended** | Proceed to Step 2; keep CTA and pricing outside the article |
 | Landing page / home page built from hero, features grid, pricing, testimonials, CTA bands | **Not recommended** | Stop. The page has no dominant prose block; browsers will not offer reading mode however it is marked up, and forcing `<article>` around a marketing grid is wrong HTML semantics |
 | Archive / listing page (blog index, category, shop, search results) | **Not recommended** | Stop. Card grids are navigation, not a composition. Each card may legitimately be its own `<article>` but the page as a whole is not readable |
-| WooCommerce cart / checkout / my-account / order pages | **Not recommended** | Stop. Transactional UI; reading mode would hide the controls the user needs |
+| WooCommerce or FluentCart cart / checkout / account / receipt / order pages | **Not recommended** | Stop. Transactional UI; reading mode would hide the controls the user needs |
 | 404, contact, login, form-centric pages | **Not recommended** | Stop |
 | Mixed page: mostly marketing sections plus **one** substantial prose section (e.g. a long "Our story") | **Partial** | Proceed to Step 2 for that section only: wrap just that block in `<article>`, leave the surrounding `<section>` elements untouched, and tell the user reading mode will show only that section |
 

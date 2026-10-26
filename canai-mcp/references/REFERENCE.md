@@ -205,6 +205,8 @@ Two families: the **WordPress gettext** family (`__`, `_x`, `_n`) and **CanAI na
 **Global strings (native i18n, plugin 1.31.0+):** per-language site name, tagline, and archive/search/404 SEO title+description live in a separate store (option `wpcanai_i18n_global_strings`) because they aren't attached to any post. On a non-default frontend they drive `option_blogname` / `option_blogdescription` + `og:site_name`, plus the `<title>` and meta description of search, 404, and post-type-archive pages (archive contexts `search`, `404`, `post_type:<slug>`). Read/write them with `wpcanai-i18n-get-global-strings` / `wpcanai-i18n-set-global-strings` (see SKILL.md → Global strings). Term archives (category / tag) stay in per-term overrides.
 
 ### WooCommerce Functions
+
+FluentCart's `fct_*` functions, `post.fct` and its shop context are in [FLUENTCART.md](FLUENTCART.md); none of the `wc_*` helpers or `cart.*` context below apply to a FluentCart page.
 ```twig
 {{ wc_get_cart_url() }}                  {# Cart page URL #}
 {{ wc_get_checkout_url() }}              {# Checkout page URL #}

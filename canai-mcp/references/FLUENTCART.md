@@ -1,0 +1,445 @@
+# FluentCart store (plugin v1.103.0)
+
+Use this reference when the site sells with **FluentCart** and the user wants its product pages,
+shop, category or brand archives, cart, checkout, receipt or customer account designed in CanAI.
+The workflow is in SKILL.md under **FluentCart store**; this file holds the types, the Twig
+functions, the data and the rules.
+
+**CanAI renders pages, FluentCart owns commerce.** CanAI calls FluentCart's own renderers for
+everything a shopper clicks and reads product data to display it. It never writes a cart, an order
+or a product. The support is on only while FluentCart **1.6.6 or later** is active with its product
+renderer: `wpcanai-get-fluent-cart-pages` is in your tool list then, and `wpcanai-diagnostics`
+group `wordpress` row `fluentcart` reads "Active <version>". Without it, no `fct_*` function, type
+or tool exists.
+
+## Rules
+
+1. **Text from `post`, live pieces from the helpers.** Print the title and description from `post`
+   (`{{ post.post_title }}`, `{{ the_content(post.post_content) }}`): CanAI's per-language content
+   overrides apply to `post`, while FluentCart's renderers print the stored title. Use the `fct_*`
+   helpers for the gallery, prices, buy section, buttons, mini cart, shop app, cart, checkout,
+   receipt and account. They apply FluentCart's catalog mode, stock and subscription rules and
+   carry the markup its JavaScript binds to.
+2. **Reviews follow `the_content`.** On a product page FluentCart appends its after-product content
+   (the reviews, on 2.x with a classic theme) to every `the_content()` output, whatever content you
+   pass. Call `the_content()` once, for the description, where the reviews belong.
+3. **One checkout per page.** FluentCart's checkout script boots on one checkout. Print
+   `fct_checkout_page()` once, on the checkout page (its `fct-checkout` template or its own
+   `_canai_html`); the same goes for `fct_cart_page()` on the cart page.
+4. **Never hand-build the checkout or the cart.** The checkout binds to dozens of FluentCart
+   `data-*` hooks, and the cart's markup is replaced by server fragments after every change. Place
+   `fct_checkout_page()` / `fct_cart_page()` (or the page's shortcode through
+   `the_content(post.post_content)`) and style around them.
+5. **A product page needs a way to buy.** CanAI switches off FluentCart's own product header on the
+   pages it renders, so a `single-fluent-products` template, or a product's own `_canai_html`, must
+   print `fct_buy_section()`, `fct_product_page()` or a button helper. `wpcanai-scan` reports one
+   without as `fct_product_no_buy`.
+6. **Orders, customers and the rest of the store's data are not CanAI's.** Orders, customers,
+   subscriptions, coupons and reports live on FluentCart's own MCP server
+   (`/wp-json/fluent-cart/mcp`). It is off until the owner turns on "MCP for AI Agents" in
+   FluentCart → Settings → Features & addon, and needs a WordPress user with a FluentCart role. Say
+   so; don't look for those tools on CanAI's server. Products, prices and stock are edited in
+   FluentCart, never through CanAI's tools.
+
+## Template types
+
+| Type | Claims the request | Delegate page | Context |
+|---|---|---|---|
+| `single-fluent-products` | a product (`/item/{slug}/`), when a published template of this type exists | none: `post` is the product | `post` with `post.fct`, `post.featured_image`, `post.author` |
+| `fct-product-category` | a product category or brand archive (any public taxonomy on `fluent-products`), by the rule below | the shop page | `products`, `pagination`, `term`, `current_term`, `current_category` |
+| `fct-shop` | the page FluentCart's `shop_page_id` names | the shop page | `products`, `pagination` |
+| `fct-cart` | `cart_page_id` | the cart page | `post` = the page |
+| `fct-checkout` | `checkout_page_id` | the checkout page | `post` = the page |
+| `fct-receipt` | `receipt_page_id` | the receipt page | `post` = the page |
+| `fct-account` | `customer_profile_page_id`, every portal sub-path included | the account page | `post` = the page |
+| `fct-order-review` | `order_review_page_id` (2.x with reviews; offered once its page is set) | the order-review page | `post` = the page |
+
+- **Page types follow FluentCart's page settings** (FluentCart → Settings → Store Settings →
+  Pages Setup), not slugs: a fresh FluentCart beside WooCommerce often has `/cart-2/`,
+  `/checkout-2/`, `/shop-2/`. Read the ids with `wpcanai-get-fluent-cart-pages`.
+- **WooCommerce wins** a page configured as both stores' page. The types are `fct-` prefixed so a
+  site running both keeps them apart; never put WooCommerce's `cart` / `checkout` / `shop` types or
+  `wc_*` / `cart.*` Twig on FluentCart pages.
+- **The archive rule.** A product term archive resolves to `fct-product-category` when a template
+  of that type exists, or when no `archive` template does. A site whose generic `archive` template
+  draws these archives keeps it until a `fct-product-category` template is created.
+- **Page types are not existence-gated** (like WooCommerce's): without a template the page is its
+  own delegate, so it renders as before. `single-fluent-products` is existence-gated (the typed
+  single rule).
+- **A product can carry its own `_canai_html`**, written with `wpcanai-write-meta` on the product's
+  post id; FluentCart's product editor has no CanAI box. Prefer one `single-fluent-products`
+  template for the whole catalogue.
+- **A type template needs its own layout.** None of these types is a layout, so a template of
+  one draws the whole page, and `wpcanai_default_layout` doesn't wrap it. It sits inside a layout
+  only when its own `_canai_layout` names a `layout` template: pass `layout` (the layout's post id)
+  to `wpcanai-create-template`, or `wpcanai-write-meta { "post_id": <template>, "layout": <id> }`
+  on an existing one. The default layout applies only where no template of the type exists (the
+  last column below).
+
+### What renders where
+
+| Request | Type template exists | No template, delegate has `_canai_html` | Neither, a layout applies |
+|---|---|---|---|
+| Product | the template, `post` = the product | the product's own `_canai_html` | FluentCart's product page in the layout: `fct_product_page()`, then the description's `the_content` (reviews on 2.x), then `[fluent_cart_related_products]` |
+| Term archive | the template | the shop page's Twig, with the term-scoped context | FluentCart's archive body in the layout: title, term description, the term's shop app |
+| Shop, cart, checkout, receipt, account, order review | the template, `post` = the page | the page's Twig | the page's `the_content` (its shortcode or block) |
+
+`wpcanai-resolve-content-id` reports the same shapes for these types (`template-rendered`,
+`page-rendered`, …); edit its `content_post_id`.
+
+## Twig functions
+
+Every HTML function returns safe Markup: print it with `{{ }}`, no `|raw`.
+
+| Call | Prints / returns |
+|---|---|
+| `fct_product_page(product?)` | FluentCart's product summary: gallery, title, meta, excerpt, prices, buy section |
+| `fct_buy_section(product?, {add_to_cart_text, buy_now_text, icon_only})` | variation picker, quantity, Add to Cart and Buy Now |
+| `fct_product_gallery(product?, {thumb_position, max_thumbnails})` | the gallery; `thumb_position`: `bottom`, `top`, `left`, `right` |
+| `fct_product_price(product?)` | price or range, compare price, suffix, in the visitor's currency |
+| `fct_add_to_cart_button(variation?, {text, class})` | FluentCart's Add to Cart button |
+| `fct_buy_now_button(variation?, {text, class})` | FluentCart's Buy Now (instant checkout) button |
+| `fct_product_card(product?, {price_format})` | FluentCart's product card; `price_format`: `starts_from` (default) or `range` |
+| `fct_shop_app(attrs)` | `[fluent_cart_products]`: the live shop with filters, sorting and AJAX paging |
+| `fct_mini_cart(attrs)` | `[fluent_cart_mini_cart]` |
+| `fct_cart_page(attrs)` / `fct_checkout_page(attrs)` / `fct_receipt_page(attrs)` / `fct_account_page(attrs)` | `[fluent_cart_cart]` / `[fluent_cart_checkout]` / `[fluent_cart_receipt]` / `[fluent_cart_customer_profile]` |
+| `fct_product(product?)` | data: the single `post.fct` array; empty for a non-product |
+| `fct_get_products({per_page, sort_by, sort_type, category, brand, on_sale, product_type, include_ids, exclude_ids})` | data: published products as posts, each with the loop `post.fct` and `featured_image` |
+| `fct_cart()` | data: the read-only cart summary (below) |
+| `fct_price(cents)` | text: an amount in the store's money format |
+| `fct_buy_now_url(variation?, quantity = 1)` | text: the variation's instant-checkout URL; `''` when there's no such variation |
+| `fct_url(key)` | text: the `shop`, `cart`, `checkout`, `receipt` or `account` page's URL in the current language (localized like `turl()`); `''` while the page isn't set |
+
+### Arguments
+
+- **`product`** is a post id, a `WP_Post`, a `post.fct` / `fct_product()` array, or omitted.
+  Omitted means the `post` being rendered when it is a product, else the global post when that is
+  one. Inside a loop, name the loop variable `post` — `{% for post in products %}` — and the
+  omitted argument is that iteration's product; with another name, pass it (`fct_product_card(p)`).
+  A number in a product function is always a post id.
+- **`variation`** (the two buttons and `fct_buy_now_url()`) is an entry of `post.fct.variations`,
+  a product (a `WP_Post` or a `post.fct` array: its default variation), or a bare number.
+- **The variation-id-first rule.** A bare number in a variation argument is read as a **variation
+  id first**, the way FluentCart's own button shortcodes read it, and only when no variation has
+  that id as a product id. Variation ids and product post ids overlap on real stores, so a bare
+  product id can buy the wrong item. Use the unambiguous forms:
+
+  ```twig
+  {{ fct_add_to_cart_button(post) }}                          {# the product's default variation #}
+  {{ fct_add_to_cart_button(post.fct.default_variation_id) }} {# a variation id: also safe #}
+  {% for variation in post.fct.variations %}
+    {{ fct_buy_now_button(variation, {text: variation.title}) }}
+  {% endfor %}
+  {% set p = fct_product(42) %}{{ fct_add_to_cart_button(p) }} {# product 42, never variation 42 #}
+  ```
+- **Options in the product's place.** An options hash may stand where the product goes:
+  `{{ fct_buy_section({buy_now_text: 'Buy now'}) }}`. Empty options keep FluentCart's labels.
+- **`class`** on a button replaces FluentCart's classes; CanAI keeps `fct-loader` on Add to Cart,
+  which keeps its spinner hidden until a click.
+- **Shortcode attributes** (`fct_shop_app`, `fct_mini_cart`, the page functions) are FluentCart's
+  own and pass through:
+  - **Scalars** go into the shortcode text, `true` as `yes` and `false` as `''`, each
+    `esc_attr()`-escaped, so `&`, quotes and brackets reach FluentCart entity-encoded.
+  - **A hash or a list goes through only where FluentCart reads one.** `fct_shop_app()`:
+    `custom_filters` (the filter sidebar: `taxonomies`, `price_range`, `live_filter`, `enabled`),
+    `default_filters` (preset terms per taxonomy, plus `wildcard`, `sort_by` and
+    `allow_out_of_stock`; applied only with `enabled: true`), `filters` (only with
+    `enable_filter: true`) and `colors` (read, but nothing is drawn from it). On 2.x,
+    `fct_checkout_page()` also takes `variation_ids`, `variant_ids` and `variation_id`: they ask for
+    a custom-product checkout that an add-on draws, and without one the checkout is empty.
+  - **Anywhere else a hash or a list is dropped.** `ids`, `exclude_ids`, `category_id` and
+    `taxonomies` take comma strings: `'937,938'`, `'product-brands:4,5'`.
+  - **A hash goes as plain data**, values as written (a Twig Markup becomes its text). CanAI drops
+    the parts FluentCart can't read, which would throw for every visitor: a
+    `custom_filters.taxonomies` entry that is neither a taxonomy name nor a hash of taxonomy →
+    `{label, options: [{term_id, name, parent}]}`, a `default_filters.tax_query` that isn't a hash,
+    and a `filters.sort_by` that isn't a scalar.
+  - **Term scoping** on a `fct-product-category` render: see **Two shop styles**.
+- **`fct_get_products()`** takes only the keys above. `per_page` defaults to Settings → Reading,
+  at most 100, one page (no pagination). `sort_by`: `id`, `date`, `title`, `price`; `sort_type`:
+  `ASC` / `DESC`. `category` / `brand`: term ids or slugs, a list or a comma string; a value that
+  names no term matches nothing. `product_type` is FluentCart's (`physical`, `digital`,
+  `subscription`, `onetime`, `simple`, `variations`).
+
+## `post.fct`
+
+On a product page `post.fct` is the single shape. Each post of `products` and
+`fct_get_products()` carries the loop shape; `fct_product()` returns the single shape for any
+product.
+
+```
+post.fct = {
+  id, type,              # 'simple' | 'simple_variations' | 'advanced_variations'
+  fulfillment,           # FluentCart's fulfillment type
+  url,
+  price: { min, max, min_formatted, max_formatted, is_range,
+           compare, compare_formatted, on_sale },
+  in_stock, stock_status,
+  has_subscription, sold_individually,
+  default_variation_id, buy_now_url,
+  can_add_to_cart,
+  images: [ { id, url, alt } ],
+  categories: [ { id, name, slug, url } ], brands: [ … ],
+  variations: [ { id, title, sku, price, price_formatted, compare_price, compare_price_formatted,
+                  on_sale, in_stock, available, payment_type, subscription_terms, image, buy_now_url } ],
+}
+```
+
+- **Money** is integer cents plus a `_formatted` **text** (it autoescapes; never `|raw`). Under 2.x
+  multi-currency the cents are in the store's base currency and `_formatted` is in the visitor's.
+  `fct_price(cents)` formats the same way.
+- **Prices** come from the active variations. `price.compare` is the default variation's compare
+  price, set only for a single price it exceeds; `price.on_sale` is true when any variation is on
+  sale. An absent amount is `null`.
+- **Variations** are the active ones only, in FluentCart's order. `available` is the stock count
+  while FluentCart tracks one, else `null`. `image` is the variation's own image or `null`.
+- **Stock.** `in_stock` follows FluentCart's availability; while its stock-management module is off
+  every product is in stock. `stock_status` is the class FluentCart's stock badge uses:
+  `in-stock`, `out-of-stock`, or whatever a `fluent_cart/product_stock_availability` filter makes
+  it (`low-stock`), so don't test it against two values only.
+- **`can_add_to_cart`** is true for a `simple`, one-time, in-stock product: what FluentCart's card
+  offers a button for. It ignores catalog mode (`RenderGate`); FluentCart's buttons still apply it.
+- **Images** are the gallery, the featured image first. `alt` falls back to the media title
+  FluentCart stores. An image outside the media library has `id: 0`. Use `post.fct.images[0]` for
+  the product picture; `post.featured_image` covers media-library images only.
+- **The loop shape** drops `variations[].subscription_terms` and every image but the first.
+- **Title and text are not in it.** Print them from `post` (rule 1).
+
+## Shop and archive context
+
+On `fct-shop`, `fct-product-category`, and the shop page's own Twig when it renders an archive:
+
+```twig
+products               {# posts: the loop post.fct + featured_image #}
+pagination.current_page
+pagination.total_pages
+pagination.total
+pagination.per_page
+term / current_term / current_category   {# archives only: the queried category or brand #}
+```
+
+- The query is FluentCart's own main-query listing: scoped to the queried term **and its child
+  terms**, this request's page, `per_page` from Settings → Reading capped at 100. It leaves out
+  products FluentCart marks out of stock.
+- `{{ wpcanai_pagination() }}` prints `<nav class="fct-pagination" aria-label="Product pagination">`
+  around `paginate_links()` (a `<ul class="page-numbers">`), linking `…/page/2/`. Empty for a single
+  page.
+- The cart is not in the context. Call `fct_cart()` where you need it.
+
+## Two shop styles
+
+**A Twig grid over `products`** — full design control, full-page pagination, no live filters:
+
+```twig
+{# Section / Products #}
+<section class="grid grid-cols-2 gap-6 md:grid-cols-4">
+  {% for post in products %}
+    {# Card / Product #}
+    <article>
+      <a href="{{ turl(post.fct.url) }}">
+        {% if post.fct.images %}<img src="{{ post.fct.images[0].url }}" alt="{{ post.fct.images[0].alt }}" loading="lazy">{% endif %}
+        <h2>{{ post.post_title }}</h2>
+      </a>
+      <p>{{ post.fct.price.is_range ? post.fct.price.min_formatted ~ ' – ' ~ post.fct.price.max_formatted : post.fct.price.min_formatted }}</p>
+      {% if post.fct.can_add_to_cart %}{{ fct_add_to_cart_button(post) }}{% else %}<a href="{{ turl(post.fct.url) }}">{{ t('View options') }}</a>{% endif %}
+    </article>
+  {% endfor %}
+</section>
+{{ wpcanai_pagination() }}
+```
+
+**FluentCart's live shop** — `{{ fct_shop_app({per_page: 12}) }}`: filters, sorting and AJAX paging
+in FluentCart's own cards (CanAI cards inside it are not supported yet).
+
+- **The filter sidebar** is `custom_filters`, drawn the same on 1.6.6 and 2.2.0:
+  `{{ fct_shop_app({custom_filters: {price_range: true, taxonomies: ['product-brands']}}) }}`.
+  `live_filter: false` in it adds an Apply button; `search: true` draws nothing. (`enable_filter`
+  with `filters` is not the sidebar and draws none.)
+- **Term scoping.** On a `fct-product-category` render the shop app stays on the queried term and
+  its children unless the attributes choose terms. They choose terms when `taxonomies`, `category`
+  or `category_id` is a scalar (a hash or a list there is dropped and doesn't count), or when
+  `default_filters` has `enabled: true` and terms of the archive's own taxonomy (FluentCart adds
+  the archive's terms to those, so scoping too would widen the list). Terms of another taxonomy in
+  `default_filters` keep the scope and narrow within the archive's term. The scope CanAI adds:
+  - 2.x: `taxonomies="<taxonomy>:<ids>"`;
+  - 1.6.6 category: `category_id="<ids>"`;
+  - 1.6.6 brand (or any other taxonomy): `ids` of the term's **newest 100** published products,
+    the most 1.6.6's AJAX paging forwards.
+- **A sidebar keeps the scope.** A sidebar filter of another taxonomy narrows within the archive's
+  term; one of the archive's own taxonomy adds the shopper's picks to the archive's terms rather
+  than narrowing them.
+
+On a term archive drawn by a generic `archive` template (the archive rule), `fct_shop_app()` is not
+term-scoped: create a `fct-product-category` template.
+
+## Product template
+
+```twig
+{# Container / Product #}
+<main class="mx-auto grid max-w-6xl gap-10 md:grid-cols-2">
+  {{ fct_product_gallery({thumb_position: 'left'}) }}
+  <div>
+    <h1>{{ post.post_title }}</h1>
+    {% for c in post.fct.categories %}<a href="{{ turl(c.url) }}">{{ c.name }}</a>{% endfor %}
+    {{ fct_product_price() }}
+    {{ fct_buy_section() }}
+    {{ the_content(post.post_content) }}   {# the description; FluentCart's reviews follow it #}
+  </div>
+</main>
+```
+
+Or `{{ fct_product_page() }}` for FluentCart's whole summary in one call. Fully custom buttons:
+`<button data-fluent-cart-add-to-cart-button data-cart-id="{{ v.id }}" data-quantity="1">` works
+(FluentCart's listener is delegated on `document`), but it skips catalog mode and the stock and
+subscription checks; prefer the helpers and use it only when the design can't take FluentCart's
+button markup. A Buy Now link needs no JavaScript: `<a href="{{ fct_buy_now_url(v, 2) }}">`.
+
+- **Give the template its layout** (`layout` in `wpcanai-create-template`): the default layout
+  doesn't wrap a type template (see **Template types**).
+- **Keep the description inside a lone `<article>`.** When the template has exactly one
+  `<article>` (inside its `<main>`, if it has one), the product's Markdown is that article alone
+  (`HtmlToMarkdown::content_root()`): an `<article>` around the summary with the description in a
+  sibling `<section>` loses the description in Markdown. Put `the_content()` inside the article, or
+  use no `<article>`.
+
+## The cart badge
+
+- **FluentCart's own:** `{{ fct_mini_cart() }}` — a button that opens the cart drawer, the count and
+  the total. It prints the count **only once the cart has items** (FluentCart's default
+  `show_item_count: 'has_items'`): at 0 there is no count. `{show_item_count: 'always'}` shows 0
+  too, `'never'` hides it.
+  `{count_mode: 'total_quantity'}` counts units instead of products.
+- **Your markup:** a badge inside a button FluentCart knows:
+
+  ```twig
+  <button type="button" data-fluent-cart-cart-expand-button aria-label="{{ t('Open cart') }}">
+    <i data-lucide="shopping-bag"></i>
+    <span data-cart-badge-count>{{ fct_cart().count }}</span>
+  </button>
+  ```
+
+  `[data-fluent-cart-cart-expand-button]` opens the drawer; FluentCart's script rewrites every
+  `[data-cart-badge-count]` after each cart change. For units, add
+  `data-cart-count-mode="total_quantity"` and print `fct_cart().quantity`. A total:
+  `<span data-fluent-cart-cart-total-price>{{ fct_cart().total_formatted }}</span>`.
+- **`fct_cart()`** returns `{ count, quantity, is_empty, total_formatted, items: [ { variation_id,
+  product_id, title, variation_title, quantity, image, url, total_formatted } ] }`. `count` is the
+  distinct items, `quantity` the units; amounts print as FluentCart's cart drawer prints them. It
+  reads the cart **without creating one** (no cart row, no cookie), once per request, and is empty
+  during an instant checkout.
+- **Cached pages show the cached count.** FluentCart's script seeds the badge from the
+  server-printed values and doesn't fetch the cart on load, so a page served from a page cache
+  shows the cached count until the visitor's next cart change. Don't promise a live badge there.
+
+## Store pages
+
+```twig
+{# Container / Checkout #}
+<main class="mx-auto max-w-5xl">
+  <h1>{{ post.post_title }}</h1>
+  {{ fct_checkout_page() }}
+</main>
+```
+
+- `{{ the_content(post.post_content) }}` instead of the helper prints the page's own shortcode or
+  block (`[fluent_cart_checkout]`, `<!-- wp:fluent-cart/customer-profile /-->`, …), and the scan
+  accepts it.
+- The page functions need no attributes. On 2.x `fct_checkout_page()` reads a variation list, but
+  only for an add-on's custom-product checkout (see **Shortcode attributes**).
+- Give a store page's type template its layout too (`layout`): the default layout doesn't wrap it.
+- The account template covers every portal sub-path (`/account/purchase-history`, …, and 2.x's
+  "My Reviews" tab).
+- **Order review (2.x).** The page must be set in Pages Setup before `fct-order-review` applies.
+  Its `[fluent_cart_order_review]` shortcode prints no `<h1>`, so the template prints the title:
+  `<h1>{{ post.post_title }}</h1>` then `{{ the_content(post.post_content) }}` (there is no
+  `fct_*` helper for it). It shows an order to anyone holding the order's `order_hash` (FluentCart's
+  design), and FluentCart doesn't hide the cart drawer there.
+- When CanAI renders the cart, checkout, receipt, account or order-review page it sends
+  `DONOTCACHEPAGE` and `nocache_headers()`. CanAI never answers them in Markdown and never gives
+  them a preview link (`not_previewable`). On a site that also runs the ToSAI plugin, ToSAI may
+  still answer them in Markdown, since CanAI doesn't claim them.
+- FluentCart's `?fluent-cart=…` routes (instant checkout, modal checkout, downloads, print slips)
+  render before CanAI and keep FluentCart's own output.
+
+## Assets and styles
+
+- Each helper loads FluentCart's asset set for what it draws: the product helpers and both buttons
+  the single-product set (with the advanced-variation action), `fct_shop_app` the archive set,
+  `fct_mini_cart` the mini-cart set; the card and the shortcodes load their own. FluentCart also
+  loads assets by itself on products, term archives and the store pages.
+- **Head preload.** On a request CanAI renders, CanAI reads the render post's `_canai_html` (unless
+  a non-layout type template replaces it), its layout chain, and templates named by a **literal**
+  `wpcanai_template('name')` in those, **one level deep**, Twig comments ignored. It loads the sets
+  of the `fct_*` helpers it finds in `<head>`. It never loads the checkout set. A helper it can't
+  see (a name built at render time, a nested include) still works; its styles print late, after
+  `wp_head()`. `fct_product_card()` isn't preloaded: cards in a layout print their styles late.
+  Keep a header mini cart in the layout or in a template the layout includes by literal name.
+- **The cart drawer's stylesheet** (`CartLoader::enqueueStyle()` only, no script, no cart read) is
+  queued in `<head>` on a request CanAI renders whenever the drawer may print
+  (`Bridge::cart_drawer_may_print()`): a cart cookie or a signed-in visitor, then FluentCart's own
+  checks (not in an iframe, global assets on, floating cart button on, not the checkout, the
+  receipt or an instant checkout). FluentCart prints the drawer in `wp_footer` ahead of that
+  stylesheet, on any theme, which otherwise dims the page grey on load while the cart has items. A
+  password-locked page (core's password form) still gets it.
+- **Stylesheet Removal can't remove FluentCart's styles**: handles starting `fluent-cart`,
+  `fluent_cart`, `fluentcart` or `fct-`, and any style served from FluentCart's plugin folder, stay
+  whatever the owner's list matches. Don't promise the owner they can dequeue them there.
+- The layout must print `{{ wp_head() }}`, `{{ wp_footer() }}` and `<body class="{{ body_class() }}">`:
+  FluentCart's scripts, cart drawer and colour settings depend on them.
+
+## Languages
+
+With CanAI's native translation on:
+
+- `fct_url()` links carry the current language's prefix (`/ms/cart-2/`), like `turl()`.
+- `post.fct.url` and the `categories` / `brands` `url`s are plain permalinks: print them through
+  `turl()` (`{{ turl(post.fct.url) }}`).
+- FluentCart's own URLs carry no prefix: the cart drawer's "Go to Checkout" and the checkout the
+  Buy Now redirect lands on. Nothing in Twig changes them.
+- **The customer portal is broken under a prefix.** On `/ms/account/…` FluentCart's Vue router
+  rewrites the address to `/account/ms/account/…`, shows an empty pane, and its links drop `/ms/`.
+  The unprefixed portal works. Tell the owner; don't try to fix it in Twig.
+
+## FluentCart 2.2.0
+
+- **The update migrates FluentCart's database** (`_fluent_cart_db_version` 1.0.52 → 1.0.57, a new
+  `fct_product_reviews` table). FluentCart runs it itself; recommend a backup first.
+- **The reviews module is on by default.** Reviews follow the description on a classic theme
+  (`wpcanai-empty` is one), in the default body and under a template's `the_content()`. On a block
+  theme FluentCart doesn't attach them to `after_product_content`, so a product shows none.
+- **Order review** needs its page (see **Store pages**).
+- **The portal** has a "My Reviews" tab; `fct-account` covers it.
+- **A product's Markdown** ends with FluentCart's Product JSON-LD in its `## Structured data`
+  section.
+- **`fct_checkout_page()`** reads `variation_ids` / `variant_ids` / `variation_id` (see
+  **Shortcode attributes**); 1.6.6's checkout reads no attribute.
+
+## Known quirks and limits
+
+- **Reviews** exist on 2.x only, and only on classic themes (see **FluentCart 2.2.0**).
+- **1.6.6** has no reviews, no `order_review` page, no multi-currency.
+- **The customer portal under a language prefix** (`/ms/account/…`) is broken (see **Languages**).
+- **Store setup (FluentCart's rules).** A physical product needs a shipping zone before cash on
+  delivery accepts an order. FluentCart's portal stays at "Confirm your email address" until the
+  customer's email is verified. Tell the owner; neither is a CanAI setting.
+- **`product_base`** in `get-fluent-cart-pages` ignores FluentCart's `with_front` permalink setting.
+- **`fct-order-review`** is in `resolve-content-id`'s enum on every FluentCart version; while its
+  page isn't set it answers "Nothing is authored for this type."
+- **The admin bar** on a store page with its own `_canai_html` offers "Create Template (fct-cart)"
+  rather than editing the page, and "Translate this page" is missing there (WooCommerce pages
+  behave the same). Edit the page by its id.
+- **Export/import:** a delegate to a page that is both stores' page exports only its WooCommerce
+  ref; the skip warning for a row with no slug still names only WooCommerce.
+- **FluentCart bugs CanAI works around** (both versions; nothing to do, but don't "fix" them in
+  Twig):
+  - the customer portal shortcode leaves an output buffer open for logged-out visitors; CanAI
+    closes the buffers a render leaves, so it can't swallow the rest of the page;
+  - ProductQuery's `on_sale` compares with the string `'compare_price'` and matches nothing; CanAI
+    finds the on-sale products itself and passes them as `include_ids`;
+  - ProductQuery matches `sort_type` in capitals only; CanAI sends `ASC` / `DESC`.
+- **FluentCart bugs CanAI can't work around** (upstream):
+  - `enable_filter` with a scalar `filters` that isn't JSON throws in FluentCart; pass `filters` as
+    a hash;
+  - a malformed `?filters[sort_by][]=…` query on FluentCart's shop page is a 500 for any visitor.
+- **Each FluentCart renderer runs its own query**, so N buttons on a page cost N queries. That is
+  FluentCart's cost; a grid of `fct_add_to_cart_button()` is fine at shop sizes.

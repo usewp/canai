@@ -133,6 +133,10 @@ needs:
 - WooCommerce **cart**, **checkout**, **my-account** and **order-received** pages.
 - The **account / checkout endpoint** pages: `order-pay`, `add-payment-method`, `orders`,
   `view-order`, `downloads`, `edit-account`, `edit-address`, `payment-methods`, `lost-password`.
+- **(v1.103.0)** FluentCart's **cart**, **checkout**, **receipt**, **account** (with every portal
+  sub-path) and **order-review** pages, by the page ids FluentCart's settings name and by the
+  `fct-*` types. FluentCart's products and its shop page are served as Markdown; a product's
+  Markdown carries its price, Buy Now link and description.
 
 Also skipped: 404s, password-protected posts, editor preview requests, and any page CanAI does not
 render (no `_canai_html`, not marked as a blocks page, and — since v1.80.0 — not a post a CanAI
@@ -194,7 +198,7 @@ curl -sI https://example.com/about/ | grep -iE '^(vary|link):'
 ```
 
 If HTML comes back for a Markdown request, work down the list in order: the option is off, the page
-is one of the excluded WooCommerce pages, the page is not a CanAI page at all, the `Accept` header
+is one of the excluded WooCommerce or FluentCart pages, the page is not a CanAI page at all, the `Accept` header
 ranked `text/html` at the same q or higher, or a proxy/CDN in front of the site is serving a cached
 HTML response that did not vary on `Accept`. A browser will never see Markdown, so "it still looks
 normal in Chrome" is not a symptom of anything.
