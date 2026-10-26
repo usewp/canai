@@ -1,8 +1,8 @@
-# CanAI Twig & WooCommerce Reference
+# CanAI Twig Reference
 
 ## Twig Functions Reference
 
-**Scope:** This section documents CanAI-registered Twig functions (WordPress/WooCommerce helpers added by CanAI). It does not attempt to list all Twig core built-ins.
+**Scope:** This section documents CanAI-registered Twig functions. It does not attempt to list all Twig core built-ins. The store functions are in the store files: [WOOCOMMERCE.md](WOOCOMMERCE.md) (`wc_*`) and [FLUENTCART.md](FLUENTCART.md) (`fct_*`).
 
 **Twig version:** CanAI vendors Twig 3.x (`twig/twig`). For the exact patch, check `vendor/twig/twig/src/Environment.php` (`Environment::VERSION`). Consult the Twig 3.x docs for built-in tags/filters/functions.
 
@@ -52,7 +52,7 @@ attribute:
 - **Upgrade note:** before v1.88.0 the locations were named `wpcanai_primary` / `wpcanai_footer`. `get_menu()` still resolves both names, and `wpcanai-scan` reports each call as `legacy_menu_location`; rename them to `primary` / `footer`.
 - Read menus with `get_menu()`. A Template Variables menu query (`location=primary`) returns WordPress item objects; since v1.89.0, on a non-default language, they are copies whose `title` / `description` are translated and internal `url`s localised like `get_menu()`'s (`raw_title` / `raw_description` keep the source), and `location=` follows a language's own menu; on the default language they are WordPress's own objects, unchanged. It carries none of `get_menu()`'s `children` / `depth` / `icon` / `image` keys, so prefer `get_menu()` in templates.
 
-### Archive pagination (WordPress + WooCommerce)
+### Archive pagination
 
 Use these for **main-query** archives so URLs respect **pretty permalinks**, CPT rewrites, and `/page/N/` (avoid hand-built `?paged=2` unless you know the site uses plain permalinks).
 
@@ -65,12 +65,9 @@ Use these for **main-query** archives so URLs respect **pretty permalinks**, CPT
 
 {# Custom markup: paginate_links() with permalink-safe base (merges optional args) #}
 {{ wpcanai_paginate_links({ type: 'list' })|raw }}
-
-{# WooCommerce catalog only (same output as inside wpcanai_pagination on shop/category) #}
-{{ wc_pagination()|raw }}
 ```
 
-**WooCommerce URL shapes:** The main shop and product taxonomies use **permalink-style** pagination (same idea as `the_posts_pagination`). Product **shortcodes** such as `[products]` use the `product-page` query argument instead — do not assume shop Twig behaves like a shortcode loop.
+`wpcanai_pagination()` also covers the stores' shop and category archives: see the store files, [WOOCOMMERCE.md](WOOCOMMERCE.md) and [FLUENTCART.md](FLUENTCART.md).
 
 **Context variables:** Prefer injected `posts` / `products` plus the `pagination` object (see below) instead of `wpcanai_get_posts_enriched` for the primary archive loop, unless you also pass `paged` and mirror core query rules. CanAI resolves the current index from both `paged` and `page` (the WooCommerce **shop Page** often receives `/shop/page/2/` via the `page` query var).
 
@@ -204,72 +201,9 @@ Two families: the **WordPress gettext** family (`__`, `_x`, `_n`) and **CanAI na
 
 **Global strings (native i18n, plugin 1.31.0+):** per-language site name, tagline, and archive/search/404 SEO title+description live in a separate store (option `wpcanai_i18n_global_strings`) because they aren't attached to any post. On a non-default frontend they drive `option_blogname` / `option_blogdescription` + `og:site_name`, plus the `<title>` and meta description of search, 404, and post-type-archive pages (archive contexts `search`, `404`, `post_type:<slug>`). Read/write them with `wpcanai-i18n-get-global-strings` / `wpcanai-i18n-set-global-strings` (see SKILL.md → Global strings). Term archives (category / tag) stay in per-term overrides.
 
-### WooCommerce Functions
-
-FluentCart's `fct_*` functions, `post.fct` and its shop context are in [FLUENTCART.md](FLUENTCART.md); none of the `wc_*` helpers or `cart.*` context below apply to a FluentCart page.
-```twig
-{{ wc_get_cart_url() }}                  {# Cart page URL #}
-{{ wc_get_checkout_url() }}              {# Checkout page URL #}
-{{ wc_shop_url() }}                      {# Shop page URL #}
-{{ wc_price(amount) }}                   {# Format as currency #}
-{{ wc_get_product(post_id) }}            {# Get WC_Product object #}
-{{ wc_add_to_cart_form(wc_obj)|raw }}    {# Native add-to-cart form #}
-{{ wc_print_notices()|raw }}             {# Validation messages #}
-{{ wc_cart_totals()|raw }}               {# Cart totals table #}
-{{ wc_checkout_form()|raw }}             {# Checkout shortcode #}
-{{ wc_form_field(key, args, val)|raw }}  {# Form field (country/state) #}
-{{ wc_update_cart_nonce() }}             {# Cart update nonce #}
-{{ wc_pagination()|raw }}                {# Shop / product taxonomy catalog pagination #}
-{{ wc_cart_block()|raw }}                {# Block Cart (opt-in; place ABOVE wp_footer) #}
-{{ wc_checkout_block()|raw }}            {# Block Checkout (opt-in; place ABOVE wp_footer) #}
-{{ wc_hook('woocommerce_after_single_product_summary') }}  {# Fire an allowlisted Woo display hook — renders third-party extensions #}
-
-{# Common product pattern in templates #}
-{% set wc = wc_get_product(post.ID) %}
-{{ wc_price(wc.price) }}
-```
-
-**IMPORTANT**: Always use `|raw` filter for WooCommerce HTML outputs.
-
-**Block Cart/Checkout (opt-in):** `wc_cart_block()` / `wc_checkout_block()` embed WooCommerce's modern block Cart/Checkout via `do_blocks`. The classic `wc_cart_totals()` / `wc_checkout_form()` remain the default. **Layout contract:** the helper output MUST appear **above** `wp_footer()` in the layout Twig — hydration data and JIT script enqueues print on `wp_print_footer_scripts`, so a block placed after `wp_footer()` will not hydrate. They render only on a real cart-bearing frontend request (not admin, REST, or `?wpcanai_preview=1`); on inert paths visitors get nothing and editors get a `wpcanai-notice`. Use these only on `cart` / `checkout` template types (styles are pre-enqueued and emoji scripts stripped for those types).
-
-**`wc_hook($hook)`** lets allowlisted WooCommerce display hooks fire inside a custom page (CanAI renders outside the loop, so they otherwise never run). It is already safe HTML — do **not** add `|raw`. Default allowlist (all `woocommerce_`-prefixed): `before/after_single_product`, `before/after_single_product_summary`, `single_product_summary`, `product_meta_start/end`, `share`, `before/after_shop_loop`, `shop_loop`, `before/after_cart`, `checkout_before_customer_details`, `review_order_before_payment`. Product/loop globals are primed automatically; the hook name is the only argument. Mutation/lifecycle hooks (e.g. `woocommerce_checkout_order_processed`) are denied by default; extend with the `wpcanai_wc_hook_allowlist` PHP filter.
-
 ---
 
-## WooCommerce Context Variables
-
-### Cart (available globally)
-```twig
-cart.item_count          {# Number of items #}
-cart.is_empty            {# Boolean #}
-cart.subtotal_html       {# Formatted subtotal — use |raw #}
-cart.total_html          {# Formatted total — use |raw #}
-cart.shipping_total_html {# Formatted shipping — use |raw, nullable #}
-cart.needs_shipping      {# Boolean #}
-cart.items               {# Array of cart items #}
-
-{# Each cart item: #}
-item.product.name
-item.product.image
-item.product.url
-item.quantity
-item.key                 {# Cart item key for forms #}
-item.line_total_html     {# use |raw #}
-item.remove_url
-item.variation_label
-```
-
-### Common “component template” pattern
-```twig
-{# Component templates often receive variables via wpcanai_template('slug', {...}) #}
-{% set p = product %}
-
-<a href="{{ post_url(p.ID) }}">
-  {{ p.post_title|raw }}
-  {{ p.wc.price_html|raw }}
-</a>
-```
+## Context variables
 
 ### Notes from real-world CanAI usage
 - **Tailwind config placement**: if you’re using CanAI’s Tailwind injection on `wp_head`, set `tailwind.config = {...}` *after* `{{ wp_head() }}` in the layout `<head>` so Tailwind is present before configuration runs.
@@ -299,123 +233,6 @@ Twig unless the template explicitly applies `|raw`.
 {% if post.author is defined %}
   <span>{{ t('By <a href="{url}">{name}</a>', {url: post.author.posts_url, name: post.author.display_name}) }}</span>
 {% endif %}
-```
-
-### Product Enrichment (via wpcanai_get_posts_enriched with wpcanai_include=featured_image)
-```twig
-product.wc.price                {# Raw price #}
-product.wc.regular_price
-product.wc.sale_price
-product.wc.price_html           {# use |raw #}
-product.wc.sku
-product.wc.is_on_sale           {# Boolean #}
-product.wc.is_in_stock          {# Boolean #}
-product.wc.stock_status
-product.wc.product_url
-product.wc.add_to_cart_url
-product.wc.short_description
-product.wc.featured_image       {# Product image URL #}
-product.wc.gallery_images       {# Array of gallery image objects #}
-product.wc.categories           {# Array with name, url #}
-product.wc.currency_symbol      {# Currency symbol, e.g. "$" #}
-product.wc.stock_quantity       {# Managed stock count, int or null #}
-product.wc.add_to_cart_text     {# Add-to-cart button label #}
-product.wc.gallery_ids          {# Array of gallery attachment IDs #}
-product.featured_image.src      {# Featured image URL #}
-product.featured_image.thumbnail
-product.featured_image.medium
-product.featured_image.large
-
-{# Product attributes: taxonomy-backed “global attributes” (pa_*) are exposed two ways #}
-product.wc.attributes.pa_allergen {# array of terms: [{name, slug}, ...] #}
-product.wc.allergen               {# shorthand for pa_allergen (pa_ prefix stripped); check is defined #}
-
-{# Rule of thumb: pa_color → product.wc.attributes.pa_color and product.wc.color #}
-```
-
-### Single-product `post.wc` (since 1.35.0)
-
-On a single-product page taken over by CanAI (`wpcanai_render_full_page_frontend()`), the queried
-`post` gets the **same** structured `wc` surface as loop-context `product.wc` above (built by the same
-`PostEnricher::enrich_post()`), plus single-context-only fields. The bare `product` variable
-(`WooCommerceContext`) is unchanged — `post.wc` is an additional, structured view of the same product,
-useful when a single-product template only has `post` in scope (e.g. inside `wpcanai_template()` includes).
-
-```twig
-post.wc.name / post.wc.slug / post.wc.permalink / post.wc.type   {# type === product_type #}
-post.wc.is_purchasable             {# Boolean #}
-post.wc.rating                     {# Float average rating #}
-post.wc.rating_count               {# Int count of ratings #}
-post.wc.tags                       {# Array: {id, name, slug, url} #}
-
-{# Float variants of the price strings — handy for math/comparisons without casting #}
-post.wc.price_num
-post.wc.regular_price_num
-post.wc.sale_price_num
-
-{# post.wc.attributes now includes BOTH taxonomy (pa_*) terms AND custom
-   (non-taxonomy) text attributes defined on the product edit screen —
-   same {name, slug} shape for both kinds #}
-post.wc.attributes.pa_color        {# taxonomy attribute: [{name, slug}, ...] #}
-post.wc.attributes.material        {# custom text attribute "Material: Cotton | Wool" → [{name: 'Cotton', slug: 'cotton'}, {name: 'Wool', slug: 'wool'}] #}
-
-{# Single-product-only fields (absent on loop/archive product.wc): #}
-post.wc.description                {# Full product description, get_description() #}
-post.wc.single_add_to_cart_text   {# Single-page add-to-cart button label #}
-post.wc.review_count               {# Int total review count #}
-post.wc.variations                 {# Variable products only; {} for simple products #}
-post.wc.variations.available       {# Array: {id, attributes, price, regular_price, price_html, is_in_stock, is_purchasable, image, sku} #}
-post.wc.variations.attributes      {# get_variation_attributes() shape #}
-post.wc.variations.default_attributes
-```
-
-**`post.wc.price_html` is pre-formatted WooCommerce HTML and is a plain string, not auto-safe Twig Markup — always print it with `|raw`: `{{ post.wc.price_html|raw }}`.** This applies to `product.wc.price_html` too.
-
-**Single-product gotchas:**
-- **`post.featured_image.*` does not exist on single-product pages.** That surface is only populated by `wpcanai_get_posts_enriched(..., wpcanai_include: 'featured_image')` — the loop path. `wpcanai_render_full_page_frontend()` enriches the single `post` with `wc_context: 'single'` only, so `post.featured_image` is undefined there; use `post.wc.featured_image` instead (see field list above). On typed `single-*` takeovers for non-product types (e.g. `single-post`, `single-service`) it **is** populated (1.60.0+).
-- **`wc_add_to_cart_form()` expects a real `WC_Product`, not `post.wc`.** `post.wc` is a plain enriched data array/object built for Twig display, not the `WC_Product` instance WooCommerce's native add-to-cart template expects — passing it in (`wc_add_to_cart_form(post.wc)`) is wrong even where it doesn't error outright. On a single-product template, prefer calling **`wc_add_to_cart_form()` with no arguments**: when `is_product()` is true it auto-resolves the current product from `get_the_ID()`. Only pass an explicit argument (the result of `wc_get_product(id)`) when rendering add-to-cart for a *different* product than the one being viewed (e.g. inside a cross-sell loop).
-
-**Native-i18n render behavior (v1.27+).** On a non-default-language URL: enriched `featured_image` resolves through the Translations-page MediaMap automatically (the per-language attachment, no `tmedia()` needed); and enriched loop posts have their `post_title`/`post_content`/`post_excerpt` swapped in-place from the current language's override blob, so `{{ p.post_title }}` / `{{ p.post_content }}` render translated inside loops. No-op when i18n is dormant or no override/mapping exists.
-
-### Checkout
-```twig
-{# Payment gateways #}
-{% for gateway in payment_gateways %}
-  gateway.id, gateway.title, gateway.description, gateway.chosen
-{% endfor %}
-
-{# Shipping methods #}
-{% for method in shipping_methods %}
-  method.id, method.label, method.cost, method.cost_html, method.chosen
-{% endfor %}
-
-{# Customer billing fields #}
-customer.billing_first_name, customer.billing_last_name
-customer.billing_email, customer.billing_phone
-customer.billing_address_1, customer.billing_city
-customer.billing_postcode, customer.billing_country, customer.billing_state
-```
-
-### Shop / product category (WooCommerce archives)
-
-Injected on template types **`shop`** and **`product-category`** (content resolves from the WooCommerce shop page; see SKILL).
-
-```twig
-products              {# Array of enriched product posts (main query or CanAI fallback) #}
-current_category      {# Current term object on taxonomy archives; may be null on main shop #}
-term                  {# Queried object (term or other) #}
-attribute_filters     {# Layered nav attribute metadata #}
-
-{# Pagination (same shape as core archives; total_posts mirrors total_products) #}
-pagination.current_page
-pagination.total_pages
-pagination.per_page
-pagination.total_products   {# WC: count of products in the catalog query #}
-pagination.total_posts      {# Alias of total_products for shared Twig across WC + core #}
-
-{# Attribute filter structure: #}
-attribute_filters.color.label
-attribute_filters.color.terms   {# Array: name, url, count, is_active #}
 ```
 
 ### WordPress archives (category, tag, author, search, date, CPT)

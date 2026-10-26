@@ -2,7 +2,7 @@
 
 Use this reference when the site sells with **FluentCart** and the user wants its product pages,
 shop, category or brand archives, cart, checkout, receipt or customer account designed in CanAI.
-The workflow is in SKILL.md under **FluentCart store**; this file holds the types, the Twig
+The workflow is under **Workflow** below; this file holds the types, the Twig
 functions, the data and the rules.
 
 **CanAI renders pages, FluentCart owns commerce.** CanAI calls FluentCart's own renderers for
@@ -11,6 +11,8 @@ or a product. The support is on only while FluentCart **1.6.6 or later** is acti
 renderer: `wpcanai-get-fluent-cart-pages` is in your tool list then, and `wpcanai-diagnostics`
 group `wordpress` row `fluentcart` reads "Active <version>". Without it, no `fct_*` function, type
 or tool exists.
+On a site that also sells with WooCommerce, its pages keep WooCommerce's own types: read
+[WOOCOMMERCE.md](WOOCOMMERCE.md) for those.
 
 ## Rules
 
@@ -40,6 +42,14 @@ or tool exists.
    FluentCart → Settings → Features & addon, and needs a WordPress user with a FluentCart role. Say
    so; don't look for those tools on CanAI's server. Products, prices and stock are edited in
    FluentCart, never through CanAI's tools.
+
+## Workflow
+
+1. **Get the pages.** `wpcanai-get-fluent-cart-pages { }`: each store page's `type`, `id`, `url`, `status`, `has_canai_html` and `renders_store`, the `product_base`, a sample archive URL per taxonomy, and sample products. An `id` of 0 means FluentCart has no page set: the owner chooses it in FluentCart → Settings → Store Settings → Pages Setup (there's no CanAI tool for that).
+2. **Resolve.** `wpcanai-resolve-content-id { "type": "fct-checkout" }` (and each type you'll touch) says which post renders it; edit that `content_post_id`.
+3. **Author.** Reuse the site's layout (it must print `wp_head()`, `wp_footer()` and `body_class()`); put a header cart in it (`fct_mini_cart()` or the badge pattern) with links from `fct_url('cart')` / `fct_url('checkout')`. Then the type templates with `wpcanai-create-template` (`single-fluent-products`, `fct-product-category`, `fct-shop`, and the store pages that need more than the layout around FluentCart's own piece), each with `layout` set to the layout's id: a type template draws the whole page, and `wpcanai_default_layout` doesn't wrap it. Print the store page's piece with its helper (`fct_checkout_page()`, …) or `the_content(post.post_content)`. `fct_*` shortcode helpers take a hash only where FluentCart reads one (the shop app's filter sidebar is `fct_shop_app({custom_filters: {…}})`); see **Shortcode attributes** below.
+4. **Preview a product.** `wpcanai-preview-link { "post_id": <a products.sample id> }`, then screenshot it (see SKILL.md → **Check your work in a browser**); do the same for the shop page. An archive is a term, not a post, so it gets no link: open a `sample_term_url` in a plain browser. The cart, checkout, receipt, account and order-review pages refuse a link (`not_previewable`): open the published checkout's `url` in a plain logged-out browser to check the design around FluentCart's checkout, and ask the owner to check the account and receipt pages logged in.
+5. **Scan.** `wpcanai-scan` must show no `fct_page_unset`, `fct_renderer_missing` or `fct_product_no_buy` (see SKILL.md → `wpcanai-scan`), and the delegate findings clean, as for WooCommerce. `get-fluent-cart-pages` `renders_store: false` on a page is the same signal.
 
 ## Template types
 

@@ -3,6 +3,7 @@ name: canai-mcp
 description: >
   Use the CanAI MCP server exclusively for live CanAI site data; never substitute WP-CLI,
   REST/curl, or wp-content edits. FluentSnippets belongs to the opt-in canai-yolo skill.
+  Store work reads references/WOOCOMMERCE.md or references/FLUENTCART.md.
   Triggers on: "/canai-mcp", "wpcanai mcp", "canai mcp", "canai-mcp", "wpcanai remote",
   "canai remote", "remote wpcanai", "remote canai", "staging", "production", "remote site",
   "mcp", "api key", "deploy template", "purge cache", "page cache", "tool labels",
@@ -18,10 +19,11 @@ description: >
   "parent page", "child page", "subpage", "nested page", "move a page", "rename a page", "wpcanai-update-page",
   "reading mode", "reader mode", "reader view", "safari reader",
   "preview link", "preview the draft", "check the page in a browser", "screenshot the page", "wpcanai-preview-link",
+  "woocommerce", "woo", "wc_", "shop template", "product template", "checkout template", "wpcanai-get-wc-css-reference",
   "fluentcart", "fluent cart", "fluentcart store", "fct_", "wpcanai-get-fluent-cart-pages".
 metadata:
   author: canai
-  version: "1.52.0"
+  version: "1.53.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -29,7 +31,7 @@ allowed-tools: "Read Grep Glob"
 
 You are an expert at working with **CanAI** through the **CanAI MCP server** only (WordPress Abilities API + mcp-adapter). The WordPress site may be remote **or** local; the **only** supported way to read or change that site’s CanAI-related data from this skill is `**WP_API_URL` in the user’s MCP config** pointing at the **full** MCP endpoint for that site (`{site}/wp-json/mcp/wpcanai`).
 
-See [references/REFERENCE.md](references/REFERENCE.md) for CanAI-registered Twig functions (plus the vendored Twig version for built-ins) and WooCommerce context. See [references/FLUENTCART.md](references/FLUENTCART.md) for a FluentCart store: its types, `fct_*` functions, `post.fct` and rules. See [references/STRUCTURE-NAVIGATION.md](references/STRUCTURE-NAVIGATION.md) for the shared Atomic Design navigation contract. See [references/READING-MODE.md](references/READING-MODE.md) when the user wants content to open in a browser's reading mode.
+See [references/REFERENCE.md](references/REFERENCE.md) for CanAI-registered Twig functions (plus the vendored Twig version for built-ins). When the site runs a store, read its reference: [references/WOOCOMMERCE.md](references/WOOCOMMERCE.md) or [references/FLUENTCART.md](references/FLUENTCART.md) (see **Store sites**). See [references/STRUCTURE-NAVIGATION.md](references/STRUCTURE-NAVIGATION.md) for the shared Atomic Design navigation contract. See [references/READING-MODE.md](references/READING-MODE.md) when the user wants content to open in a browser's reading mode.
 
 ## MCP is the transport — no shell, no file edits
 
@@ -357,33 +359,25 @@ Triggered when the user runs `/canai-mcp implement <folder>`, asks you to import
 
 **What this does not cover.** Fonts loaded via `@font-face { src: url(...) }` work the same way and should be included. CSS-in-JS, webpack-style hashed bundles, or assets referenced only at runtime via fetch can't be statically detected — call those out in the manifest's "skipped" section so the user knows to handle them manually.
 
-### Shop and archive pagination (Twig on the site)
+### Archive pagination (Twig on the site)
 
-When writing `_canai_html` for the **shop** or **product-category** delegate (or global WC templates), use injected `products` and `pagination`, and output `{{ wc_pagination()|raw }}` or `{{ wpcanai_pagination()|raw }}`. For **category / tag / search / author / archive** (including CPT archives), use injected `posts` and `pagination` with `{{ the_posts_pagination()|raw }}` or `{{ wpcanai_paginate_links()|raw }}`. The same `posts` + `pagination` are injected on the **blog index** — the page set under Settings → Reading → "Posts page" — which is a normal CanAI page (find its id via `wpcanai-read-settings` → `page_for_posts`); its own `_canai_html` renders the listing. The editor preview of that page shows the empty state because `posts` only exists on the live request. "Your latest posts" front-page mode is unsupported. See [references/REFERENCE.md](references/REFERENCE.md) for the full shape and permalink notes. FluentCart's `fct-shop` / `fct-product-category` get their own `products` and `pagination` (and `{{ wpcanai_pagination() }}` pages through them): see **FluentCart store** below.
+For **category / tag / search / author / archive** (including CPT archives), use injected `posts` and `pagination` with `{{ the_posts_pagination()|raw }}` or `{{ wpcanai_paginate_links()|raw }}`. The same `posts` + `pagination` are injected on the **blog index** — the page set under Settings → Reading → "Posts page" — which is a normal CanAI page (find its id via `wpcanai-read-settings` → `page_for_posts`); its own `_canai_html` renders the listing. The editor preview of that page shows the empty state because `posts` only exists on the live request. "Your latest posts" front-page mode is unsupported. See [references/REFERENCE.md](references/REFERENCE.md) for the full shape and permalink notes.
 
-### Styling WooCommerce blocks (cart / checkout / order-received / my-account)
+### Store sites
 
-CanAI's `wc_*` Twig helpers (`wc_checkout_form()`, `wc_cart_totals()`, the my-account endpoints) echo raw WooCommerce output whose HTML structure is otherwise invisible until a live page renders — and the order-received/order-pay pages additionally hide their details behind WooCommerce's guest email-verification gate, so you cannot simply view them. **Do not guess selectors.** Before styling any of these blocks:
+A store's template types, Twig functions, context and rules are in its own reference. Your tool list says which store the site runs:
 
-1. Call `wpcanai-get-wc-css-reference` with the context you are styling (e.g. `{ "context": "order-received" }`).
-2. Read `css_reference` — WooCommerce's own default rules for that context's selectors. **It is raw SCSS source, not compiled CSS**: Sass variables, mixins and `&` parent-refs arrive unresolved (e.g. `darken($secondary, 10%)`, `@include …`), so paraphrase the rules into real CSS rather than pasting them into `_canai_css`. Extracted from four stylesheets of the *installed* WooCommerce (`woocommerce.scss`, `woocommerce-layout.scss`, `woocommerce-smallscreen.scss`, `forms.scss`), so it stays correct across WooCommerce updates — re-call the tool rather than relying on remembered class names. Rules arrive wrapped in their true ancestor selector chain (e.g. `.woocommerce { table.shop_table { … } }`), so match the full chain for specificity. A rule wrapped in `@media only screen and (max-width: 768px)` came from `woocommerce-smallscreen.scss` and is mobile-only — WooCommerce applies that breakpoint in the enqueue, not the file, so don't treat it as unconditional.
-3. Read the files in `template_files` (any file read, if you have filesystem access to the install) — they are the authoritative markup, with a theme override winning over WooCommerce's bundled copy, and paths are ABSPATH-relative. They include classes core ships but never styles (e.g. `.woocommerce-order-overview__order`/`__date`/`__total` on the thank-you page). If `templates_missing` is non-empty, the context map has drifted from the installed WooCommerce — its paths are context-relative (e.g. `order/order-details.php`), a deliberately different format from `template_files`, so the two lists cannot be set-compared.
-4. Check `third_party_hooks`. Each entry (`{hook, priority, callback, file, is_third_party}`) is a plugin adding its own markup on that context (e.g. a delivery-slot plugin appending a table to the thank-you page) — read its `file` to learn the classes it emits before styling. Pass `"include_core": true` to get *every* callback on those hooks instead, WooCommerce's own included, each still carrying its `is_third_party` flag — useful when you want the full picture of what renders into the region, not just the third-party additions.
-5. Write overrides scoped to those selectors into the page/template's `_canai_css` (via `wpcanai-write-meta`), matching the site's design system.
+- `wpcanai-get-wc-page-ids` → **WooCommerce**: read [references/WOOCOMMERCE.md](references/WOOCOMMERCE.md).
+- `wpcanai-get-fluent-cart-pages` → **FluentCart** (plugin v1.103.0): read [references/FLUENTCART.md](references/FLUENTCART.md); its **Workflow** section has these steps in detail.
+- Both → read both. FluentCart's pages are never WooCommerce's `cart` / `checkout` / `shop` types, and `wc_*` Twig doesn't apply to them.
 
-If `css_fallback` is `"full-file"`, selector extraction found nothing (a WooCommerce restructure) — the whole stylesheet was returned instead; grep it for the classes you saw in `template_files`.
+For either store the work goes:
 
-This is read-only static analysis: nothing is rendered, and no order, cart, or customer data is read.
-
-### FluentCart store (plugin v1.103.0)
-
-When the site sells with **FluentCart** (1.6.6 or later; `wpcanai-get-fluent-cart-pages` is in your list), its product pages, shop, category and brand archives, cart, checkout, receipt and account are CanAI templates of the `fct-*` types and `single-fluent-products`, and FluentCart's live pieces go in through `fct_*` Twig functions. Read [references/FLUENTCART.md](references/FLUENTCART.md) before writing any of it: the types, the call forms (a bare number in a button is a **variation id first**), `post.fct`, the context and the rules. In short: text from `post`, live pieces from the helpers; reviews follow `the_content`, so call it once; one checkout per page; never hand-build the checkout or the cart; a product template must print a way to buy. FluentCart's pages are never WooCommerce's `cart` / `checkout` / `shop` types, and `wc_*` Twig doesn't apply to them.
-
-1. **Get the pages.** `wpcanai-get-fluent-cart-pages { }`: each store page's `type`, `id`, `url`, `status`, `has_canai_html` and `renders_store`, the `product_base`, a sample archive URL per taxonomy, and sample products. An `id` of 0 means FluentCart has no page set: the owner chooses it in FluentCart → Settings → Store Settings → Pages Setup (there's no CanAI tool for that).
-2. **Resolve.** `wpcanai-resolve-content-id { "type": "fct-checkout" }` (and each type you'll touch) says which post renders it; edit that `content_post_id`.
-3. **Author.** Reuse the site's layout (it must print `wp_head()`, `wp_footer()` and `body_class()`); put a header cart in it (`fct_mini_cart()` or the badge pattern) with links from `fct_url('cart')` / `fct_url('checkout')`. Then the type templates with `wpcanai-create-template` (`single-fluent-products`, `fct-product-category`, `fct-shop`, and the store pages that need more than the layout around FluentCart's own piece), each with `layout` set to the layout's id: a type template draws the whole page, and `wpcanai_default_layout` doesn't wrap it. Print the store page's piece with its helper (`fct_checkout_page()`, …) or `the_content(post.post_content)`. `fct_*` shortcode helpers take a hash only where FluentCart reads one (the shop app's filter sidebar is `fct_shop_app({custom_filters: {…}})`); see the reference's **Shortcode attributes**.
-4. **Preview a product.** `wpcanai-preview-link { "post_id": <a products.sample id> }`, then screenshot it (see **Check your work in a browser**); do the same for the shop page. An archive is a term, not a post, so it gets no link: open a `sample_term_url` in a plain browser. The cart, checkout, receipt, account and order-review pages refuse a link (`not_previewable`): open the published checkout's `url` in a plain logged-out browser to check the design around FluentCart's checkout, and ask the owner to check the account and receipt pages logged in.
-5. **Scan.** `wpcanai-scan` must show no `fct_page_unset`, `fct_renderer_missing` or `fct_product_no_buy` (see `wpcanai-scan`), and the delegate findings clean, as for WooCommerce. `get-fluent-cart-pages` `renders_store: false` on a page is the same signal.
+1. **Get the pages.** `wpcanai-get-wc-page-ids { }` or `wpcanai-get-fluent-cart-pages { }`.
+2. **Resolve.** `wpcanai-resolve-content-id { "type": … }` for each type you'll touch; edit the `content_post_id` it names.
+3. **Author** the layout and the type templates, as the store's reference says.
+4. **Preview** a product and the shop with `wpcanai-preview-link`, then screenshot them (see **Check your work in a browser**). The cart, checkout and account pages refuse a link (`not_previewable`).
+5. **Scan.** `wpcanai-scan`: the store block's findings clean (see `wpcanai-scan`).
 
 Orders, customers, subscriptions, coupons and reports are **not** on CanAI's server: they're on FluentCart's own MCP server (`/wp-json/fluent-cart/mcp`), off until the owner enables it. Products and prices are edited in FluentCart.
 
@@ -507,15 +501,15 @@ The list a client gets from `tools/list` is **not** "everything registered". Eac
 - **Args:** `{ "type": string }` — `type` required. Accepts the base types (`cart`, `checkout`, `my-account`, `shop`, `product-category`, `product`, `product-loop`, `404`, `search`, `category`, `tag`, `author`, `archive`), the 10 WooCommerce endpoint types (`order-received`, `order-pay`, `add-payment-method`, `orders`, `view-order`, `downloads`, `edit-account`, `edit-address`, `payment-methods`, `lost-password`), **(v1.103.0)** while FluentCart support is on, its eight types (`single-fluent-products`, `fct-product-category`, `fct-shop`, `fct-cart`, `fct-checkout`, `fct-receipt`, `fct-account`, `fct-order-review`; the last is listed on every FluentCart version and answers "Nothing is authored for this type." while its page isn't set), and **(v1.50.0)** types registered through the `wpcanai_template_types` filter.
 - **Registered-type caveat.** The enum is built when the ability registers, on `wp_abilities_api_init` (fired from `init` priority 1). A `wpcanai_template_types` filter added at **file scope** — the documented way, and what the resolver's own docs show — is live by then and its types are accepted. One added *inside* an `init` callback at the default priority 10 is not yet registered, so the schema rejects the type even though the resolver would resolve it fine. Register at file scope.
 - **Returns:** `{ "content_post_id": int, "content_post_type": string, "rendering_mode": string, "template_post_id": int|null, "unreachable_post_id": int, "resolution_reason": string }`.
-- **(v1.50.0) `content_post_id` is the post that actually renders.** *Delegate-body*: a layout wrapper is in effect, so the WooCommerce page supplies the body — `content_post_id` is that page, `rendering_mode` is `page-rendered`. *Template-body*: the type's template is not a layout wrapper, so it renders the whole page itself — `content_post_id` is the **template**, `rendering_mode` is `template-rendered`, and the delegate page's `_canai_html` (if any) is dead content reported as `unreachable_post_id`. `resolution_reason` states which applied. Edit `content_post_id`; before v1.50.0 this returned the delegate page even when the template rendered, so edits could land on meta that never renders.
+- **(v1.50.0) `content_post_id` is the post that actually renders.** *Delegate-body*: a layout wrapper is in effect, so the store page supplies the body — `content_post_id` is that page, `rendering_mode` is `page-rendered`. *Template-body*: the type's template is not a layout wrapper, so it renders the whole page itself — `content_post_id` is the **template**, `rendering_mode` is `template-rendered`, and the delegate page's `_canai_html` (if any) is dead content reported as `unreachable_post_id`. `resolution_reason` states which applied. Edit `content_post_id`; before v1.50.0 this returned the delegate page even when the template rendered, so edits could land on meta that never renders.
 - **`rendering_mode` has five values** — `page-rendered` (delegate-body), `template-rendered` (template-body), **(v1.50.1)** `blank` and `none`, and **(v1.58.0)** `page-rendered-unwrapped`. *Blank* = the layout pointer names a post that no longer exists **and** the delegate page has no `_canai_html` of its own, so nothing CanAI-specific renders; fix the dangling pointer (`wpcanai-scan` reports it as `broken_layout`, warning). *Page-rendered-unwrapped* (v1.58.0) = the layout pointer is dangling, but the delegate page DOES carry its own `_canai_html` — CanAI falls back to rendering that content directly, without the layout's wrapper/chrome, rather than losing it; `content_post_id`/`content_post_type` name the delegate page just like `page-rendered` does, and the dangling pointer is still worth fixing (`wpcanai-scan` reports the same `broken_layout`, warning). *None* = CanAI does not render this type at all. `blank` and `none` both carry `content_post_id: 0` and `content_post_type: ""`, and `resolution_reason` says which. Before v1.50.1 both reported `template-rendered` / `wpcanai_template`, naming a renderer that did not exist — do not treat those two fields as meaningful unless `content_post_id` is non-zero. Before v1.58.0, a dangling layout pointer was always reported as `blank` even when the delegate page's own content in fact rendered unwrapped.
-- **(v1.50.1) Endpoint types inherit their parent's template.** A WooCommerce endpoint claims a request only when a published template of that type exists; otherwise the request renders through the parent type (`checkout` for `order-received`/`order-pay`, `my-account` for the other eight). `resolve-content-id` mirrors that, so an endpoint with no template of its own reports the **parent's** template under template-body rather than a delegate page that can never render. Before v1.50.1 it reported that page, contradicting `wpcanai-scan`'s own `unreachable_content` warning about the same post.
+- **(v1.50.1) WooCommerce endpoint types** resolve through their parent's template when they have none of their own: see [references/WOOCOMMERCE.md](references/WOOCOMMERCE.md) → **Endpoints**.
 
 ### `wpcanai-scan`
 
 - **Args:** `{ }` — no arguments.
 - **Returns:** `array` of findings: `severity`, `type`, `message`, optional `post_id`.
-- **Finding types (v1.50.0).** The WooCommerce block (the five base structural types `shop`, `product-category`, `cart`, `checkout`, `my-account`) validates each type against the shape the site is actually in — neither shape is an error:
+- **Finding types (v1.50.0).** The store block (WooCommerce's five base structural types `shop`, `product-category`, `cart`, `checkout`, `my-account`, and FluentCart's types below) validates each type against the shape the site is actually in — neither shape is an error:
 
   | Severity | Type | Meaning |
   |---|---|---|
@@ -580,7 +574,7 @@ The list a client gets from `tools/list` is **not** "everything registered". Eac
 
 - **Args:** `{ "context": string, "include_core"?: boolean }` — `context` is one of `cart`, `checkout`, `order-received`, `order-pay`, `myaccount-dashboard`, `myaccount-orders`, `myaccount-view-order`, `myaccount-downloads`, `myaccount-edit-account`, `myaccount-edit-address`, `myaccount-payment-methods`, `myaccount-add-payment-method`, `myaccount-lost-password`. `include_core` (default `false`) widens `third_party_hooks` to every registered callback on the context's hooks (WooCommerce core included), each still carrying its `is_third_party` flag. No `lang` parameter.
 - **Returns:** `css_reference` (string — **raw SCSS source, not compiled CSS**; Sass variables/mixins arrive unresolved, so paraphrase rather than paste. WooCommerce's default rules for the context, drawn from `woocommerce.scss`, `woocommerce-layout.scss`, `woocommerce-smallscreen.scss`, and `forms.scss` of the *installed* WooCommerce, emitted with their full ancestor selector chain so you can match specificity; smallscreen rules arrive wrapped in `@media only screen and (max-width: 768px)`), `css_fallback` (`null`, or `"full-file"` when selector extraction found no match and the whole concatenated stylesheet was returned instead), `template_files` (string[], ABSPATH-relative — authoritative markup paths, theme override wins), `templates_missing` (string[], context-relative paths of expected-but-unreadable templates — not set-comparable with `template_files`; non-empty means the context map has drifted from the installed WooCommerce), `hooks_found` (string[] — actions the templates fire), `third_party_hooks` (objects `{hook, priority, callback, file, is_third_party}` — non-core/theme/CanAI callbacks only, or all of them when `include_core` is true), `context_echo` (`{context, include_core}`).
-- **Read-only; static analysis only.** Nothing is rendered; no order/cart/customer data is read. See the "Styling WooCommerce blocks" workflow section above for how to use the output.
+- **Read-only; static analysis only.** Nothing is rendered; no order/cart/customer data is read. See [references/WOOCOMMERCE.md](references/WOOCOMMERCE.md) → **Styling cart, checkout and account** for how to use the output.
 
 ### `wpcanai-get-fluent-cart-pages` (plugin v1.103.0)
 
@@ -982,7 +976,7 @@ CanAI does **not** use `post_content` for Twig bodies. Use `**wpcanai-read-meta`
 
 ## CRITICAL: Content resolution
 
-WC shop/cart/checkout/my-account/product-category content often lives on **WC pages**; product / 404 / search / archive types often on `**wpcanai_template`**. FluentCart's `fct-*` content lives on the pages FluentCart's settings name (often `cart-2`, `checkout-2` beside WooCommerce) or on the type template. Use `**wpcanai-resolve-content-id`** before editing the wrong post.
+WooCommerce's shop, cart, checkout, my-account and product-category content lives on the pages WooCommerce's settings name or on the type template; product / 404 / search / archive types often on `**wpcanai_template`**. FluentCart's `fct-*` content lives on the pages FluentCart's settings name (often `cart-2`, `checkout-2` beside WooCommerce) or on the type template. Use `**wpcanai-resolve-content-id`** before editing the wrong post.
 
 ---
 
@@ -1340,7 +1334,7 @@ If the damage spans several posts (a bad preset install or import), skip straigh
 | Recommended site bootstrap       | `wpcanai-setup`              |
 | Which post ID for a type?        | `wpcanai-resolve-content-id` |
 | WC page IDs                      | `wpcanai-get-wc-page-ids`    |
-| FluentCart store pages, product base, sample products | `wpcanai-get-fluent-cart-pages` (see **FluentCart store**) |
+| FluentCart store pages, product base, sample products | `wpcanai-get-fluent-cart-pages` (see **Store sites**) |
 | Diagnose                         | `wpcanai-scan`               |
 | Grep `_canai_*` meta             | `wpcanai-grep-content`       |
 | Diagnose environment / network    | `wpcanai-diagnostics`        |
