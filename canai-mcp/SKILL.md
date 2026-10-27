@@ -23,7 +23,7 @@ description: >
   "fluentcart", "fluent cart", "fluentcart store", "fct_", "wpcanai-get-fluent-cart-pages".
 metadata:
   author: canai
-  version: "1.53.0"
+  version: "1.54.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -396,7 +396,7 @@ Every CanAI tool description starts with a bracket prefix naming what the tool t
 | `canai` | CanAI's own data: `wpcanai_template`, `_canai_*` meta, `wpcanai_*` options, snapshots, presets |
 | `core` | WordPress data outside CanAI: posts, pages, post meta, options, media |
 | `woocommerce` | WooCommerce pages and settings |
-| `fluent-cart` | FluentCart data: its store-page settings, product taxonomies and products (read only) |
+| `fluent-cart` | FluentCart data: its store-page settings, product taxonomies and products (read only, except the preset tools, which create and remove a pack's products and store setup — v1.104.0) |
 | `fluent-snippets` | Fluent Snippets files and index (canai-yolo tools) |
 | `cache` | A page-cache plugin's purge hooks (LiteSpeed Cache, WP Rocket, W3 Total Cache, WP Super Cache, WP-Optimize — v1.82.0) |
 | `filesystem` | Files under `wp-content` (snippet storage, uploads) |
@@ -408,11 +408,12 @@ The prefix you see is **resolved for the site**: a third-party label (`woocommer
 |---|---|
 | `canai` | `list-templates`, `read-meta`, `grep-content`, `resolve-content-id`, `scan`, `get-pending`, `export`, `list-presets`, `list-snapshots`, `list-operations`, `get-snapshot`, `pin-snapshot`, `pin-current` |
 | `canai, cache` | `write-meta`, `replace-in-meta`, `create-template`, `import`, `restore-snapshot`, `restore-operation` |
-| `canai, core` | `list-pages`, `list-media`, `get-media`, `read-settings`, `update-settings`, `get-option`, `update-options`, `uninstall-preset`, `get-menus`, every `i18n-*` tool |
+| `canai, core` | `list-pages`, `list-media`, `get-media`, `read-settings`, `update-settings`, `get-option`, `update-options`, `get-menus`, every `i18n-*` tool |
 | `canai, core, cache` | `create-page`, `write-post`, `write-page`, `write-menu`, `assign-menu` |
 | `canai, core, http, cache` | `diagnostics` |
 | `canai, core, woocommerce` | `setup` |
-| `canai, core, woocommerce, http` | `install-preset` |
+| `canai, core, woocommerce, fluent-cart` | `uninstall-preset` (v1.104.0) |
+| `canai, core, woocommerce, fluent-cart, http` | `install-preset` (`fluent-cart` since v1.104.0) |
 | `core, cache` | `update-page` |
 | `core, filesystem, http` | `sideload-url` |
 | `core, filesystem, cache` | `update-media` |
@@ -854,12 +855,16 @@ Site name, tagline, and archive/search/404 SEO title+description live in a per-l
 
 ### Presets — `wpcanai-list-presets` / `wpcanai-install-preset` / `wpcanai-uninstall-preset`
 
-- **`wpcanai-list-presets`** → `{ presets: [{ slug, title, description }] }`. The bundled packs (e.g. `cpt-corporate`, `single-freelancer`, `blog-journal` — a full blog whose Blog page becomes Reading → Posts page) build a full template stack (layout/header/footer + typed `single-*`/`archive-*` templates).
+- **`wpcanai-list-presets`** → the packs, each with `slug`, `title`, `description`, `requires` (`{ plugins: [...] }`) and `source` (`bundled` / `remote`). The bundled packs (`cpt-corporate`, `single-freelancer`, `blog-journal` — a full blog whose Blog page becomes Reading → Posts page —, `woo-bookstore` on WooCommerce, and `fct-roastery` "Ember & Bean" on FluentCart, v1.104.0) build a full template stack (layout/header/footer + typed `single-*`/`archive-*` or store templates).
 - **`wpcanai-install-preset`** — `{ "slug": string, "set_front_page"?: bool, "clean_slate"?: bool, "adopt_woo_pages"?: bool, "trash_woo_pages"?: bool }`. Installs a pack's templates + pages, sideloads its images, and (v1.26+) wraps user-facing copy in `{{ t('…') }}` + adds a `languages()` switcher; the native-i18n StringIndex is warmed so `wpcanai-i18n-list-strings` shows the pack's strings immediately, even if languages are configured after install. Pack templates may reference `{{preset.image_id.<key>}}` to get a sideloaded attachment ID for `tmedia()`.
   - **⚠ `clean_slate: true` is destructive.** It **trashes ALL existing CanAI templates and pages** (recoverable from Trash) and clears preset bookkeeping **before** installing — and it runs even if the subsequent install fails. Never pass it without explicit user confirmation. MCP hosts expose this boolean in the tool schema with no built-in guard.
   - **`adopt_woo_pages` (default `true`, v1.47.0).** A pack with `settings.woo_pages` writes its content onto the store's **existing** WooCommerce pages instead of creating duplicates (`checkout-2`, …), preserving their IDs and permalinks so order-received URLs in already-sent emails keep working. Each adopted page's prior CanAI meta is snapshotted and restored by `wpcanai-uninstall-preset` — the page itself is never deleted. Pass `false` to force new pages (pre-v1.47.0 behavior; breaks previously issued order links).
   - **`trash_woo_pages` (default `false`).** Trashes the existing shop/cart/checkout/my-account pages (recoverable from Trash) so the pack's own store pages take those slugs. It runs **before** adoption, so it wins: the slots are empty by the time adoption looks, and fresh pages are created.
-- **`wpcanai-uninstall-preset`** — `{ "slug": string }`. Removes a pack's templates/pages and tears down any nav menus it created.
+  - **Both `*_woo_pages` options are WooCommerce-only.** A FluentCart pack ignores `trash_woo_pages` with a warning.
+  - **FluentCart packs (v1.104.0), e.g. `fct-roastery`.** The pack's FluentCart products are created through FluentCart. The store's FluentCart pages are used when they're set and published, and created with FluentCart's own content otherwise. Cash on Delivery is turned on. A free "Everywhere" zone is added only when no zone ships to the whole world. FluentCart's first-visit onboarding redirect is switched off while it's pending. Store name, logo, currency, tax, orders and customers are never touched. Tell the owner to review payments and shipping before taking orders, and not to run FluentCart's onboarding "Create pages", which duplicates the store pages.
+  - **`status`** is `ok`, or `needs_rerun` with `reason: "fluent_cart_activated"` and a `message` when this call had to activate FluentCart. FluentCart boots on the next request, so the install stopped after the plugins step with nothing else created. Call `wpcanai-install-preset` again with the same slug and options, **without `clean_slate`** (it already ran).
+- **`wpcanai-uninstall-preset`** — `{ "slug": string }`. Removes a pack's templates/pages and tears down any nav menus it created. Returns `{ deleted_posts, deleted_terms, removed_cpts, kept, warnings, notes }`.
+  - **FluentCart packs (v1.104.0).** Products are deleted through FluentCart. A product on an order is kept as a draft, with its images, and listed in `kept` (`[{ id, title }]`); it loses the pack's categories and brands. Store pages, Cash on Delivery and the onboarding flags go back as they were. The shipping method it added is removed, with its zone unless the owner has added methods to it. `notes` says what was done or left as it is. `warnings` says what couldn't be undone, and uninstalling again retries it (with FluentCart inactive, nothing of FluentCart's is touched: activate it and uninstall again). Report every `kept` product to the owner.
 
 ### `wpcanai-export` / `wpcanai-import`
 

@@ -6,9 +6,10 @@ The workflow is under **Workflow** below; this file holds the types, the Twig
 functions, the data and the rules.
 
 **CanAI renders pages, FluentCart owns commerce.** CanAI calls FluentCart's own renderers for
-everything a shopper clicks and reads product data to display it. It never writes a cart, an order
-or a product. The support is on only while FluentCart **1.6.6 or later** is active with its product
-renderer: `wpcanai-get-fluent-cart-pages` is in your tool list then, and `wpcanai-diagnostics`
+everything a shopper clicks and reads product data to display it. Rendering never writes a cart, an
+order or a product; only a starter preset creates products (see **Starter preset**). The support
+is on only while FluentCart **1.6.6 or later** is active with its product renderer:
+`wpcanai-get-fluent-cart-pages` is in your tool list then, and `wpcanai-diagnostics`
 group `wordpress` row `fluentcart` reads "Active <version>". Without it, no `fct_*` function, type
 or tool exists.
 On a site that also sells with WooCommerce, its pages keep WooCommerce's own types: read
@@ -50,6 +51,31 @@ On a site that also sells with WooCommerce, its pages keep WooCommerce's own typ
 3. **Author.** Reuse the site's layout (it must print `wp_head()`, `wp_footer()` and `body_class()`); put a header cart in it (`fct_mini_cart()` or the badge pattern) with links from `fct_url('cart')` / `fct_url('checkout')`. Then the type templates with `wpcanai-create-template` (`single-fluent-products`, `fct-product-category`, `fct-shop`, and the store pages that need more than the layout around FluentCart's own piece), each with `layout` set to the layout's id: a type template draws the whole page, and `wpcanai_default_layout` doesn't wrap it. Print the store page's piece with its helper (`fct_checkout_page()`, …) or `the_content(post.post_content)`. `fct_*` shortcode helpers take a hash only where FluentCart reads one (the shop app's filter sidebar is `fct_shop_app({custom_filters: {…}})`); see **Shortcode attributes** below.
 4. **Preview a product.** `wpcanai-preview-link { "post_id": <a products.sample id> }`, then screenshot it (see SKILL.md → **Check your work in a browser**); do the same for the shop page. An archive is a term, not a post, so it gets no link: open a `sample_term_url` in a plain browser. The cart, checkout, receipt, account and order-review pages refuse a link (`not_previewable`): open the published checkout's `url` in a plain logged-out browser to check the design around FluentCart's checkout, and ask the owner to check the account and receipt pages logged in.
 5. **Scan.** `wpcanai-scan` must show no `fct_page_unset`, `fct_renderer_missing` or `fct_product_no_buy` (see SKILL.md → `wpcanai-scan`), and the delegate findings clean, as for WooCommerce. `get-fluent-cart-pages` `renders_store: false` on a page is the same signal.
+
+## Starter preset
+
+`fct-roastery` ("Ember & Bean", plugin v1.104.0) is a bundled coffee-roaster preset: 8 products
+(`simple` and `simple_variations`, sale prices, a mug with an image per variation), 10 templates
+(layout, header, footer and seven store templates), Home and About, and two menus. Install and uninstall it as SKILL.md → **Presets** says
+(`needs_rerun`, `kept`). It is the worked example of the `fct_*` helpers. Where it's installed,
+read its templates with `wpcanai-list-templates` and `wpcanai-read-meta`; the source is
+`presets/fct-roastery/preset.json` in the CanAI plugin (`canai/presets/fct-roastery/preset.json`).
+
+- **The shop card** (`fct-shop` and `fct-product-category` in one template): `post.fct.images[0]`,
+  a `t('From {price}', …)` range, the compare price, a Sale badge from `price.on_sale`,
+  `fct_add_to_cart_button(post, {text, class})` only when `post.fct.can_add_to_cart` and a
+  "Choose options" or "View product" link otherwise, category chips from
+  `wpcanai_get_terms_enriched()`, and `wpcanai_pagination()`.
+- **The product template:** `fct_product_gallery()`, `fct_product_price()`, `fct_buy_section()`,
+  the description through one `the_content(post.post_content)` inside the single `<article>`, and
+  related products from `fct_get_products({category, per_page, exclude_ids})`.
+- **The header mini cart:** `fct_mini_cart()` in `fct-header`, which the layout includes by a
+  literal `wpcanai_template('fct-header')`, so its styles load in `<head>`.
+- **The store templates:** `fct_cart_page()`, `fct_checkout_page()`, `fct_receipt_page()`,
+  `fct_account_page()`, and order review's title above `the_content(post.post_content)`. Each
+  typed template is inside `fct-layout`.
+
+It doesn't use `fct_shop_app()`, `fct_product_page()`, `fct_product_card()` or the Buy Now helpers.
 
 ## Template types
 
