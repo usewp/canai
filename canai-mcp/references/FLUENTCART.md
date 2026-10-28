@@ -415,7 +415,7 @@ Print delivery copy from FluentCart's real zones instead of hardcoding it, so it
 {% set th = fct_shipping_rates('TH') %}            {# one unit of the product being rendered #}
 {% if th.methods %}{{ t('Delivery to Thailand from {price}.', {price: th.methods[0].amount_formatted}) }}{% endif %}
 
-{% for zone in fct_shipping_zones() if zone.methods|filter(m => m.rate == 'free')|length %}
+{% for zone in fct_shipping_zones()|filter(z => z.methods|filter(m => m.rate == 'free')|length) %}
   <p>{{ t('Free delivery to {places}.', {places: zone.countries|map(c => c.name)|join(', ')}) }}</p>
 {% endfor %}
 ```

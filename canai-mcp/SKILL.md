@@ -23,7 +23,7 @@ description: >
   "fluentcart", "fluent cart", "fluentcart store", "fct_", "wpcanai-get-fluent-cart-pages".
 metadata:
   author: canai
-  version: "1.55.0"
+  version: "1.55.1"
 allowed-tools: "Read Grep Glob"
 ---
 
