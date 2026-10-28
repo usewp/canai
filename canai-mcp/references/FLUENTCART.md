@@ -1,4 +1,4 @@
-# FluentCart store (plugin v1.103.0; attributes, buy-section switches, slugs and shipping helpers v1.105.0; store tools v1.106.0)
+# FluentCart store (plugin v1.103.0; attributes, buy-section switches, slugs and shipping helpers v1.105.0; store tools v1.106.0; checkout mode, attribute library, stock, subscriptions, deleting and re-pricing v1.107.0)
 
 Use this reference when the site sells with **FluentCart** and the user wants its product pages,
 shop, category or brand archives, cart, checkout, receipt or customer account designed in CanAI.
@@ -43,9 +43,10 @@ On a site that also sells with WooCommerce, its pages keep WooCommerce's own typ
    subscriptions, coupons and reports live on FluentCart's own MCP server
    (`/wp-json/fluent-cart/mcp`). It is off until the owner turns on "MCP for AI Agents" in
    FluentCart → Settings → Features & addon, and needs a WordPress user with a FluentCart role. Say
-   so; don't look for those tools on CanAI's server. Products, prices, store settings and shipping
-   go through CanAI's store tools only while the owner has turned their areas on (see **Store
-   tools**); stock, tax, payment methods and orders stay in FluentCart.
+   so; don't look for those tools on CanAI's server. Products (stock and subscriptions included),
+   attributes, prices, store settings and shipping go through CanAI's store tools only while the
+   owner has turned their areas on (see **Store tools**); tax, payment methods, coupons and orders
+   stay in FluentCart.
 
 ## Workflow
 
@@ -80,18 +81,31 @@ read its templates with `wpcanai-list-templates` and `wpcanai-read-meta`; the so
 
 It doesn't use `fct_shop_app()`, `fct_product_page()`, `fct_product_card()` or the Buy Now helpers.
 
-## Store tools (plugin v1.106.0)
+Over MCP (v1.107.0), installing or uninstalling it, or `clean_slate` while it is installed, needs all
+three FluentCart store areas open in Guardrails (see **Store tools**) and FluentCart's permissions
+(`products/delete` too for an uninstall or a clean slate); otherwise the call answers
+`{success: false, code: "fct_writes_off"}` (or `fct_forbidden`). CanAI → Tools → Presets and WP-CLI don't ask: the owner
+is there.
 
-Six MCP tools set up a store without wp-admin: read it with `wpcanai-get-fluent-cart-store` and
+## Store tools (plugin v1.106.0; v1.107.0 additions marked)
+
+Seven MCP tools set up a store without wp-admin: read it with `wpcanai-get-fluent-cart-store` and
 `wpcanai-get-fluent-products`, change it with `wpcanai-update-fluent-cart-settings`,
-`wpcanai-write-fluent-cart-shipping-zone`, `wpcanai-write-fluent-cart-shipping-class` and
-`wpcanai-write-fluent-product`. They write through FluentCart's own services, with its rules.
+`wpcanai-write-fluent-cart-shipping-zone`, `wpcanai-write-fluent-cart-shipping-class`,
+`wpcanai-write-fluent-product` and **(v1.107.0)** `wpcanai-write-fluent-attribute-group`. They
+write through FluentCart's own services, with its rules.
 
 - **The Guardrails switch.** Every write needs its area ticked in **CanAI → AI Client →
   Guardrails → FluentCart store**: Products, Store settings and pages, Shipping. All are off by
   default. A closed area answers `fct_writes_off`; a user without FluentCart's permission
   `fct_forbidden`. `get-fluent-cart-store` → `writes` says which are open. Ask the owner to tick the
   area; never write FluentCart's data another way (snippets, `update-options`).
+- **(v1.107.0) A closed area hides its tools** while the site follows tool recommendations (rule
+  **R5**): they're missing from your tool list, `wpcanai-manage-tools` `list` shows them with
+  `rule: "R5"` and the area to open, and they come back once the owner ticks it. Turning the tool on
+  with `manage-tools` doesn't open the area; only the owner can.
+- **(v1.107.0) A key whose WordPress user is gone** is refused (`fct_key_user_gone`): FluentCart's
+  permissions belong to a person. The owner makes a new key.
 - **Read first, write back.** Each read returns the shape its write takes. On an update only the
   keys you send change; the rest keep their stored values.
 - **Money** is a decimal string in the store currency (`"150.00"`), as FluentCart's admin shows it.
@@ -110,8 +124,24 @@ Six MCP tools set up a store without wp-admin: read it with `wpcanai-get-fluent-
   attachment id or `null`), the store address and `store_country` (checkout also uses it as the
   shipping country when the address has none), `weight_unit`, `dimension_unit`, `product_slug` (the
   `/item/` URL base).
-- **A currency change relabels prices; it never converts them.** Re-price the products after it.
-  FluentCart refuses it under 2.x multi-currency once orders exist (`currency_locked`).
+- **A currency change relabels prices**; FluentCart refuses it under 2.x multi-currency once orders
+  exist (`currency_locked`). **(v1.107.0) `reprice` converts them** in the same call:
+
+  ```json
+  { "settings": { "currency": "MYR" }, "reprice": { "rate": 4.4, "round": "cent" } }
+  ```
+
+  `rate` is new units per old unit; `round` is `cent` (default) or `whole`. It converts every
+  variation's price, compare price and cost, subscription signup fees, per-order, per-item and per-weight
+  shipping amounts and weight-tier costs, and fixed shipping-class costs, in one transaction, and
+  recomputes each product's price range. Percentage rates, fixed-amount coupons, orders and prices
+  typed into page text keep their numbers: tell the owner about coupons. It needs the Products and
+  Shipping areas too, and is skipped (`rejected`: `reprice` / `currency_refused`) when the call's
+  currency isn't applied. **It runs once per currency:** a second conversion into the store's current
+  currency (a retried call after a timeout, say) is skipped as `already_repriced` with the date and
+  rate of the first; read the prices back, and send `"again": true` only if they really need a second
+  conversion. Preview first with `{ "reprice": { "rate": 4.4, "dry_run": true } }`
+  alone: `repriced` gives the counts and five examples, and nothing is written.
 - Keys FluentCart doesn't read (`show_cart_icon_in_nav`, `thousand_separator`, the button texts) are
   refused with the reason. Order mode, payments, tax and invoices aren't on the allowlist.
 - `pages`: a published page's id assigns it, `0` unsets the slot, `"create"` makes a published page
@@ -142,6 +172,9 @@ Six MCP tools set up a store without wp-admin: read it with `wpcanai-get-fluent-
   per item or once) to whatever method is chosen; give a product its class with
   `write-fluent-product` `shipping_class`.
 - `delete: true` with an `id` deletes a zone with its methods, or a class with its own zones.
+- **(v1.107.0)** A method's `states` are FluentCart's state codes for the zone's country, in any case:
+  CanAI stores FluentCart's own spelling (US `CA`, Morocco `maagd`), which checkout matches exactly,
+  and refuses a code FluentCart doesn't list.
 
 ### Products
 
@@ -162,16 +195,39 @@ An attribute product, the "book + coffee" case:
 
 - **Groups and terms** are named by id, slug or title (any case); a number is an id when one
   exists, else a title (`"1"` can be a term). A title FluentCart's library doesn't have creates that
-  group or term (FluentCart's `products/create` permission). Colour and image swatches stay FluentCart's admin's job
-  (FluentCart → Attributes). FluentCart generates one variation per combination; a variation entry
-  names its combination with `attributes: {group: term}`, one term per group.
+  group or term (FluentCart's `products/create` permission) as plain buttons; colours, images and a
+  dropdown picker are `write-fluent-attribute-group`'s (see **Attribute library**). FluentCart
+  generates one variation per combination; a variation entry names its combination with
+  `attributes: {group: term}`, one term per group.
 - **A new combination left at 0 without a price in the call is set inactive** and listed in
-  `warnings`, so nothing goes on sale for free by accident. Send `"price": "0.00"` to sell one free.
+  `warnings`, so nothing goes on sale for free by accident. **(v1.107.0)** It carries the dearest
+  combination's price as a placeholder (so does one the call sends with only `"status": "inactive"`), since FluentCart's "From …" price and price sort count
+  inactive variations too; give it its own price when you switch it on. Send `"price": "0.00"` to
+  sell one free.
 - **Simple and simple_variations:** `variations` is the list on a create (each with a `price`;
   one makes `simple`). On an update it's a list of changes: name a variation by `id` (an attribute
   product's also by `attributes`); an entry with neither adds a variation (simple_variations only).
-- **Nothing is deleted.** `"status": "inactive"` takes a variation off sale and keeps order history;
-  `"status": "draft"` takes a product off sale. To delete, use FluentCart's admin.
+- **Taking things off sale:** `"status": "inactive"` on a variation, `"status": "draft"` on a
+  product. Both keep order history.
+- **(v1.107.0) Deleting:** `{ "id": 950, "delete": true }` deletes a product through FluentCart, and
+  `{ "id": 950, "variations": [{ "id": 31, "delete": true }] }` a variation of a `simple_variations`
+  product (never the last one; an attribute product's combinations follow its `attributes`). Either
+  is refused while **any** order includes it: take it off sale instead. A product's images stay in
+  the media library. FluentCart's `products/delete` permission applies. When the default variation
+  goes, the first remaining one becomes the default.
+- **(v1.107.0) Stock:** `"manage_stock": true` tracks stock (it needs FluentCart's Stock Management
+  module, FluentCart → Settings → Modules; ask the owner), `false` stops. Each variation's `stock` is
+  its units available; a tracked variation without stock shows as out of stock, and `warnings` names
+  each one. `get-fluent-products` returns `manage_stock` and each variation's `stock` (`null` while
+  untracked).
+- **(v1.107.0) Subscriptions:** a new variation (simple or simple_variations) may be one:
+  `"payment": { "type": "subscription", "interval": "monthly", "times": 12, "trial_days": 7,
+  "signup_fee": "10", "signup_fee_name": "Starter kit" }` (`interval`: daily, weekly, monthly,
+  quarterly, half_yearly, yearly; `times` 0 bills until the customer cancels; `trial_days` up to
+  365; a signup fee needs its name). An existing subscription's terms change the same way
+  (`signup_fee: null` drops the fee). A variation never switches between one-time and subscription:
+  add a new one and set the old one inactive. Attribute combinations are one-time. Checkout needs a
+  payment method that takes subscriptions (Cash on Delivery doesn't).
 - **Type changes** follow FluentCart: simple → simple_variations (`type`), anything →
   advanced_variations (`attributes` required; FluentCart replaces the variations, and the result
   says how many went), never back. Sending back the attribute set `get-fluent-products` returned
@@ -191,6 +247,26 @@ An attribute product, the "book + coffee" case:
   Never repeat the create: that makes a duplicate.
 - `write-fluent-product` is annotated destructive: changing `attributes` or switching to
   advanced_variations lets FluentCart delete variations.
+
+### Attribute library (v1.107.0)
+
+`wpcanai-write-fluent-attribute-group` writes FluentCart's attribute groups and their terms, in the
+shape `get-fluent-cart-store` → `attributes` lists (`{id, slug, title, type, styling, terms: [{id,
+slug, title, color, image}]}`):
+
+```json
+{ "title": "Glaze", "type": "color", "styling": "dropdown",
+  "terms": [ { "title": "Celadon", "color": "#ace1af" }, { "title": "Tenmoku", "color": "#3b2416" } ] }
+{ "id": 17, "terms": [ { "id": 80, "title": "Celadon Green" }, { "title": "Ash", "color": "#bbbbbb" }, { "id": 81, "delete": true } ] }
+```
+
+- `type`: `options` (buttons with the term names), `color` (dots) or `image` (pictures); `styling`:
+  `buttons` or `dropdown`, the product page's picker. A `color` group's terms each need a `color`
+  (`#rgb` / `#rrggbb`), an `image` group's an `image` (an attachment id, or the URL the read gave).
+- `terms` is a list of changes: no `id` creates a term, `id` updates its title, colour or image,
+  `{id, delete: true}` deletes it; terms you leave out stay. Slugs are kept once made.
+- Deleting a group (`{id, delete: true}`) or a term that products' variations use is refused, as
+  FluentCart refuses it. Put a group's terms on a product with `write-fluent-product` `attributes`.
 
 Then design the pages: a template reads the same product through `post.fct` (see **Attribute
 products** and **Direct checkout, no cart**).
@@ -264,7 +340,7 @@ Every HTML function returns safe Markup: print it with `{{ }}`, no `|raw`.
 | `fct_buy_now_url(variation?, quantity = 1)` | text: the variation's instant-checkout URL; `''` when there's no such variation |
 | `fct_url(key)` | text: the `shop`, `cart`, `checkout`, `receipt` or `account` page's URL in the current language (localized like `turl()`); `''` while the page isn't set |
 | `fct_shipping_zones()` | data: the shipping zones checkout can offer, with countries and methods (see **Shipping in templates**) |
-| `fct_shipping_rates(country, variation?)` | data: what checkout would charge to ship one unit to a country, cheapest first (see **Shipping in templates**) |
+| `fct_shipping_rates(country, variation?, state?)` | data: what checkout would charge to ship one unit to a country (or one of its states), cheapest first (see **Shipping in templates**) |
 
 ### Arguments
 
@@ -368,7 +444,9 @@ post.fct = {
   `in-stock`, `out-of-stock`, or whatever a `fluent_cart/product_stock_availability` filter makes
   it (`low-stock`), so don't test it against two values only.
 - **`can_add_to_cart`** is true for a `simple`, one-time, in-stock product: what FluentCart's card
-  offers a button for. It ignores catalog mode (`RenderGate`); FluentCart's buttons still apply it.
+  offers a button for, and **(v1.107.0)** false while the store's checkout mode is a Buy Now one
+  (see **Direct checkout, no cart**). It ignores catalog mode (`RenderGate`); FluentCart's buttons
+  still apply it.
 - **Images** are the gallery, the featured image first. `alt` falls back to the media title
   FluentCart stores. An image outside the media library has `id: 0`. Use `post.fct.images[0]` for
   the product picture; `post.featured_image` covers media-library images only.
@@ -513,17 +591,27 @@ skips FluentCart's stock check, as any hand-built Buy Now link does.
 
 For a store that sells by instant checkout only:
 
+- **(v1.107.0) The store-wide checkout mode** does it everywhere at once: the setting
+  `wpcanai_fct_checkout_mode` (CanAI → Settings → FluentCart checkout, or `wpcanai-update-settings`)
+  is `cart` (the default), `buy_now` (no Add to Cart button anywhere) or `buy_now_one` (no Add to
+  Cart and no quantity field). It reaches every FluentCart surface — product pages, buy sections,
+  standalone buttons, cards and `fct_shop_app()`'s own requests — and `post.fct.can_add_to_cart` is
+  false. FluentCart's own card of a simple one-time product loses its button (it has no Buy Now there; in a CanAI card print `fct_buy_now_button(post)`); "View Options" stays. Changing the mode purges
+  the page cache. Prefer it to the per-render switches below for a whole store. It hides buttons; a hand-built
+  `data-fluent-cart-add-to-cart-button` still adds to a cart.
+
 - **Product pages:** `{{ fct_buy_section({add_to_cart: false}) }}`, plus `quantity: false` to drop the
   quantity box. FluentCart's attribute picker still drives the Buy Now link. The same switches work
   on `fct_product_page()`; `fct_product_card(post, {add_to_cart: false})` for cards.
 - **Grids:** a Twig grid over `products` with `fct_buy_now_button(post)` or a
   `fct_buy_now_url(post)` link; FluentCart's live shop (`fct_shop_app()`) redraws its cards in its own
-  requests, where CanAI's switches can't reach, so it keeps its Add to Cart buttons.
+  requests, where the per-render switches can't reach (the checkout mode does).
 - **The floating cart button** is FluentCart's store setting **Show cart icon in body**
   (`show_cart_icon_in_body`); its "nav" icon setting is read nowhere. There's no header cart to
   remove unless the layout prints `fct_mini_cart()`.
 - `wpcanai-scan` accepts a buy-now-only product page: `fct_buy_section()` and `fct_buy_now_url()`
-  both count as a way to buy.
+  both count as a way to buy. In a Buy Now checkout mode, `fct_add_to_cart_button()` and
+  `[fluent_cart_add_to_cart_button]` no longer count (`fct_product_no_buy` says so).
 
 ## Shipping in templates (v1.105.0)
 
@@ -532,6 +620,7 @@ Print delivery copy from FluentCart's real zones instead of hardcoding it, so it
 ```twig
 {% set th = fct_shipping_rates('TH') %}            {# one unit of the product being rendered #}
 {% if th.methods %}{{ t('Delivery to Thailand from {price}.', {price: th.methods[0].amount_formatted}) }}{% endif %}
+{% set ca = fct_shipping_rates('US', null, 'CA') %} {# a state, for methods limited to states #}
 
 {% for zone in fct_shipping_zones()|filter(z => z.methods|filter(m => m.rate == 'free')|length) %}
   <p>{{ t('Free delivery to {places}.', {places: zone.countries|map(c => c.name)|join(', ')}) }}</p>
@@ -545,13 +634,15 @@ Print delivery copy from FluentCart's real zones instead of hardcoding it, so it
   `per_order`, `per_item`, `per_price` (`percent` of the goods) or `per_weight` (tiers). `amount`
   (cents) and `amount_formatted` are set for `per_order` / `per_item`, else `null`. `states: []` is
   every state.
-- **`fct_shipping_rates(country, variation?)`**: `{ country, country_name, status, methods: [{ id,
-  title, description, type, zone: {id, name}, amount, amount_formatted, is_free }] }` — FluentCart's
-  own charge to ship **one unit** of the variation (default: the rendered product's default
-  variation; a product, slug or `variations` entry also works) to an address in `country` (ISO2),
-  **cheapest first**. Class surcharges, weight tiers and free-shipping products count. `status`:
-  `ok`, `no_methods`, `needs_state` (only state-restricted methods), `no_shipping_needed` (digital,
-  or the product ships free), `unknown_country`, `no_product`. It never reads or creates a cart.
+- **`fct_shipping_rates(country, variation?, state?)`**: `{ country, country_name, state, status,
+  methods: [{ id, title, description, type, zone: {id, name}, amount, amount_formatted, is_free }] }`
+  — FluentCart's own charge to ship **one unit** of the variation (default: the rendered product's
+  default variation; a product, slug or `variations` entry also works; `null` to name a state
+  without one) to an address in `country` (ISO2), **cheapest first**. **(v1.107.0)** `state` (its
+  code in any case, matched to FluentCart's own) offers the methods limited to that state. Class surcharges,
+  weight tiers and free-shipping products count. `status`: `ok`, `no_methods`, `needs_state` (only
+  state-restricted methods, and no state given), `no_shipping_needed` (digital, or the product ships
+  free), `unknown_country`, `no_product`. It never reads or creates a cart.
 - **Every matching zone is offered together.** A Thailand zone at RM40 and a Whole World zone at
   RM200 both show for Thailand, the dearer first. For "RM40 for Thailand, RM200 elsewhere" the second
   zone must be **all countries except Thailand** (FluentCart's "Selection" region, excluded), not
@@ -672,10 +763,10 @@ With CanAI's native translation on:
 
 ## Known quirks and limits
 
-- **FluentCart's stored price range counts inactive variations.** Its save takes the lowest price
-  of every variation, so an inactive combination at 0 makes the product sort as 0 by price in
-  FluentCart's own lists. `post.fct.price` reads active variations only. Give every combination a
-  price.
+- **FluentCart's price range counts inactive variations.** Its "From …" price and price sort take
+  the lowest price of every variation. `write-fluent-product` gives a held-back combination a
+  placeholder price (v1.107.0), but one set to 0 by hand in FluentCart's admin still reads 0.
+  `post.fct.price` reads active variations only. Give every combination a price.
 - **Store tools need their Guardrails area** (see **Store tools**); FluentCart's own admin and MCP
   server are unaffected by it.
 - **Reviews** exist on 2.x only, and only on classic themes (see **FluentCart 2.2.0**).
