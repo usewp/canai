@@ -20,10 +20,11 @@ description: >
   "reading mode", "reader mode", "reader view", "safari reader",
   "preview link", "preview the draft", "check the page in a browser", "screenshot the page", "wpcanai-preview-link",
   "woocommerce", "woo", "wc_", "shop template", "product template", "checkout template", "wpcanai-get-wc-css-reference",
-  "fluentcart", "fluent cart", "fluentcart store", "fct_", "wpcanai-get-fluent-cart-pages".
+  "fluentcart", "fluent cart", "fluentcart store", "fct_", "wpcanai-get-fluent-cart-pages",
+  "fluentcart product", "create a product", "shipping zone", "store currency", "wpcanai-write-fluent-product", "wpcanai-get-fluent-cart-store".
 metadata:
   author: canai
-  version: "1.55.1"
+  version: "1.56.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -368,7 +369,7 @@ For **category / tag / search / author / archive** (including CPT archives), use
 A store's template types, Twig functions, context and rules are in its own reference. Your tool list says which store the site runs:
 
 - `wpcanai-get-wc-page-ids` → **WooCommerce**: read [references/WOOCOMMERCE.md](references/WOOCOMMERCE.md).
-- `wpcanai-get-fluent-cart-pages` → **FluentCart** (plugin v1.103.0; product attributes, buy-now-only buy sections, slugs and shipping helpers v1.105.0): read [references/FLUENTCART.md](references/FLUENTCART.md); its **Workflow** section has these steps in detail.
+- `wpcanai-get-fluent-cart-pages` → **FluentCart** (plugin v1.103.0; product attributes, buy-now-only buy sections, slugs and shipping helpers v1.105.0; store tools for products, settings, store pages and shipping v1.106.0): read [references/FLUENTCART.md](references/FLUENTCART.md); its **Workflow** and **Store tools** sections have the steps in detail.
 - Both → read both. FluentCart's pages are never WooCommerce's `cart` / `checkout` / `shop` types, and `wc_*` Twig doesn't apply to them.
 
 For either store the work goes:
@@ -379,7 +380,7 @@ For either store the work goes:
 4. **Preview** a product and the shop with `wpcanai-preview-link`, then screenshot them (see **Check your work in a browser**). The cart, checkout and account pages refuse a link (`not_previewable`).
 5. **Scan.** `wpcanai-scan`: the store block's findings clean (see `wpcanai-scan`).
 
-Orders, customers, subscriptions, coupons and reports are **not** on CanAI's server: they're on FluentCart's own MCP server (`/wp-json/fluent-cart/mcp`), off until the owner enables it. Products and prices are edited in FluentCart.
+Orders, customers, subscriptions, coupons and reports are **not** on CanAI's server: they're on FluentCart's own MCP server (`/wp-json/fluent-cart/mcp`), off until the owner enables it. **(v1.106.0)** FluentCart products, store settings, store pages and shipping can be changed with CanAI's store tools once the owner turns on their areas in **CanAI → AI Client → Guardrails → FluentCart store** (all off by default; FLUENTCART.md → **Store tools**). WooCommerce products are edited in WooCommerce.
 
 ---
 
@@ -396,7 +397,7 @@ Every CanAI tool description starts with a bracket prefix naming what the tool t
 | `canai` | CanAI's own data: `wpcanai_template`, `_canai_*` meta, `wpcanai_*` options, snapshots, presets |
 | `core` | WordPress data outside CanAI: posts, pages, post meta, options, media |
 | `woocommerce` | WooCommerce pages and settings |
-| `fluent-cart` | FluentCart data: its store-page settings, product taxonomies and products (read only, except the preset tools, which create and remove a pack's products and store setup — v1.104.0) |
+| `fluent-cart` | FluentCart data: its store settings and pages, shipping, product taxonomies and products (written by the preset tools — v1.104.0 — and the store tools behind Guardrails — v1.106.0) |
 | `fluent-snippets` | Fluent Snippets files and index (canai-yolo tools) |
 | `cache` | A page-cache plugin's purge hooks (LiteSpeed Cache, WP Rocket, W3 Total Cache, WP Super Cache, WP-Optimize — v1.82.0) |
 | `filesystem` | Files under `wp-content` (snippet storage, uploads) |
@@ -418,7 +419,10 @@ The prefix you see is **resolved for the site**: a third-party label (`woocommer
 | `core, filesystem, http` | `sideload-url` |
 | `core, filesystem, cache` | `update-media` |
 | `woocommerce` | `get-wc-page-ids`, `get-wc-css-reference` |
-| `canai, fluent-cart` | `get-fluent-cart-pages` (v1.103.0) |
+| `canai, fluent-cart` | `get-fluent-cart-pages` (v1.103.0), `get-fluent-cart-store` (v1.106.0) |
+| `fluent-cart` | `get-fluent-products` (v1.106.0) |
+| `fluent-cart, cache` | `write-fluent-product`, `write-fluent-cart-shipping-zone`, `write-fluent-cart-shipping-class` (v1.106.0; all three are annotated destructive: the shipping tools delete on request, and a product's attribute change lets FluentCart delete variations) |
+| `fluent-cart, core, cache` | `update-fluent-cart-settings` (v1.106.0) |
 | `cache` | `purge-cache` |
 | `fluent-snippets` | `list-snippets`, `get-snippet` |
 | `fluent-snippets, filesystem, cache` | `create-snippet`, `update-snippet`, `replace-in-snippet`, `set-snippet-status` |
@@ -532,7 +536,7 @@ The list a client gets from `tools/list` is **not** "everything registered". Eac
 
   | Type | Fires on | Fix |
   |---|---|---|
-  | `fct_page_unset` | a store page setting is empty, names a post that is gone or isn't a page, or names a page that isn't published | the owner chooses or publishes the page in FluentCart → Settings → Store Settings → Pages Setup (no CanAI tool sets it) |
+  | `fct_page_unset` | a store page setting is empty, names a post that is gone or isn't a page, or names a page that isn't published | the owner chooses or publishes the page in FluentCart → Settings → Store Settings → Pages Setup, or **(v1.106.0)** `wpcanai-update-fluent-cart-settings` `pages` sets it (`"create"` makes FluentCart's own page) while the store-settings area is on |
   | `fct_renderer_missing` | the source that renders the cart, checkout, receipt or account page — the type template when it renders the type itself, else the page's `_canai_html`, else its `post_content` — has no `fct_{cart,checkout,receipt,account}_page()`, no `[fluent_cart_cart]` / `[fluent_cart_checkout]` / `[fluent_cart_receipt]` / `[fluent_cart_customer_profile]` and no matching `wp:fluent-cart/*` block. A `_canai_html` that calls `the_content(…)` counts the page's content too | the message names the post and the fix: in `_canai_html`, `print {{ fct_checkout_page() }} where it belongs`; in page content, `add [fluent_cart_checkout] to its content` |
   | `fct_product_no_buy` | a published `single-fluent-products` template, or a published product with its own `_canai_html`, prints none of `fct_product_page()`, `fct_buy_section()`, `fct_add_to_cart_button()`, `fct_buy_now_button()`, `fct_buy_now_url()`, `[fluent_cart_single_product]`, `[fluent_cart_product_header]`, `[fluent_cart_add_to_cart_button]`, `[fluent_cart_checkout_button]`, `[fluent_cart_pricing_table]` or `data-fluent-cart-add-to-cart-button` | print `{{ fct_buy_section() }}` or `{{ fct_product_page() }}`: FluentCart no longer adds its buy section on pages CanAI renders |
 
@@ -588,6 +592,19 @@ The list a client gets from `tools/list` is **not** "everything registered". Eac
   - `taxonomies`: `[{ name, label, sample_term_url }]`, the public product taxonomies (`product-categories`, `product-brands`, …) with the archive of each one's largest term (`''` when it has none), to preview `fct-product-category` on.
   - `products`: `{ count, sample: [{ id, title, url, type }] }`, the published count and the newest published, up to 5; `type` is FluentCart's variation type (`simple`, `simple_variations`, `advanced_variations`). Pass a sample `id` to `wpcanai-preview-link` to check a `single-fluent-products` template.
   - `note`: orders, customers, subscriptions, coupons and reports are on FluentCart's own MCP server (`/wp-json/fluent-cart/mcp`), off until the owner turns on "MCP for AI Agents" in FluentCart → Settings → Features & addon, and connecting needs a WordPress user with a FluentCart role. Tell the user that when they ask for store data; never look for it on CanAI's server.
+
+### FluentCart store tools (plugin v1.106.0)
+
+Six tools in group **FluentCart**, registered only while FluentCart support is on. The reads always work; each **write** first needs its area ticked in **CanAI → AI Client → Guardrails → FluentCart store** (Products / Store settings and pages / Shipping — all off by default, and the option `wpcanai_mcp_fct_write_areas` is off-limits to `update-options`) and the connection user's FluentCart permission (`products/create` / `products/edit`, `store/settings`, `store/sensitive`; administrators have all). Otherwise `fct_writes_off` or `fct_forbidden` (403): tell the owner where the switch is; never work around it with snippets or `update-options`. Money in these tools is **decimal strings in the store currency** (`"40.00"`); Twig keeps cents. Full shapes and recipes: [references/FLUENTCART.md](references/FLUENTCART.md) → **Store tools**.
+
+| Tool | Does |
+|---|---|
+| `wpcanai-get-fluent-cart-store` | Read: allow-listed settings with `allowed` values, store-page slots, shipping zones / methods / classes with overlap `notes`, the attribute library, `writes` (which areas are open now) |
+| `wpcanai-update-fluent-cart-settings` | `{ settings?: {key: value}, pages?: {slot: id \| 0 \| "create"} }` → `{ updated, previous, rejected, pages, created_pages }`; good keys apply, refused ones say why |
+| `wpcanai-write-fluent-cart-shipping-zone` | Create / update / `delete` a zone (`region`: `all`, `countries`, `all_except`) with its whole `methods` list |
+| `wpcanai-write-fluent-cart-shipping-class` | Create / update / `delete` a shipping class (a surcharge) |
+| `wpcanai-get-fluent-products` | Read products in the editable shape (every variation, inactive ones too) |
+| `wpcanai-write-fluent-product` | Create or update a product: post fields, gallery, terms, shipping class, type, attributes, variations. Never deletes: `status: "inactive"` takes a variation off sale, `draft` a product |
 
 ### `wpcanai-create-page`
 
@@ -1340,6 +1357,10 @@ If the damage spans several posts (a bad preset install or import), skip straigh
 | Which post ID for a type?        | `wpcanai-resolve-content-id` |
 | WC page IDs                      | `wpcanai-get-wc-page-ids`    |
 | FluentCart store pages, product base, sample products | `wpcanai-get-fluent-cart-pages` (see **Store sites**) |
+| FluentCart settings, store-page slots, shipping, attributes (read) | `wpcanai-get-fluent-cart-store` |
+| Change FluentCart currency, floating cart, store address, store pages | `wpcanai-update-fluent-cart-settings` (Guardrails area) |
+| FluentCart shipping zones and rates / classes | `wpcanai-write-fluent-cart-shipping-zone` / `-class` (Guardrails area) |
+| Read / create / edit FluentCart products | `wpcanai-get-fluent-products` / `wpcanai-write-fluent-product` (Guardrails area) |
 | Diagnose                         | `wpcanai-scan`               |
 | Grep `_canai_*` meta             | `wpcanai-grep-content`       |
 | Diagnose environment / network    | `wpcanai-diagnostics`        |
