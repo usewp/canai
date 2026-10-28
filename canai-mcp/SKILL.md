@@ -23,7 +23,7 @@ description: >
   "fluentcart", "fluent cart", "fluentcart store", "fct_", "wpcanai-get-fluent-cart-pages".
 metadata:
   author: canai
-  version: "1.54.0"
+  version: "1.55.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -368,7 +368,7 @@ For **category / tag / search / author / archive** (including CPT archives), use
 A store's template types, Twig functions, context and rules are in its own reference. Your tool list says which store the site runs:
 
 - `wpcanai-get-wc-page-ids` → **WooCommerce**: read [references/WOOCOMMERCE.md](references/WOOCOMMERCE.md).
-- `wpcanai-get-fluent-cart-pages` → **FluentCart** (plugin v1.103.0): read [references/FLUENTCART.md](references/FLUENTCART.md); its **Workflow** section has these steps in detail.
+- `wpcanai-get-fluent-cart-pages` → **FluentCart** (plugin v1.103.0; product attributes, buy-now-only buy sections, slugs and shipping helpers v1.105.0): read [references/FLUENTCART.md](references/FLUENTCART.md); its **Workflow** section has these steps in detail.
 - Both → read both. FluentCart's pages are never WooCommerce's `cart` / `checkout` / `shop` types, and `wc_*` Twig doesn't apply to them.
 
 For either store the work goes:

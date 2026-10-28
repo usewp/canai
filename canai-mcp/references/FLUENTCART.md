@@ -1,4 +1,4 @@
-# FluentCart store (plugin v1.103.0)
+# FluentCart store (plugin v1.103.0; attributes, buy-section switches, slugs and shipping helpers v1.105.0)
 
 Use this reference when the site sells with **FluentCart** and the user wants its product pages,
 shop, category or brand archives, cart, checkout, receipt or customer account designed in CanAI.
@@ -129,26 +129,31 @@ Every HTML function returns safe Markup: print it with `{{ }}`, no `|raw`.
 
 | Call | Prints / returns |
 |---|---|
-| `fct_product_page(product?)` | FluentCart's product summary: gallery, title, meta, excerpt, prices, buy section |
-| `fct_buy_section(product?, {add_to_cart_text, buy_now_text, icon_only})` | variation picker, quantity, Add to Cart and Buy Now |
+| `fct_product_page(product?, {add_to_cart, buy_now, quantity})` | FluentCart's product summary: gallery, title, meta, excerpt, prices, buy section |
+| `fct_buy_section(product?, {add_to_cart_text, buy_now_text, icon_only, add_to_cart, buy_now, quantity})` | variation picker, quantity, Add to Cart and Buy Now |
 | `fct_product_gallery(product?, {thumb_position, max_thumbnails})` | the gallery; `thumb_position`: `bottom`, `top`, `left`, `right` |
 | `fct_product_price(product?)` | price or range, compare price, suffix, in the visitor's currency |
 | `fct_add_to_cart_button(variation?, {text, class})` | FluentCart's Add to Cart button |
 | `fct_buy_now_button(variation?, {text, class})` | FluentCart's Buy Now (instant checkout) button |
-| `fct_product_card(product?, {price_format})` | FluentCart's product card; `price_format`: `starts_from` (default) or `range` |
+| `fct_product_card(product?, {price_format, add_to_cart, buy_now})` | FluentCart's product card; `price_format`: `starts_from` (default) or `range` |
 | `fct_shop_app(attrs)` | `[fluent_cart_products]`: the live shop with filters, sorting and AJAX paging |
 | `fct_mini_cart(attrs)` | `[fluent_cart_mini_cart]` |
 | `fct_cart_page(attrs)` / `fct_checkout_page(attrs)` / `fct_receipt_page(attrs)` / `fct_account_page(attrs)` | `[fluent_cart_cart]` / `[fluent_cart_checkout]` / `[fluent_cart_receipt]` / `[fluent_cart_customer_profile]` |
 | `fct_product(product?)` | data: the single `post.fct` array; empty for a non-product |
-| `fct_get_products({per_page, sort_by, sort_type, category, brand, on_sale, product_type, include_ids, exclude_ids})` | data: published products as posts, each with the loop `post.fct` and `featured_image` |
+| `fct_get_products({per_page, sort_by, sort_type, category, brand, on_sale, product_type, include_ids, exclude_ids, include_slugs, exclude_slugs})` | data: published products as posts, each with the loop `post.fct` and `featured_image` |
 | `fct_cart()` | data: the read-only cart summary (below) |
 | `fct_price(cents)` | text: an amount in the store's money format |
 | `fct_buy_now_url(variation?, quantity = 1)` | text: the variation's instant-checkout URL; `''` when there's no such variation |
 | `fct_url(key)` | text: the `shop`, `cart`, `checkout`, `receipt` or `account` page's URL in the current language (localized like `turl()`); `''` while the page isn't set |
+| `fct_shipping_zones()` | data: the shipping zones checkout can offer, with countries and methods (see **Shipping in templates**) |
+| `fct_shipping_rates(country, variation?)` | data: what checkout would charge to ship one unit to a country, cheapest first (see **Shipping in templates**) |
 
 ### Arguments
 
-- **`product`** is a post id, a `WP_Post`, a `post.fct` / `fct_product()` array, or omitted.
+- **`product`** is a post id, a **slug** (`'building-your-digital-net-worth'`, any non-numeric
+  string), a `WP_Post`, a `post.fct` / `fct_product()` array, or omitted. A slug names one product
+  (a published one wins over a draft namesake); a slug no product has, or one that is ambiguous,
+  renders nothing and `fct_product()` returns `[]`. Templates that shouldn't carry ids use slugs.
   Omitted means the `post` being rendered when it is a product, else the global post when that is
   one. Inside a loop, name the loop variable `post` — `{% for post in products %}` — and the
   omitted argument is that iteration's product; with another name, pass it (`fct_product_card(p)`).
@@ -170,6 +175,11 @@ Every HTML function returns safe Markup: print it with `{{ }}`, no `|raw`.
   ```
 - **Options in the product's place.** An options hash may stand where the product goes:
   `{{ fct_buy_section({buy_now_text: 'Buy now'}) }}`. Empty options keep FluentCart's labels.
+- **Render switches** (`add_to_cart`, `buy_now`, `quantity`) on `fct_buy_section()`,
+  `fct_product_page()` and (no `quantity`) `fct_product_card()`: set one to `false` to leave that
+  part out of **this render only** (FluentCart's `RenderGate`, 1.6.6 and 2.x). They only hide:
+  `true` or no key leaves FluentCart's own decision (catalog mode, stock, subscriptions). See
+  **Direct checkout, no cart**.
 - **`class`** on a button replaces FluentCart's classes; CanAI keeps `fct-loader` on Add to Cart,
   which keeps its spinner hidden until a click.
 - **Shortcode attributes** (`fct_shop_app`, `fct_mini_cart`, the page functions) are FluentCart's
@@ -191,6 +201,9 @@ Every HTML function returns safe Markup: print it with `{{ }}`, no `|raw`.
     `{label, options: [{term_id, name, parent}]}`, a `default_filters.tax_query` that isn't a hash,
     and a `filters.sort_by` that isn't a scalar.
   - **Term scoping** on a `fct-product-category` render: see **Two shop styles**.
+- **`include_slugs` / `exclude_slugs`** (a list or a comma string) name published products by
+  slug, merged with `include_ids` / `exclude_ids`. `include_slugs` that name no product list
+  nothing; they never widen the list. Order follows `sort_by`, not the list.
 - **`fct_get_products()`** takes only the keys above. `per_page` defaults to Settings → Reading,
   at most 100, one page (no pagination). `sort_by`: `id`, `date`, `title`, `price`; `sort_type`:
   `ASC` / `DESC`. `category` / `brand`: term ids or slugs, a list or a comma string; a value that
@@ -216,8 +229,11 @@ post.fct = {
   can_add_to_cart,
   images: [ { id, url, alt } ],
   categories: [ { id, name, slug, url } ], brands: [ … ],
+  attributes: [ { id, slug, title, type,          # advanced_variations only, else []
+                  terms: [ { id, slug, title, color, image } ] } ],
   variations: [ { id, title, sku, price, price_formatted, compare_price, compare_price_formatted,
-                  on_sale, in_stock, available, payment_type, subscription_terms, image, buy_now_url } ],
+                  on_sale, in_stock, available, payment_type, subscription_terms, image, buy_now_url,
+                  attributes: [ { group: { id, slug, title }, term: { id, slug, title } } ] } ],
 }
 ```
 
@@ -238,7 +254,16 @@ post.fct = {
 - **Images** are the gallery, the featured image first. `alt` falls back to the media title
   FluentCart stores. An image outside the media library has `id: 0`. Use `post.fct.images[0]` for
   the product picture; `post.featured_image` covers media-library images only.
-- **The loop shape** drops `variations[].subscription_terms` and every image but the first.
+- **Attributes** (`advanced_variations`, v1.105.0) are the product's attribute groups and their
+  terms **in the product's own order** (FluentCart's `attribute_config`, what its editor shows), every
+  configured term listed, as FluentCart's selector lists them. `type` is the group's display type
+  (`options`, `color`, `image`); a term's `color` is a CSS colour safe for a `style` attribute (or
+  `''`), `image` a URL (or `''`). Each variation's `attributes` are its group/term pairs in the
+  same group order. `variations` holds the **active** ones only, so a combination of terms may have
+  no variation: treat that as unavailable. Other product types have `[]` in both places. A whole
+  shop grid of attribute products costs three queries.
+- **The loop shape** drops `variations[].subscription_terms` and every image but the first; it keeps
+  `attributes`.
 - **Title and text are not in it.** Print them from `post` (rule 1).
 
 ## Shop and archive context
@@ -337,6 +362,83 @@ button markup. A Buy Now link needs no JavaScript: `<a href="{{ fct_buy_now_url(
   (`HtmlToMarkdown::content_root()`): an `<article>` around the summary with the description in a
   sibling `<section>` loses the description in Markdown. Put `the_content()` inside the article, or
   use no `<article>`.
+
+### Attribute products (v1.105.0)
+
+`fct_buy_section()` draws FluentCart's own attribute selectors (one control per group, wired to its
+buttons). FluentCart's selectors work only inside its buy section, so there is no "selectors only"
+helper. For your own controls, build a picker from `post.fct.attributes` and link the chosen
+combination's `buy_now_url` (instant checkout, no cart):
+
+```twig
+{% set p = post.fct %}
+<div x-data="{ pick: {}, variations: {{ p.variations|json_encode|e('html_attr') }},
+     get match() { return this.variations.find(v => v.attributes.every(a => this.pick[a.group.id] === a.term.id)) } }">
+  {% for group in p.attributes %}
+    <fieldset><legend>{{ group.title }}</legend>
+      {% for term in group.terms %}
+        <label><input type="radio" name="g{{ group.id }}" @change="pick[{{ group.id }}] = {{ term.id }}"> {{ term.title }}</label>
+      {% endfor %}
+    </fieldset>
+  {% endfor %}
+  <a :href="match ? match.buy_now_url : null" :aria-disabled="!match"
+     x-text="match ? match.price_formatted : '{{ t('Choose an option') }}'"></a>
+</div>
+```
+
+It needs Alpine loaded (CanAI → Settings, the owner's Alpine.js switch; see SKILL.md → **Bundled
+libraries**). A partial
+choice, or a combination with no active variation, leaves the link without an `href`. The link
+skips FluentCart's stock check, as any hand-built Buy Now link does.
+
+## Direct checkout, no cart (v1.105.0)
+
+For a store that sells by instant checkout only:
+
+- **Product pages:** `{{ fct_buy_section({add_to_cart: false}) }}`, plus `quantity: false` to drop the
+  quantity box. FluentCart's attribute picker still drives the Buy Now link. The same switches work
+  on `fct_product_page()`; `fct_product_card(post, {add_to_cart: false})` for cards.
+- **Grids:** a Twig grid over `products` with `fct_buy_now_button(post)` or a
+  `fct_buy_now_url(post)` link; FluentCart's live shop (`fct_shop_app()`) redraws its cards in its own
+  requests, where CanAI's switches can't reach, so it keeps its Add to Cart buttons.
+- **The floating cart button** is FluentCart's store setting **Show cart icon in body**
+  (`show_cart_icon_in_body`); its "nav" icon setting is read nowhere. There's no header cart to
+  remove unless the layout prints `fct_mini_cart()`.
+- `wpcanai-scan` accepts a buy-now-only product page: `fct_buy_section()` and `fct_buy_now_url()`
+  both count as a way to buy.
+
+## Shipping in templates (v1.105.0)
+
+Print delivery copy from FluentCart's real zones instead of hardcoding it, so it never drifts.
+
+```twig
+{% set th = fct_shipping_rates('TH') %}            {# one unit of the product being rendered #}
+{% if th.methods %}{{ t('Delivery to Thailand from {price}.', {price: th.methods[0].amount_formatted}) }}{% endif %}
+
+{% for zone in fct_shipping_zones() if zone.methods|filter(m => m.rate == 'free')|length %}
+  <p>{{ t('Free delivery to {places}.', {places: zone.countries|map(c => c.name)|join(', ')}) }}</p>
+{% endfor %}
+```
+
+- **`fct_shipping_zones()`**: `[{ id, name, region, countries: [{code, name}], methods: [{ id, title,
+  description, type, rate, amount, amount_formatted, percent, states }] }]`, in FluentCart's admin
+  order. `region` is `all` (Whole World), `countries` or `all_except`. Only what checkout can offer:
+  enabled methods of zones with no shipping class. `rate` is how FluentCart charges: `free`,
+  `per_order`, `per_item`, `per_price` (`percent` of the goods) or `per_weight` (tiers). `amount`
+  (cents) and `amount_formatted` are set for `per_order` / `per_item`, else `null`. `states: []` is
+  every state.
+- **`fct_shipping_rates(country, variation?)`**: `{ country, country_name, status, methods: [{ id,
+  title, description, type, zone: {id, name}, amount, amount_formatted, is_free }] }` — FluentCart's
+  own charge to ship **one unit** of the variation (default: the rendered product's default
+  variation; a product, slug or `variations` entry also works) to an address in `country` (ISO2),
+  **cheapest first**. Class surcharges, weight tiers and free-shipping products count. `status`:
+  `ok`, `no_methods`, `needs_state` (only state-restricted methods), `no_shipping_needed` (digital,
+  or the product ships free), `unknown_country`, `no_product`. It never reads or creates a cart.
+- **Every matching zone is offered together.** A Thailand zone at RM40 and a Whole World zone at
+  RM200 both show for Thailand, the dearer first. For "RM40 for Thailand, RM200 elsewhere" the second
+  zone must be **all countries except Thailand** (FluentCart's "Selection" region, excluded), not
+  Whole World. Zone order doesn't matter at checkout.
+- "Free shipping over X" is a FluentCart Pro pricing rule; these helpers don't see it.
 
 ## The cart badge
 
