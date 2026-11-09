@@ -159,6 +159,18 @@ Numbered click-path instructions to create every CPT/field/taxonomy above in
 **Pods Admin → Add New**, in order. Concrete: real field names, real types as
 Pods calls them.
 
+Then, once, a **"With an agent (CanAI 2.3.0+)"** note: if the destination runs
+CanAI 2.3.0+ with Pods active, an agent connected to its `canai-mcp` can apply
+this option instead of clicking, one `wpcanai-write-pod` call per pod, `dry_run`
+first (the owner turns on **CanAI → AI Client → Guardrails → Pods → Let MCP write
+pods** beforehand; it is off by default). Give each pod as a ready `write-pod`
+input — `name` (lower-case, at most 20 characters), `type` (`post_type` or
+`taxonomy`), `label`, `fields` — using the field types `write-pod` accepts
+(`text`, `paragraph`, `wysiwyg`, `number`, `currency`, `date`, `datetime`,
+`boolean`, `color`, `email`, `website`, `file`, `pick`) and never a field name
+Pods reserves (`author`, `title`, `type`, `name`, `page`, `order`, `year`…:
+prefix it). A relationship is a `pick` with `pick_object` and `pick_val`.
+
 - **A `woo:product` type's product-meta fields** (never its native
   properties, which already exist): **Pods Admin → Add New → Post Type →
   "Extend Existing Content Type" → select Product (`product`)** — not "Add

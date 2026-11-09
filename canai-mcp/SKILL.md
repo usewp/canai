@@ -22,10 +22,11 @@ description: >
   "woocommerce", "woo", "wc_", "shop template", "product template", "checkout template", "wpcanai-get-wc-css-reference",
   "fluentcart", "fluent cart", "fluentcart store", "fct_", "wpcanai-get-fluent-cart-pages",
   "fluentcart product", "create a product", "shipping zone", "store currency", "wpcanai-write-fluent-product", "wpcanai-get-fluent-cart-store",
+  "pods", "custom post type", "content model", "custom fields", "wpcanai-write-pod", "wpcanai-get-pods", "wpcanai-delete-pod",
   "attribute colour", "color swatch", "wpcanai-write-fluent-attribute-group", "buy now only", "checkout mode", "reprice", "convert prices", "subscription product", "stock".
 metadata:
   author: canai
-  version: "1.59.0"
+  version: "1.60.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -390,7 +391,7 @@ Orders, customers, subscriptions, coupons and reports are **not** on CanAI's ser
 
 Ability IDs use slashes; MCP tool names use **hyphens** (`wpcanai/read-meta` → `wpcanai-read-meta`).
 
-### Tool labels (plugin v1.80.0; seven labels since v1.81.0, `fluent-cart` since v1.103.0)
+### Tool labels (plugin v1.80.0; seven labels since v1.81.0, `fluent-cart` since v1.103.0, nine with `pods` since v2.3.0)
 
 Every CanAI tool description starts with a bracket prefix naming what the tool touches **outside CanAI's own data**, e.g. `[fluent-snippets, filesystem] Update a snippet …`. Read it before calling an unfamiliar tool; `annotations.readonly` still says whether it writes, and `uninstall-preset`, `restore-snapshot` and `restore-operation` are marked destructive.
 
@@ -401,6 +402,7 @@ Every CanAI tool description starts with a bracket prefix naming what the tool t
 | `woocommerce` | WooCommerce pages and settings |
 | `fluent-cart` | FluentCart data: its store settings and pages, shipping, product taxonomies and products (written by the preset tools — v1.104.0 — and the store tools behind Guardrails — v1.106.0) |
 | `fluent-snippets` | Fluent Snippets files and index (canai-yolo tools) |
+| `pods` | The Pods content model: pod and field definitions (v2.3.0). Present only while Pods is active |
 | `cache` | A page-cache plugin's purge hooks (LiteSpeed Cache, WP Rocket, W3 Total Cache, WP Super Cache, WP-Optimize — v1.82.0) |
 | `filesystem` | Files under `wp-content` (snippet storage, uploads) |
 | `http` | Outbound requests from the server (sideload, preset download, network diagnostics) |
@@ -427,6 +429,8 @@ The prefix you see is **resolved for the site**: a third-party label (`woocommer
 | `fluent-cart` | `get-fluent-products` (v1.106.0) |
 | `fluent-cart, cache` | `write-fluent-product`, `write-fluent-cart-shipping-zone`, `write-fluent-cart-shipping-class` (v1.106.0), `write-fluent-attribute-group` (v1.107.0); all four are annotated destructive: they delete on request, and a product's attribute change lets FluentCart delete variations |
 | `fluent-cart, core, cache` | `update-fluent-cart-settings` (v1.106.0) |
+| `pods` | `get-pods` (v2.3.0) |
+| `pods, cache` | `write-pod`, `delete-pod` (v2.3.0) |
 | `cache` | `purge-cache` |
 | `fluent-snippets` | `list-snippets`, `get-snippet` |
 | `fluent-snippets, filesystem, cache` | `create-snippet`, `update-snippet`, `replace-in-snippet`, `set-snippet-status` |
@@ -898,8 +902,26 @@ CanAI recommends four free WordPress.org plugins: **Slim SEO** (`slim-seo`), **F
 - **`wpcanai-install-recommended-plugin`** — `{ "slug": "slim-seo" | "easy-code-manager" | "forminator" | "pods" }`. Installs it from WordPress.org if needed, then activates it. Returns `{ success, slug, status: "active", installed, activated, version, settings_url, next, purged }`; `next` says what to do now. Calling it for an active plugin succeeds and does nothing (`installed: false, activated: false`).
   - **Errors:** `unknown_plugin`, `seo_plugin_active` (Slim SEO beside another SEO plugin — don't force it), `insufficient_capability`, `file_mods_disabled` (the host turned plugin installs off), `needs_credentials` (the host needs FTP credentials: tell the owner to use CanAI → Welcome or Plugins), `install_failed`, `activation_failed`. Every refusal happens before anything is downloaded.
   - **Ask the owner first.** Installing a plugin is a site change they should expect. It is **not undone by `restore-operation`**; they deactivate it from Plugins.
-  - After installing `easy-code-manager`, the snippet tools appear on the next `tools/list` (reconnect to refresh). After `forminator`, embed a form with `{{ shortcode('[forminator_form id="N"]') }}`. After `pods`, define pods and fields under Pods Admin; template queries then return them (`fields`, `relations`, repeatable fields).
+  - After installing `easy-code-manager`, the snippet tools appear on the next `tools/list` (reconnect to refresh). After `forminator`, embed a form with `{{ shortcode('[forminator_form id="N"]') }}`. After `pods`, define pods and fields with `wpcanai-write-pod` (see **Pods content model**) or under Pods Admin; template queries then return them (`fields`, `relations`, repeatable fields).
   - The install tool is advisory-off once setup is finished (Tools tab, rule R4); if it is missing from `tools/list`, tell the owner to turn it on at CanAI → AI Client → Tools.
+
+### Pods content model — `wpcanai-get-pods` / `wpcanai-write-pod` / `wpcanai-delete-pod` (plugin v2.3.0)
+
+Three tools in group **Pods** (label `pods`), registered **only while the Pods plugin is active** (install it with `wpcanai-install-recommended-plugin`, slug `pods`, after asking the owner). They define a content model: custom post types, taxonomies and their fields. Template queries then return the fields as `item.fields.<name>` (relations and repeatable fields too).
+
+- **`wpcanai-get-pods`** — `{ "name"?: string }`. Returns `{ pods: [{ name, type: post_type|taxonomy, label, public, rest_enable, supports | hierarchical + post_types, fields: [{ name, label, type, required, repeatable, pick_object?, pick_val?, multiple? }], storage, extends }], writes_enabled }`. Without `name` it lists the site's own pods; a pod that extends a WordPress type (`post`, `page`…) appears only when named. `writes_enabled: false` means the two write tools are switched off.
+- **`wpcanai-write-pod`** — create or update one pod and its fields: `{ name, type: "post_type"|"taxonomy", label?, public?, rest_enable?, supports?[], hierarchical?, post_types?[], fields?: [{ name, label?, type, required?, repeatable?, pick_object?, pick_val?, multiple? }], remove_fields?[], dry_run? }`.
+  - **Names:** pod `^[a-z][a-z0-9_]{0,19}$`, field `^[a-z][a-z0-9_]{0,63}$`. Pods **reserves** names such as `author`, `title`, `type`, `name`, `page`, `order`, `year` (`reserved_name`, refused before anything is written): prefix them (`book_author`).
+  - **Field types:** `text`, `paragraph`, `wysiwyg`, `number`, `currency`, `date`, `datetime`, `boolean`, `color`, `email`, `website`, `file`, `pick`. A `pick` (relationship) needs `pick_object` (`post_type`, `taxonomy`, `user`, `pod`) and `pick_val` (the post type, taxonomy or pod name; not for `user`); `multiple: true` allows several values.
+  - **Merge by name.** A field you don't mention is kept; a field you name changes only the keys you send; a **new** field needs a `type`. `remove_fields` deletes those field *definitions* (stored values stay).
+  - **Defaults for a new pod:** public, in the REST API, post types support `title` and `editor`, taxonomies are flat. Storage is always post/term meta. Pods registers the type on the **next request**: a new post type is not usable by `write-post` in the same call chain until then (call `wpcanai-get-pods` first).
+  - **`dry_run: true`** returns `{ plan: { pod: create|update|unchanged, fields: { created, updated, removed, unchanged } }, previous, undo }` and writes nothing. Use it first.
+  - **Result:** `{ success, pod, created, fields: { created, updated, removed, unchanged }, previous, undo: { tool, input }, registered_next_request, purged }`. **`undo`** is the exact next call that reverts this one (`write-pod` with the old options and fields and `remove_fields` for what was created; for a pod it created, `delete-pod`).
+  - A failure part-way names what was already written and the revert call in the message.
+- **`wpcanai-delete-pod`** — `{ name, dry_run?: true (default), confirm? }`. **Two calls.** First with just `name`: nothing is deleted; it returns `{ fields_to_remove, content_items_kept, previous, undo, confirm, confirm_expires_in: 900 }`. Show the owner what would go, then call again with `dry_run: false` and that `confirm`. It removes the pod and field **definitions only** — posts, terms and stored values stay in the database, and `undo` (`write-pod`) brings the model, and the content, back. `confirm_required` (no confirm), `confirm_stale` (expired, used, or the pod changed since the dry run).
+- **Guardrails.** `write-pod` and `delete-pod` need **CanAI → AI Client → Guardrails → Pods → Let MCP write pods**, **off by default**, and `manage_options`. While it is off the tools are **hidden** (rule R5) and a call fails with `pods_writes_off` (403): tell the owner where the switch is; never work around it (the option `wpcanai_mcp_pods_write` is off-limits to `update-options`).
+- **Refused:** WordPress's own types (`pod_is_core`), a name WordPress already uses that Pods does not own (`name_taken`), a table-storage pod (`pod_uses_table_storage` — change it in Pods Admin), `pod_not_found`, `pod_type_unsupported`, `invalid_pod_name`, `invalid_field_type`, `missing_pick_target`, `field_not_found`, `pods_inactive`.
+- **Ask the owner before defining or deleting a model**, and `dry_run` first. After creating a post type, add its content with `wpcanai-write-post` / `wpcanai-write-page` (their meta is what Pods reads) and read it in a template query.
 
 ### `wpcanai-export` / `wpcanai-import`
 
@@ -1388,6 +1410,7 @@ If the damage spans several posts (a bad preset install or import), skip straigh
 | Purge the page cache (when a write's `purged` didn't cover it) | `wpcanai-purge-cache` |
 | Inventory + hashes, no content    | `wpcanai-export` `{ "summary": true }` / `wpcanai-read-meta` `{ "hash_only": true }` |
 | See / install Slim SEO, FluentSnippets, Forminator, Pods | `wpcanai-list-recommended-plugins` / `wpcanai-install-recommended-plugin` |
+| Read / define / delete a Pods content model (post types, taxonomies, fields) | `wpcanai-get-pods` / `wpcanai-write-pod` / `wpcanai-delete-pod` (Pods active; writes need the Guardrails switch) |
 | List / install / remove a preset  | `wpcanai-list-presets` / `wpcanai-install-preset` (⚠ `clean_slate`) / `wpcanai-uninstall-preset` |
 | Export / import CanAI content    | `wpcanai-export` / `wpcanai-import` |
 | Undo a bad write (one post)        | `wpcanai-list-snapshots` → `wpcanai-restore-snapshot` |

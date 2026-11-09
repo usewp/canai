@@ -14,7 +14,7 @@ description: >
   breakdown", "pixel-perfect", "high fidelity", "pixelmatch".
 metadata:
   author: canai
-  version: "4.7.4"
+  version: "4.8.0"
 allowed-tools: Bash Read Write Edit Grep Glob
 ---
 
@@ -824,7 +824,9 @@ runs/<site>/
   reach `pushprep` / `handoff-page`.
 
 1. **Materialize CONTENT-MODEL.md** on the destination site (user step):
-   via the Pods plugin, or by installing the generated PHP snippet with
+   via the Pods plugin (CanAI 2.3.0+: an agent on the destination's
+   `canai-mcp` can apply option A with `wpcanai-write-pod` once the owner turns
+   on **CanAI → AI Client → Guardrails → Pods**; `dry_run` first), or by installing the generated PHP snippet with
    Easy Code Manager / FluentSnippets — both are fully supported. CanAI
    1.43.1+ resolves `item.fields.<name>` (including `.url` on an image/file
    field) whether the field came from Pods or from a plain
