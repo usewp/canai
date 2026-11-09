@@ -25,7 +25,7 @@ description: >
   "attribute colour", "color swatch", "wpcanai-write-fluent-attribute-group", "buy now only", "checkout mode", "reprice", "convert prices", "subscription product", "stock".
 metadata:
   author: canai
-  version: "1.58.0"
+  version: "1.59.0"
 allowed-tools: "Read Grep Glob"
 ---
 
@@ -117,7 +117,7 @@ Before relying on CanAI for full-page output, the site should have:
 1. **Minimum templates** — at least **one layout** (`template_type` `layout`), **one header** (`header`), and **one footer** (`footer`). Layouts wrap `{{ page_content }}`; header/footer are included with `{{ wpcanai_template('slug') }}`.
 2. **CanAI Starter** (theme slug `wpcanai-empty`) — install and activate the minimal CanAI theme. It is **bundled** with the plugin at `canai/theme/wpcanai-empty/` and can also be installed from **WP Admin → CanAI** (welcome page).
 3. **Bundled libraries** — in **CanAI → Settings**, confirm **Load Tailwind CSS Play CDN** is **Yes** and **Resource Source** is **Internal** (bundled script — the default since plugin v1.58.2) when you are not using **`wpcanai-setup`** (recommended setup enables this automatically). Enable Lucide and Alpine as needed.
-4. **Recommended plugins** (optional) — Slim SEO, FluentSnippets and Forminator install from **CanAI → Welcome** or with `wpcanai-install-recommended-plugin`; ask the owner first, and never install any other plugin through CanAI.
+4. **Recommended plugins** (optional) — Slim SEO, FluentSnippets, Forminator and Pods install from **CanAI → Welcome**, **CanAI → Tools → Plugins** or with `wpcanai-install-recommended-plugin`; ask the owner first, and never install any other plugin through CanAI.
 5. **Tailwind config in the layout** — in the layout’s `_canai_html`, output `**tailwind.config = { ... }` in a `<script>` after `{{ wp_head() }}`** so it runs after the Tailwind script CanAI injects on `wp_head`.
 
 ```twig
@@ -892,13 +892,13 @@ Site name, tagline, and archive/search/404 SEO title+description live in a per-l
 
 ### Recommended plugins — `wpcanai-list-recommended-plugins` / `wpcanai-install-recommended-plugin` (plugin v2.1.0)
 
-CanAI recommends three free WordPress.org plugins: **Slim SEO** (`slim-seo`), **FluentSnippets** (`easy-code-manager`) and **Forminator** (`forminator`). The owner can install each from CanAI → Welcome; these tools do the same. **Never install any other plugin through CanAI.**
+CanAI recommends four free WordPress.org plugins: **Slim SEO** (`slim-seo`), **FluentSnippets** (`easy-code-manager`), **Forminator** (`forminator`) and **Pods** (`pods`, custom post types and fields). The owner can install each from CanAI → Welcome or CanAI → Tools → Plugins; these tools do the same. **Never install any other plugin through CanAI.**
 
 - **`wpcanai-list-recommended-plugins`** — no args. Returns `{ plugins: [{ slug, name, purpose, status, file, version, note, can_install, can_activate, settings_url, wporg_url }], file_mods_allowed }`. `status` is `active`, `inactive` (installed), `not_installed`, `not_needed` (Rank Math is active, which CanAI works with) or `conflict` (Yoast SEO, All in One SEO, SEOPress or The SEO Framework is active). `note` says why a plugin has no button.
-- **`wpcanai-install-recommended-plugin`** — `{ "slug": "slim-seo" | "easy-code-manager" | "forminator" }`. Installs it from WordPress.org if needed, then activates it. Returns `{ success, slug, status: "active", installed, activated, version, settings_url, next, purged }`; `next` says what to do now. Calling it for an active plugin succeeds and does nothing (`installed: false, activated: false`).
+- **`wpcanai-install-recommended-plugin`** — `{ "slug": "slim-seo" | "easy-code-manager" | "forminator" | "pods" }`. Installs it from WordPress.org if needed, then activates it. Returns `{ success, slug, status: "active", installed, activated, version, settings_url, next, purged }`; `next` says what to do now. Calling it for an active plugin succeeds and does nothing (`installed: false, activated: false`).
   - **Errors:** `unknown_plugin`, `seo_plugin_active` (Slim SEO beside another SEO plugin — don't force it), `insufficient_capability`, `file_mods_disabled` (the host turned plugin installs off), `needs_credentials` (the host needs FTP credentials: tell the owner to use CanAI → Welcome or Plugins), `install_failed`, `activation_failed`. Every refusal happens before anything is downloaded.
   - **Ask the owner first.** Installing a plugin is a site change they should expect. It is **not undone by `restore-operation`**; they deactivate it from Plugins.
-  - After installing `easy-code-manager`, the snippet tools appear on the next `tools/list` (reconnect to refresh). After `forminator`, embed a form with `{{ shortcode('[forminator_form id="N"]') }}`.
+  - After installing `easy-code-manager`, the snippet tools appear on the next `tools/list` (reconnect to refresh). After `forminator`, embed a form with `{{ shortcode('[forminator_form id="N"]') }}`. After `pods`, define pods and fields under Pods Admin; template queries then return them (`fields`, `relations`, repeatable fields).
   - The install tool is advisory-off once setup is finished (Tools tab, rule R4); if it is missing from `tools/list`, tell the owner to turn it on at CanAI → AI Client → Tools.
 
 ### `wpcanai-export` / `wpcanai-import`
@@ -1387,7 +1387,7 @@ If the damage spans several posts (a bad preset install or import), skip straigh
 | Diagnose environment / network    | `wpcanai-diagnostics`        |
 | Purge the page cache (when a write's `purged` didn't cover it) | `wpcanai-purge-cache` |
 | Inventory + hashes, no content    | `wpcanai-export` `{ "summary": true }` / `wpcanai-read-meta` `{ "hash_only": true }` |
-| See / install Slim SEO, FluentSnippets, Forminator | `wpcanai-list-recommended-plugins` / `wpcanai-install-recommended-plugin` |
+| See / install Slim SEO, FluentSnippets, Forminator, Pods | `wpcanai-list-recommended-plugins` / `wpcanai-install-recommended-plugin` |
 | List / install / remove a preset  | `wpcanai-list-presets` / `wpcanai-install-preset` (⚠ `clean_slate`) / `wpcanai-uninstall-preset` |
 | Export / import CanAI content    | `wpcanai-export` / `wpcanai-import` |
 | Undo a bad write (one post)        | `wpcanai-list-snapshots` → `wpcanai-restore-snapshot` |
