@@ -26,7 +26,7 @@ description: >
   "attribute colour", "color swatch", "wpcanai-write-fluent-attribute-group", "buy now only", "checkout mode", "reprice", "convert prices", "subscription product", "stock".
 metadata:
   author: canai
-  version: "1.62.0"
+  version: "1.62.1"
 allowed-tools: "Read Grep Glob"
 ---
 

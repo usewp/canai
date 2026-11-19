@@ -381,7 +381,9 @@ Every HTML function returns safe Markup: print it with `{{ }}`, no `|raw`.
   - **Scalars** go into the shortcode text, `true` as `yes` and `false` as `''`, each
     `esc_attr()`-escaped, so `&`, quotes and brackets reach FluentCart entity-encoded.
   - **A hash or a list goes through only where FluentCart reads one.** `fct_shop_app()`:
-    `custom_filters` (the filter sidebar: `taxonomies`, `price_range`, `live_filter`, `enabled`),
+    `custom_filters` (the filter sidebar: `taxonomies`, `price_range`, `live_filter`, `enabled`;
+    from FluentCart 2.3.2 also `attributes`, attribute group slugs or ids as `'color,size'`, with
+    `show_attribute_counts` and `show_attribute_empty`),
     `default_filters` (preset terms per taxonomy, plus `wildcard`, `sort_by` and
     `allow_out_of_stock`; applied only with `enabled: true`), `filters` (only with
     `enable_filter: true`) and `colors` (read, but nothing is drawn from it). On 2.x,
@@ -512,6 +514,11 @@ in FluentCart's own cards (CanAI cards inside it are not supported yet).
   `{{ fct_shop_app({custom_filters: {price_range: true, taxonomies: ['product-brands']}}) }}`.
   `live_filter: false` in it adds an Apply button; `search: true` draws nothing. (`enable_filter`
   with `filters` is not the sidebar and draws none.)
+- **Card layouts (FluentCart 2.3.2+)** are scalar attributes: `card_layout` (`classic`, `compact`,
+  `floating` or `framed`; anything else keeps FluentCart's standard card), `masonry: 'yes'`,
+  `quick_view` (`image` or `button`), `swatch_count` (1–12, or `all`), `swatch_selected_name` /
+  `swatch_group_name` (`yes` / `no`), `swatch_sold_out` (`normal`, `cross` or `hide`) and
+  `layout_hide`. Older FluentCart ignores them.
 - **Term scoping.** On a `fct-product-category` render the shop app stays on the queried term and
   its children unless the attributes choose terms. They choose terms when `taxonomies`, `category`
   or `category_id` is a scalar (a hash or a list there is dropped and doesn't count), or when
@@ -710,8 +717,10 @@ Print delivery copy from FluentCart's real zones instead of hardcoding it, so it
 
 ## Assets and styles
 
-- Each helper loads FluentCart's asset set for what it draws: the product helpers and both buttons
-  the single-product set (with the advanced-variation action), `fct_shop_app` the archive set,
+- Each helper loads FluentCart's asset set for what it draws: `fct_product_page` the single-product
+  set, and the buy section, gallery, price and both buttons the same set without the reviews
+  section's files on FluentCart 2.3.2+ (the whole set before 2.3.2); each with the
+  advanced-variation action. `fct_shop_app` loads the archive set,
   `fct_mini_cart` the mini-cart set; the card and the shortcodes load their own. FluentCart also
   loads assets by itself on products, term archives and the store pages.
 - **Head preload.** On a request CanAI renders, CanAI reads the render post's `_canai_html` (unless
